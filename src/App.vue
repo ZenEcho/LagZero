@@ -31,14 +31,14 @@ const themeColors: Record<ThemeColor, { primary: string; hover: string; pressed:
 
 const themeOverrides = computed<GlobalThemeOverrides>(() => {
   const color = themeColors[themeColor.value] || themeColors.green
-  
+
   const common = {
     primaryColor: color.primary,
     primaryColorHover: color.hover,
     primaryColorPressed: color.pressed,
     primaryColorSuppl: color.hover,
   }
-  
+
   return {
     common,
     Button: {
@@ -51,12 +51,21 @@ const themeOverrides = computed<GlobalThemeOverrides>(() => {
       colorHoverPrimary: color.hover,
       colorPressedPrimary: color.pressed,
       colorFocusPrimary: color.hover,
-      colorDisabledPrimary: color.primary, // Use opacity for disabled state usually handled by component, but color needs to be set
+      colorDisabledPrimary: color.primary,
       borderPrimary: `1px solid ${color.primary}`,
       borderHoverPrimary: `1px solid ${color.hover}`,
       borderPressedPrimary: `1px solid ${color.pressed}`,
       borderFocusPrimary: `1px solid ${color.hover}`,
       borderDisabledPrimary: `1px solid ${color.primary}`,
+      // Also ensure error/warning buttons have white text
+      textColorError: '#ffffff',
+      textColorHoverError: '#ffffff',
+      textColorPressedError: '#ffffff',
+      textColorFocusError: '#ffffff',
+      textColorWarning: '#ffffff',
+      textColorHoverWarning: '#ffffff',
+      textColorPressedWarning: '#ffffff',
+      textColorFocusWarning: '#ffffff',
     }
   }
 })
@@ -65,7 +74,9 @@ const themeOverrides = computed<GlobalThemeOverrides>(() => {
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap');
 
-html, body, #app {
+html,
+body,
+#app {
   height: 100%;
   width: 100%;
   margin: 0;

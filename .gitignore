@@ -10,6 +10,7 @@ coverage
 node_modules
 dist
 dist-ssr
+dist-electron
 *.local
 .lagzero-dev
 # Editor directories and files

@@ -7,6 +7,11 @@ import App from './App.vue'
 import router from './router'
 import pinia from './stores'
 import i18n from './i18n'
+import { initLatencySessionStore } from './utils/latency-session'
+
+void initLatencySessionStore().catch((e) => {
+  console.error('Failed to init latency session store:', e)
+})
 
 createApp(App)
   .use(router)

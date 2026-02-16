@@ -1,90 +1,56 @@
 <template>
-  <n-modal
-    :show="modelValue"
-    @update:show="$emit('update:modelValue', $event)"
-    preset="card"
-    :title="isEdit ? $t('nodes.edit_node') : $t('nodes.add_node')"
-    class="w-[500px]"
-    :mask-closable="false"
-  >
-    <n-form
-      ref="formRef"
-      label-placement="top"
-      :model="form"
-    >
+  <n-modal :show="modelValue" @update:show="$emit('update:modelValue', $event)" preset="card"
+    :title="isEdit ? $t('nodes.edit_node') : $t('nodes.add_node')" class="w-[500px]" :mask-closable="false">
+    <n-form ref="formRef" label-placement="top" :model="form">
       <n-form-item :label="$t('nodes.tag')">
-        <n-input 
-          v-model:value="form.tag" 
-          :placeholder="$t('nodes.tag_placeholder')"
-        />
+        <n-input v-model:value="form.tag" :placeholder="$t('nodes.tag_placeholder')" />
       </n-form-item>
 
       <n-form-item :label="$t('nodes.type')">
-        <n-select
-          v-model:value="form.type"
-          :options="[
-            { label: 'VMess', value: 'vmess' },
-            { label: 'VLESS', value: 'vless' },
-            { label: 'Shadowsocks', value: 'shadowsocks' },
-            { label: 'Trojan', value: 'trojan' }
-          ]"
-        />
+        <n-select v-model:value="form.type" :options="[
+          { label: 'VMess', value: 'vmess' },
+          { label: 'VLESS', value: 'vless' },
+          { label: 'Shadowsocks', value: 'shadowsocks' },
+          { label: 'Trojan', value: 'trojan' }
+        ]" />
       </n-form-item>
 
       <div class="grid grid-cols-3 gap-4">
         <div class="col-span-2">
           <n-form-item :label="$t('nodes.server')">
-            <n-input 
-              v-model:value="form.server" 
-              :placeholder="$t('nodes.server_placeholder')"
-            />
+            <n-input v-model:value="form.server" :placeholder="$t('nodes.server_placeholder')" />
           </n-form-item>
         </div>
         <div>
           <n-form-item :label="$t('nodes.port')">
-            <n-input-number 
-              v-model:value="form.server_port" 
-              :placeholder="$t('nodes.port_placeholder')"
-              :show-button="false"
-            />
+            <n-input-number v-model:value="form.server_port" :placeholder="$t('nodes.port_placeholder')"
+              :show-button="false" />
           </n-form-item>
         </div>
       </div>
 
       <template v-if="form.type && ['vmess', 'vless', 'trojan'].includes(form.type)">
         <n-form-item :label="$t('nodes.uuid')">
-          <n-input 
-            v-model:value="form.uuid" 
-            :placeholder="$t('nodes.uuid_placeholder')"
-          />
+          <n-input v-model:value="form.uuid" :placeholder="$t('nodes.uuid_placeholder')" />
         </n-form-item>
       </template>
 
       <template v-else-if="form.type === 'shadowsocks'">
         <n-form-item :label="$t('nodes.password')">
-          <n-input 
-            v-model:value="form.password" 
-            :placeholder="$t('nodes.password_placeholder')"
-          />
+          <n-input v-model:value="form.password" :placeholder="$t('nodes.password_placeholder')" />
         </n-form-item>
         <n-form-item :label="$t('nodes.method')">
-          <n-input 
-            v-model:value="form.method" 
-            :placeholder="$t('nodes.method_placeholder')"
-          />
+          <n-input v-model:value="form.method" :placeholder="$t('nodes.method_placeholder')" />
         </n-form-item>
       </template>
 
       <template v-if="form.type && ['vmess', 'vless'].includes(form.type)">
         <n-form-item :label="$t('nodes.network')">
-          <n-select
-            v-model:value="form.network"
-            :options="[
-              { label: 'TCP', value: 'tcp' },
-              { label: 'WebSocket', value: 'ws' },
-              { label: 'gRPC', value: 'grpc' }
-            ]"
-          />
+          <n-select v-model:value="form.network" :options="[
+            { label: 'TCP', value: 'tcp' },
+            { label: 'WebSocket', value: 'ws' },
+            { label: 'gRPC', value: 'grpc' }
+          ]" />
         </n-form-item>
       </template>
     </n-form>
@@ -92,11 +58,7 @@
     <template #footer>
       <div class="flex justify-end gap-2">
         <n-button @click="close">{{ $t('common.cancel') }}</n-button>
-        <n-button 
-          type="primary" 
-          @click="save" 
-          :disabled="!canSave"
-        >
+        <n-button type="primary" @click="save" :disabled="!canSave">
           {{ $t('common.save') }}
         </n-button>
       </div>

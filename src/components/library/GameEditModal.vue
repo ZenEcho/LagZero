@@ -1,30 +1,14 @@
 <template>
-  <n-modal
-    :show="modelValue"
-    @update:show="$emit('update:modelValue', $event)"
-    preset="card"
-    :title="isEdit ? $t('common.edit') : $t('games.add_game')"
-    class="w-[500px]"
-    :mask-closable="false"
-  >
-    <n-form
-      ref="formRef"
-      label-placement="top"
-      :model="form"
-    >
+  <n-modal :show="modelValue" @update:show="$emit('update:modelValue', $event)" preset="card"
+    :title="isEdit ? $t('common.edit') : $t('games.add_game')" class="w-[500px]" :mask-closable="false">
+    <n-form ref="formRef" label-placement="top" :model="form">
       <n-form-item :label="$t('games.name')">
-        <n-input 
-          v-model:value="form.name" 
-          placeholder="例如：英雄联盟"
-        />
+        <n-input v-model:value="form.name" placeholder="例如：英雄联盟" />
       </n-form-item>
 
       <n-form-item :label="$t('games.process_name')">
         <div class="flex flex-col w-full gap-1">
-          <n-input 
-            v-model:value="processNames" 
-            placeholder="例如：League of Legends.exe, LeagueClient.exe"
-          />
+          <n-input v-model:value="processNames" placeholder="例如：League of Legends.exe, LeagueClient.exe" />
           <div class="flex gap-2">
             <n-button @click="pickProcess" size="small" dashed>选择文件</n-button>
             <n-button @click="pickProcessFolder" size="small" dashed>选择目录</n-button>
@@ -35,7 +19,8 @@
 
       <n-form-item :label="$t('games.icon')">
         <div class="flex items-center gap-2 w-full">
-          <div class="w-10 h-10 bg-surface rounded border border-border overflow-hidden flex items-center justify-center">
+          <div
+            class="w-10 h-10 bg-surface rounded border border-border overflow-hidden flex items-center justify-center">
             <img v-if="form.iconUrl" :src="form.iconUrl" class="w-full h-full object-cover" />
             <div v-else class="i-material-symbols-image text-xl text-on-surface-muted"></div>
           </div>
@@ -47,12 +32,7 @@
 
       <n-form-item :label="$t('games.category')">
         <n-radio-group v-model:value="form.category">
-          <n-radio-button
-            v-for="cat in categories"
-            :key="cat"
-            :value="cat"
-            :label="cat.toUpperCase()"
-          />
+          <n-radio-button v-for="cat in categories" :key="cat" :value="cat" :label="cat.toUpperCase()" />
         </n-radio-group>
       </n-form-item>
     </n-form>
@@ -60,16 +40,13 @@
     <template #footer>
       <div class="flex justify-end gap-2">
         <n-button @click="close">{{ $t('common.cancel') }}</n-button>
-        <n-button 
-          type="primary" 
-          @click="save" 
-          :disabled="!form.name || !processNames"
-        >
+        <n-button type="primary" @click="save" :disabled="!form.name || !processNames">
           {{ $t('common.save') }}
         </n-button>
       </div>
     </template>
   </n-modal>
+
 </template>
 
 <script setup lang="ts">
@@ -136,7 +113,6 @@ function close() {
 }
 
 async function pickImage() {
-  // @ts-ignore
   const picker = window.electron?.pickImage
   if (!picker) {
     message.error('当前环境不支持选择文件')
@@ -163,7 +139,7 @@ async function pickProcess() {
       current = [form.value.processName]
     }
     const set = new Set(current)
-    files.forEach(f => set.add(f))
+    files.forEach((f: string) => set.add(f))
     form.value.processName = Array.from(set)
   }
 }
@@ -199,7 +175,7 @@ async function pickProcessFolder() {
           current = [form.value.processName]
         }
         const set = new Set(current)
-        files.forEach(f => set.add(f))
+        files.forEach((f: string) => set.add(f))
         form.value.processName = Array.from(set)
         message.success(`已添加 ${files.length} 个可执行文件`)
       } else if (files) {
@@ -211,7 +187,7 @@ async function pickProcessFolder() {
 
 function save() {
   if (!form.value.name) return
-  
+
   if (props.editingGame) {
     emit('save', { ...form.value, id: props.editingGame.id })
   } else {

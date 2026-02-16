@@ -3,68 +3,105 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
+import { useNodeStore } from '@/stores/nodes'
+import { useIntervalFn } from '@vueuse/core'
 
+const props = defineProps<{
+  nodeKey?: string | null
+}>()
+
+const nodeStore = useNodeStore()
 const chartRef = ref<HTMLElement>()
 let chart: echarts.ECharts | null = null
 
-onMounted(() => {
-  if (chartRef.value) {
-    chart = echarts.init(chartRef.value)
-    
-    // Mock data generation
-    const data = Array.from({ length: 20 }, () => Math.floor(Math.random() * 100))
-    const xData = Array.from({ length: 20 }, (_, i) => i)
+const activeNodeKey = computed(() => props.nodeKey || '')
 
-    const option = {
-      backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'axis',
-        axisPointer: { type: 'cross' }
-      },
-      grid: {
-        top: 20,
-        right: 20,
-        bottom: 20,
-        left: 40,
-        containLabel: true
-      },
-      xAxis: {
-        type: 'category',
-        data: xData,
-        axisLine: { lineStyle: { color: '#666' } }
-      },
-      yAxis: {
-        type: 'value',
-        splitLine: { lineStyle: { color: '#333' } },
-        axisLine: { lineStyle: { color: '#666' } }
-      },
-      series: [
-        {
-          data: data,
-          type: 'line',
-          smooth: true,
-          showSymbol: false,
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: 'rgba(62, 175, 124, 0.5)' },
-              { offset: 1, color: 'rgba(62, 175, 124, 0.0)' }
-            ])
-          },
-          itemStyle: { color: '#3eaf7c' }
-        }
-      ]
-    }
-    chart.setOption(option)
-    
-    window.addEventListener('resize', resize)
+function formatTime(timestamp: number) {
+  const date = new Date(timestamp)
+  return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`
+}
+
+function renderChart(xData: string[], yData: (number | null)[]) {
+  if (!chart) return
+  chart.setOption({
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' }
+    },
+    grid: {
+      top: 20,
+      right: 20,
+      bottom: 20,
+      left: 40,
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: xData,
+      axisLine: { lineStyle: { color: '#666' } }
+    },
+    yAxis: {
+      type: 'value',
+      splitLine: { lineStyle: { color: '#333' } },
+      axisLine: { lineStyle: { color: '#666' } }
+    },
+    series: [
+      {
+        data: yData,
+        type: 'line',
+        smooth: true,
+        showSymbol: false,
+        connectNulls: false,
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(62, 175, 124, 0.5)' },
+            { offset: 1, color: 'rgba(62, 175, 124, 0.0)' }
+          ])
+        },
+        itemStyle: { color: '#3eaf7c' }
+      }
+    ]
+  })
+}
+
+async function refreshChart() {
+  const nodeKey = activeNodeKey.value
+  if (!nodeKey) {
+    renderChart([], [])
+    return
   }
+
+  const history = await nodeStore.getNodeLatencyHistory(nodeKey, 240)
+  renderChart(
+    history.map(item => formatTime(item.timestamp)),
+    history.map(item => (item.latency > 0 ? item.latency : null))
+  )
+}
+
+const { pause } = useIntervalFn(() => {
+  void refreshChart()
+}, 1000)
+
+onMounted(() => {
+  if (!chartRef.value) return
+
+  chart = echarts.init(chartRef.value)
+  void refreshChart()
+  window.addEventListener('resize', resize)
+})
+
+watch(activeNodeKey, () => {
+  void refreshChart()
 })
 
 onUnmounted(() => {
+  pause()
   window.removeEventListener('resize', resize)
   chart?.dispose()
+  chart = null
 })
 
 const resize = () => chart?.resize()

@@ -1,23 +1,10 @@
 <template>
-  <n-modal
-    :show="modelValue"
-    @update:show="$emit('update:modelValue', $event)"
-    preset="card"
-    :title="$t('common.categories')"
-    class="w-[600px]"
-    :mask-closable="false"
-  >
+  <n-modal :show="modelValue" @update:show="$emit('update:modelValue', $event)" preset="card"
+    :title="$t('common.categories')" class="w-[600px]" :mask-closable="false">
     <div class="flex gap-2 mb-4">
-      <n-input
-        v-model:value="newCategoryName"
-        :placeholder="$t('categories.new_category_placeholder')"
-        @keyup.enter="addCategory"
-      />
-      <n-button 
-        type="primary" 
-        @click="addCategory" 
-        :disabled="!newCategoryName"
-      >
+      <n-input v-model:value="newCategoryName" :placeholder="$t('categories.new_category_placeholder')"
+        @keyup.enter="addCategory" />
+      <n-button type="primary" @click="addCategory" :disabled="!newCategoryName">
         <template #icon>
           <div class="i-material-symbols-add"></div>
         </template>
@@ -26,27 +13,19 @@
     </div>
 
     <div class="max-h-[60vh] overflow-y-auto min-h-[100px]">
-      <draggable 
-        v-model="categoryStore.categories" 
-        item-key="id"
-        handle=".drag-handle"
-        @end="saveOrder"
-        class="space-y-2"
-      >
+      <draggable v-model="categoryStore.categories" item-key="id" handle=".drag-handle" @end="saveOrder"
+        class="space-y-2">
         <template #item="{ element }">
-          <div class="flex items-center gap-3 p-3 bg-surface rounded border border-border group hover:border-primary/50 transition">
-            <div class="drag-handle text-on-surface-muted i-material-symbols-drag-indicator hover:text-on-surface cursor-grab active:cursor-grabbing"></div>
-            
+          <div
+            class="flex items-center gap-3 p-3 bg-surface rounded border border-border group hover:border-primary/50 transition">
+            <div
+              class="drag-handle text-on-surface-muted i-material-symbols-drag-indicator hover:text-on-surface cursor-grab active:cursor-grabbing">
+            </div>
+
             <div class="flex-1 flex items-center gap-2">
               <div v-if="editingId === element.id" class="flex-1">
-                <n-input 
-                  v-model:value="element.name" 
-                  size="small"
-                  @blur="finishEdit(element)"
-                  @keyup.enter="finishEdit(element)"
-                  ref="editInput"
-                  v-focus
-                />
+                <n-input v-model:value="element.name" size="small" @blur="finishEdit(element)"
+                  @keyup.enter="finishEdit(element)" ref="editInput" v-focus />
               </div>
               <div v-else class="flex-1 font-bold text-on-surface" @dblclick="startEdit(element)">
                 {{ element.name }}
@@ -108,13 +87,13 @@ const vFocus = {
 
 async function addCategory() {
   if (!newCategoryName.value) return
-  
+
   await categoryStore.addCategory({
     id: Date.now().toString(36),
     name: newCategoryName.value,
     order: categoryStore.categories.length
   })
-  
+
   newCategoryName.value = ''
   message.success('Category added')
 }
@@ -125,7 +104,7 @@ function startEdit(category: Category) {
 
 async function finishEdit(category: Category) {
   if (!editingId.value) return
-  
+
   await categoryStore.updateCategory(category)
   editingId.value = null
 }
@@ -149,11 +128,11 @@ async function saveOrder() {
   // Assuming updateCategory handles it per item or we need a bulk save.
   // Current store only has add/update/remove.
   // Let's iterate and update for now as the store doesn't have bulk save.
-  const updates = categoryStore.categories.map((c, index) => ({
+  const updates = categoryStore.categories.map((c: Category, index: number) => ({
     ...c,
     order: index
   }))
-  
+
   for (const c of updates) {
     await categoryStore.updateCategory(c)
   }

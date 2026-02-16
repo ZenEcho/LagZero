@@ -11,10 +11,10 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
-    AdvancedConfigEditor: typeof import('./components/library/AdvancedConfigEditor.vue')['default']
-    CategoryManager: typeof import('./components/library/CategoryManager.vue')['default']
-    GameEditModal: typeof import('./components/library/GameEditModal.vue')['default']
-    LatencyChart: typeof import('./components/dashboard/LatencyChart.vue')['default']
+    AdvancedConfigEditor: typeof import('./../components/library/AdvancedConfigEditor.vue')['default']
+    CategoryManager: typeof import('./../components/library/CategoryManager.vue')['default']
+    GameEditModal: typeof import('./../components/library/GameEditModal.vue')['default']
+    LatencyChart: typeof import('./../components/dashboard/LatencyChart.vue')['default']
     NButton: typeof import('naive-ui')['NButton']
     NConfigProvider: typeof import('naive-ui')['NConfigProvider']
     NDialogProvider: typeof import('naive-ui')['NDialogProvider']
@@ -26,17 +26,17 @@ declare module 'vue' {
     NModal: typeof import('naive-ui')['NModal']
     NModalProvider: typeof import('naive-ui')['NModalProvider']
     NNotificationProvider: typeof import('naive-ui')['NNotificationProvider']
-    NodeCard: typeof import('./components/node/NodeCard.vue')['default']
-    NodeEditModal: typeof import('./components/node/NodeEditModal.vue')['default']
-    NodeImportModal: typeof import('./components/node/NodeImportModal.vue')['default']
-    NodeManager: typeof import('./components/node/NodeManager.vue')['default']
-    NodeSelector: typeof import('./components/node/NodeSelector.vue')['default']
+    NodeCard: typeof import('./../components/node/NodeCard.vue')['default']
+    NodeEditModal: typeof import('./../components/node/NodeEditModal.vue')['default']
+    NodeImportModal: typeof import('./../components/node/NodeImportModal.vue')['default']
+    NodeManager: typeof import('./../components/node/NodeManager.vue')['default']
+    NodeSelector: typeof import('./../components/dashboard/NodeSelector.vue')['default']
     NRadio: typeof import('naive-ui')['NRadio']
     NRadioGroup: typeof import('naive-ui')['NRadioGroup']
     NSelect: typeof import('naive-ui')['NSelect']
     NSpace: typeof import('naive-ui')['NSpace']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
-    ThemeToggle: typeof import('./components/common/ThemeToggle.vue')['default']
+    ThemeToggle: typeof import('./../components/common/ThemeToggle.vue')['default']
   }
 }

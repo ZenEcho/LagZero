@@ -16,12 +16,11 @@
             <div class="min-w-0">
               <div class="font-medium text-sm text-on-surface truncate">{{ node.tag || 'Unnamed Node' }}</div>
               <div class="text-xs text-on-surface-muted flex items-center gap-2">
-                <span class="uppercase bg-surface-overlay px-1 rounded text-[10px]">{{ node.type }}</span>
+                <span class="uppercase bg-surface-overlay my-1 px-1 rounded text-[10px]">{{ node.type }}</span>
                 <span class="truncate">{{ node.server }}:{{ node.server_port }}</span>
               </div>
             </div>
           </div>
-
           <div class="flex items-center gap-4">
             <!-- Status -->
             <div v-if="getNodeStats(node)" class="flex items-center gap-3 text-xs font-mono">
@@ -126,6 +125,9 @@ async function deleteNode(node: NodeConfig) {
     content: t('nodes.delete_confirm', { name: node.tag }) || `确定要删除节点 ${node.tag} 吗？`,
     positiveText: t('common.delete') || '删除',
     negativeText: t('common.cancel') || '取消',
+    positiveButtonProps: {
+      type: 'error'
+    },
     onPositiveClick: async () => {
       if (node.id) {
         await nodeStore.removeNode(node.id)

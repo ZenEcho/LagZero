@@ -3,12 +3,27 @@ import { ref, reactive } from 'vue'
 import { parseShareLink, parseBatchLinks, normalizeNodeType } from '@/utils/protocol'
 import type { NodeConfig } from '@/utils/protocol'
 import { useSettingsStore } from './settings'
+import {
+  appendLatencyRecord,
+  getGameLatencyStats,
+  getRecentLatencyRecords,
+  initLatencySessionStore
+} from '@/utils/latency-session'
 
 type CheckMethod = 'ping' | 'tcp' | 'http'
+interface CheckRecordContext {
+  recordLatency?: boolean
+  gameId?: string
+  accelerationSeconds?: number
+  sessionLossRate?: number
+}
 
 export const useNodeStore = defineStore('nodes', () => {
   const nodes = ref<NodeConfig[]>([])
   const nodeStats = reactive<Record<string, { latency: number; loss: number }>>({})
+  const latencySessionReady = initLatencySessionStore().catch((e) => {
+    console.error('Failed to init latency session store:', e)
+  })
 
   const settingsStore = useSettingsStore()
 
@@ -20,7 +35,7 @@ export const useNodeStore = defineStore('nodes', () => {
     }
   }
 
-  async function checkNode(node: NodeConfig, methodOverride?: CheckMethod) {
+  async function checkNode(node: NodeConfig, methodOverride?: CheckMethod, context?: CheckRecordContext) {
     if (!node.server) return
 
     const method = methodOverride || settingsStore.checkMethod
@@ -56,6 +71,24 @@ export const useNodeStore = defineStore('nodes', () => {
     const key = node.id || node.tag
     if (key) {
       nodeStats[key] = result
+      if (context?.recordLatency) {
+        void latencySessionReady
+          .then(() => appendLatencyRecord({
+            nodeKey: key,
+            server: node.server,
+            port: node.server_port,
+            method,
+            latency: result.latency,
+            loss: result.loss,
+            timestamp: Date.now(),
+            gameId: context.gameId,
+            accelerationSeconds: context.accelerationSeconds,
+            sessionLossRate: context.sessionLossRate
+          }))
+          .catch((e) => {
+            console.error('Failed to append latency record:', e)
+          })
+      }
     }
     return result
   }
@@ -84,6 +117,16 @@ export const useNodeStore = defineStore('nodes', () => {
     for (const chunk of chunks) {
       await Promise.all(chunk.map(node => checkNode(node)))
     }
+  }
+
+  async function getNodeLatencyHistory(nodeKey: string, limit = 240) {
+    await latencySessionReady
+    return getRecentLatencyRecords(nodeKey, limit)
+  }
+
+  async function getGameLatencyStatsForSession(gameId: string) {
+    await latencySessionReady
+    return getGameLatencyStats(gameId)
   }
 
   async function loadNodes() {
@@ -171,6 +214,8 @@ export const useNodeStore = defineStore('nodes', () => {
     updateNode,
     nodeStats,
     checkNode,
-    checkAllNodes
+    checkAllNodes,
+    getNodeLatencyHistory,
+    getGameLatencyStatsForSession
   }
 })

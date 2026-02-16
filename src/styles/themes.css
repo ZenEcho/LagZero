@@ -2,48 +2,51 @@
   /* Primitive Colors (Semantic Base) */
   --rgb-white: 255, 255, 255;
   --rgb-black: 0, 0, 0;
-  
-  /* Status Colors (Default) */
-  --rgb-success: 34, 197, 94;       /* #22c55e */
-  --rgb-success-bg: 220, 252, 231;  /* #dcfce7 */
-  --rgb-on-success: 255, 255, 255;  /* #ffffff */
-  
-  --rgb-warning: 234, 179, 8;       /* #eab308 */
-  --rgb-warning-bg: 254, 249, 195;  /* #fef9c3 */
-  --rgb-on-warning: 255, 255, 255;  /* #ffffff */
-  
-  --rgb-error: 239, 68, 68;         /* #ef4444 */
-  --rgb-error-bg: 254, 226, 226;    /* #fee2e2 */
-  --rgb-on-error: 255, 255, 255;    /* #ffffff */
-  
-  --rgb-info: 59, 130, 246;         /* #3b82f6 */
-  --rgb-info-bg: 219, 234, 254;     /* #dbeafe */
-  --rgb-on-info: 255, 255, 255;     /* #ffffff */
 
-  /* Theme: Light (Default) */
-  --rgb-primary: 62, 175, 124;      /* #3eaf7c */
-  --rgb-primary-hover: 16, 185, 129;/* #10b981 */
-  --rgb-on-primary: 255, 255, 255;  /* #ffffff */
-  
-  --rgb-secondary: 100, 116, 139;   /* #64748b */
-  --rgb-secondary-hover: 71, 85, 105;/* #475569 */
-  --rgb-on-secondary: 255, 255, 255;/* #ffffff */
+  /* Status Colors (Modern Zinc/Tailwind Palette) */
+  --rgb-success: 22, 163, 74; /* Green-600 */
+  --rgb-success-bg: 220, 252, 231; /* Green-100 */
+  --rgb-on-success: 255, 255, 255; /* White */
 
-  --rgb-background: 255, 255, 255;  /* #ffffff */
-  --rgb-surface: 248, 250, 252;     /* #f8fafc */
-  --rgb-surface-panel: 255, 255, 255;/* #ffffff */
-  --rgb-surface-overlay: 255, 255, 255;/* #ffffff */
-  
-  --rgb-on-surface: 15, 23, 42;     /* #0f172a */
-  --rgb-on-surface-variant: 71, 85, 105; /* #475569 */
-  --rgb-on-surface-muted: 148, 163, 184; /* #94a3b8 */
-  
-  --rgb-border: 226, 232, 240;      /* #e2e8f0 */
-  --rgb-border-hover: 203, 213, 225;/* #cbd5e1 */
-  
+  --rgb-warning: 202, 138, 4; /* Yellow-600 */
+  --rgb-warning-bg: 254, 249, 195; /* Yellow-100 */
+  --rgb-on-warning: 255, 255, 255; /* White */
+
+  --rgb-error: 225, 29, 72; /* Rose-600 */
+  --rgb-error-bg: 255, 228, 230; /* Rose-100 */
+  --rgb-on-error: 255, 255, 255; /* White */
+
+  --rgb-info: 37, 99, 235; /* Blue-600 */
+  --rgb-info-bg: 219, 234, 254; /* Blue-100 */
+  --rgb-on-info: 255, 255, 255; /* White */
+
+  /* Theme: Light (Sophisticated Modern) */
+  --rgb-primary: 16, 185, 129; /* Emerald-500 */
+  --rgb-primary-hover: 5, 150, 105; /* Emerald-600 */
+  --rgb-on-primary: 255, 255, 255;
+
+  --rgb-secondary: 100, 116, 139; /* Slate-500 */
+  --rgb-secondary-hover: 71, 85, 105; /* Slate-600 */
+  --rgb-on-secondary: 255, 255, 255;
+
+  /* Backgrounds - Refined Off-white */
+  --rgb-background: 250, 250, 251; /* Softer than pure white */
+  --rgb-surface: 255, 255, 255; /* Pure white for cards */
+  --rgb-surface-panel: 244, 245, 247; /* Panel background */
+  --rgb-surface-overlay: 238, 240, 243; /* Hover/Input background */
+
+  /* Text - Slate Palette for better legibility */
+  --rgb-on-surface: 15, 23, 42; /* Slate-900 */
+  --rgb-on-surface-variant: 71, 85, 105; /* Slate-600 */
+  --rgb-on-surface-muted: 148, 163, 184; /* Slate-400 */
+
+  /* Borders - Soft Slate */
+  --rgb-border: 226, 232, 240; /* Slate-200 */
+  --rgb-border-hover: 203, 213, 225; /* Slate-300 */
+
   --rgb-overlay: 0, 0, 0;
-  
-  /* CSS Variables for direct usage (Legacy/Fallback) */
+
+  /* CSS Variables for direct usage */
   --color-primary: rgb(var(--rgb-primary));
   --color-background: rgb(var(--rgb-background));
   --color-surface: rgb(var(--rgb-surface));
@@ -53,61 +56,70 @@
 
 /* Theme Colors Override */
 html.theme-green {
-  --rgb-primary: 62, 175, 124;
-  --rgb-primary-hover: 16, 185, 129;
+  --rgb-primary: 16, 185, 129; /* Emerald-500 */
+  --rgb-primary-hover: 5, 150, 105; /* Emerald-600 */
 }
 html.theme-blue {
-  --rgb-primary: 59, 130, 246;
-  --rgb-primary-hover: 37, 99, 235;
+  --rgb-primary: 59, 130, 246; /* Blue-500 */
+  --rgb-primary-hover: 37, 99, 235; /* Blue-600 */
 }
 html.theme-purple {
-  --rgb-primary: 139, 92, 246;
-  --rgb-primary-hover: 124, 58, 237;
+  --rgb-primary: 139, 92, 246; /* Violet-500 */
+  --rgb-primary-hover: 124, 58, 237; /* Violet-600 */
 }
 html.theme-orange {
-  --rgb-primary: 249, 115, 22;
-  --rgb-primary-hover: 234, 88, 12;
+  --rgb-primary: 249, 115, 22; /* Orange-500 */
+  --rgb-primary-hover: 234, 88, 12; /* Orange-600 */
 }
 html.theme-red {
-  --rgb-primary: 239, 68, 68;
-  --rgb-primary-hover: 220, 38, 38;
+  --rgb-primary: 239, 68, 68; /* Red-500 */
+  --rgb-primary-hover: 220, 38, 38; /* Red-600 */
 }
 
 html.dark {
-  /* Theme: Dark */
+  /* Theme: Dark (Deep Midnight Noir) */
   --rgb-on-primary: 255, 255, 255;
 
-  --rgb-secondary: 71, 85, 105;     /* #475569 */
-  --rgb-secondary-hover: 51, 65, 85;/* #334155 */
-  --rgb-on-secondary: 248, 250, 252;/* #f8fafc */
+  --rgb-secondary: 148, 163, 184; /* Slate-400 */
+  --rgb-secondary-hover: 226, 232, 240; /* Slate-200 */
+  --rgb-on-secondary: 15, 23, 42; /* Slate-900 */
 
-  --rgb-background: 15, 23, 42;     /* #0f172a */
-  --rgb-surface: 15, 23, 42;        /* #0f172a */
-  --rgb-surface-panel: 30, 41, 59;  /* #1e293b */
-  --rgb-surface-overlay: 51, 65, 85;/* #334155 */
-  
-  --rgb-on-surface: 241, 245, 249;  /* #f1f5f9 */
-  --rgb-on-surface-variant: 148, 163, 184; /* #94a3b8 */
-  --rgb-on-surface-muted: 71, 85, 105; /* #475569 */
+  /* Backgrounds - DEEP NOIR */
+  --rgb-background: 10, 10, 12; /* Midnight Black */
+  --rgb-surface: 18, 18, 22; /* Ebony surface */
+  --rgb-surface-panel: 28, 28, 32; /* Obsidian panel */
+  --rgb-surface-overlay: 38, 38, 44; /* Hover state */
 
-  --rgb-border: 51, 65, 85;         /* #334155 */
-  --rgb-border-hover: 71, 85, 105;  /* #475569 */
+  /* Text - High Contrast for Dark Mode */
+  --rgb-on-surface: 248, 250, 252; /* Slate-50 */
+  --rgb-on-surface-variant: 148, 163, 184; /* Slate-400 */
+  --rgb-on-surface-muted: 71, 85, 105; /* Slate-600 */
 
-  --rgb-success: 74, 222, 128;      /* #4ade80 */
-  --rgb-warning: 250, 204, 21;      /* #facc15 */
-  --rgb-error: 248, 113, 113;       /* #f87171 */
-  --rgb-info: 96, 165, 250;         /* #60a5fa */
+  /* Borders - Subdued Obsidian */
+  --rgb-border: 38, 38, 44; /* Quiet borders */
+  --rgb-border-hover: 63, 63, 70; /* Visible hover borders */
+
+  /* Adjusted Status Colors for Dark Mode (Vibrant but readable) */
+  --rgb-success: 52, 211, 153; /* Emerald-400 */
+  --rgb-warning: 251, 191, 36; /* Amber-400 */
+  --rgb-error: 251, 113, 133; /* Rose-400 */
+  --rgb-info: 56, 189, 248; /* Sky-400 */
 }
 
 /* Transitions */
-*, *::before, *::after {
-  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), 
-              border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), 
-              color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+*,
+*::before,
+*::after {
+  transition:
+    background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     transition: none !important;
   }
 }

@@ -24,11 +24,11 @@ export default defineConfig({
           ]
         }
       ],
-      dts: 'src/auto-imports.d.ts'
+      dts: 'src/autoImport/auto-imports.d.ts'
     }),
     Components({
       resolvers: [NaiveUiResolver()],
-      dts: 'src/components.d.ts'
+      dts: 'src/autoImport/components.d.ts'
     }),
     electron({
       main: {

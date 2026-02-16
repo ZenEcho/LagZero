@@ -77,30 +77,27 @@
             <main class="flex-1 overflow-y-auto custom-scrollbar p-6 lg:p-10 flex flex-col gap-8 relative">
 
                <!-- 1. Hero Section: The Status Core -->
-               <section class="flex flex-col items-center justify-center min-h-[450px] flex-1 py-10 relative">
-
-                  <!-- HUD Status Card (Floating) -->
-                  <div v-if="isRunning"
-                     class="absolute top-0 w-full max-w-2xl mx-auto flex justify-center animate-fade-in-up md:static md:mb-12">
+               <section class="flex flex-col items-center justify-center min-h-[500px] ">
+                  <div v-if="isRunning" class=" w-full max-w-2xl flex justify-center">
                      <div
                         class="flex items-center gap-8 md:gap-12 px-8 py-4 bg-surface-panel/40 backdrop-blur-lg border border-border/50 rounded-2xl shadow-sm">
                         <div class="flex flex-col items-center">
                            <span class="text-[10px] uppercase font-bold text-on-surface-muted tracking-widest mb-1">{{
                               $t('games.packet_loss') }}</span>
                            <span class="text-2xl font-mono font-bold text-on-surface tabular-nums">{{ currentLoss
-                           }}%</span>
+                              }}%</span>
                         </div>
                         <div class="w-px h-8 bg-border"></div>
                         <div class="flex flex-col items-center">
                            <span class="text-[10px] uppercase font-bold text-on-surface-muted tracking-widest mb-1">{{
                               $t('games.duration') }}</span>
                            <span class="text-2xl font-mono font-bold text-on-surface tabular-nums">{{ durationFormatted
-                           }}</span>
+                              }}</span>
                         </div>
                      </div>
                   </div>
 
-                  <!-- Control Center -->
+
                   <div class="relative z-10 flex flex-col items-center">
                      <!-- Latency Big Display -->
                      <div v-if="isRunning" class="mb-12 text-center animate-scale-in">
@@ -167,13 +164,12 @@
 
                <!-- 2. Secondary Info: Charts -->
                <section v-if="isRunning"
-                  class="h-48 w-full max-w-4xl mx-auto opacity-90 hover:opacity-100 transition-opacity">
+                  class=" w-full max-w-4xl mx-auto opacity-90 hover:opacity-100 transition-opacity">
                   <div
                      class="w-full h-full bg-surface-panel/40 border border-border rounded-2xl p-4 relative overflow-hidden shadow-sm backdrop-blur-sm">
-                     <div
-                        class="absolute top-4 left-4 z-10 text-[10px] font-black uppercase text-on-surface-muted tracking-widest">
+                     <div class="z-10 text-[10px] font-black uppercase text-on-surface-muted tracking-widest">
                         {{ $t('common.network_stability') }}</div>
-                     <LatencyChart />
+                     <LatencyChart :node-key="selectedNode || undefined" />
                   </div>
                </section>
 
@@ -243,13 +239,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted, onMounted } from 'vue'
+import { ref, computed, onUnmounted, onMounted, onActivated, watch } from 'vue'
 import { useGameStore, isRoutingOnlyPresetGame } from '@/stores/games'
 import { useCategoryStore } from '@/stores/categories'
 import { useNodeStore } from '@/stores/nodes'
 import { useSettingsStore } from '@/stores/settings'
 import LatencyChart from '@/components/dashboard/LatencyChart.vue'
-import NodeSelector from '@/components/node/NodeSelector.vue'
+import NodeSelector from '@/components/dashboard/NodeSelector.vue'
 import { useIntervalFn } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
@@ -273,12 +269,13 @@ const durationSeconds = ref(0)
 const lastConnection = ref('')
 const isSwitchingNode = ref(false)
 const pendingNodeRestart = ref(false)
+const totalSamples = ref(0)
+const lostSamples = ref(0)
 
 // Computed Helpers
 const categoryLabel = computed(() => {
    if (!game.value) return ''
-   const cat = categoryStore.categories.find(c => c.id === game.value!.category)
-   // @ts-ignore
+   const cat = categoryStore.categories.find((c: any) => c.id === game.value!.category)
    return cat?.name || i18n.global.t('common.uncategorized')
 })
 
@@ -314,6 +311,7 @@ async function restartForNodeSwitch() {
 
    isSwitchingNode.value = true
    try {
+      if (!game.value?.id) return
       do {
          pendingNodeRestart.value = false
          await gameStore.stopGame(game.value.id)
@@ -334,31 +332,75 @@ async function onNodeChange(val: string) {
 
    await gameStore.updateGame({ ...game.value, nodeId: val })
    await restartForNodeSwitch()
+   if (isRunning.value) {
+      void sampleLatencyAndLoss(true)
+   }
 }
 
-// Lifecycle & Updates
-const { pause } = useIntervalFn(async () => {
-   if (isRunning.value) {
-      if (game.value?.nodeId) {
-         const node = nodeStore.nodes.find(n => (n.id === game.value!.nodeId) || (n.tag === game.value!.nodeId))
-         if (node) {
-            const stats = await nodeStore.checkNode(node, isRunning.value ? 'tcp' : undefined)
-            if (stats) {
-               currentLatency.value = stats.latency
-               currentLoss.value = stats.loss
-               gameStore.updateLatency(game.value.id, currentLatency.value)
-            }
-         }
-      }
-      if (startTime.value > 0) {
-         durationSeconds.value = Math.floor((Date.now() - startTime.value) / 1000)
-      }
-   } else {
-      currentLatency.value = 0
-      currentLoss.value = 0
+function refreshDuration() {
+   if (!isRunning.value || startTime.value <= 0) {
       durationSeconds.value = 0
+      return
    }
-}, checkInterval)
+   durationSeconds.value = Math.floor((Date.now() - startTime.value) / 1000)
+}
+
+function refreshSessionLossRate() {
+   if (totalSamples.value <= 0) {
+      currentLoss.value = 0
+      return
+   }
+   currentLoss.value = Math.round((lostSamples.value / totalSamples.value) * 100)
+}
+
+async function syncSessionStateFromStore() {
+   if (!game.value?.id) return
+   const sessionStart = gameStore.getAccelerationStartedAt(game.value.id)
+   if (sessionStart > 0) {
+      startTime.value = sessionStart
+   } else if (isRunning.value) {
+      startTime.value = Date.now()
+   }
+   const stats = await nodeStore.getGameLatencyStatsForSession(game.value.id)
+   totalSamples.value = stats.total
+   lostSamples.value = stats.lost
+   refreshSessionLossRate()
+   refreshDuration()
+}
+
+async function sampleLatencyAndLoss(recordLatency: boolean) {
+   if (!isRunning.value || !game.value?.id || !game.value.nodeId) return
+
+   const node = nodeStore.nodes.find(n => (n.id === game.value!.nodeId) || (n.tag === game.value!.nodeId))
+   if (!node) return
+
+   const stats = await nodeStore.checkNode(node, undefined, {
+      recordLatency,
+      gameId: game.value.id,
+      accelerationSeconds: durationSeconds.value,
+      sessionLossRate: currentLoss.value
+   })
+   if (!stats) return
+
+   currentLatency.value = stats.latency
+   gameStore.updateLatency(game.value.id, currentLatency.value)
+
+   if (recordLatency) {
+      totalSamples.value += 1
+      if (stats.loss > 0 || stats.latency <= 0) {
+         lostSamples.value += 1
+      }
+   }
+   refreshSessionLossRate()
+}
+
+const { pause: pauseSampling, resume: resumeSampling } = useIntervalFn(() => {
+   void sampleLatencyAndLoss(true)
+}, checkInterval, { immediate: false })
+
+const { pause: pauseDuration, resume: resumeDuration } = useIntervalFn(() => {
+   refreshDuration()
+}, 1000, { immediate: false })
 
 async function toggleAccelerator() {
    if (!game.value) return
@@ -366,10 +408,14 @@ async function toggleAccelerator() {
 
    if (isRunning.value) {
       try {
-         await gameStore.stopGame(game.value.id)
+         if (game.value.id) await gameStore.stopGame(game.value.id)
       } finally {
          startTime.value = 0
+         totalSamples.value = 0
+         lostSamples.value = 0
          lastConnection.value = ''
+         refreshSessionLossRate()
+         refreshDuration()
       }
    } else {
       if (!selectedNode.value) {
@@ -377,8 +423,9 @@ async function toggleAccelerator() {
          return
       }
       try {
-         await gameStore.startGame(game.value.id)
-         startTime.value = Date.now()
+         if (game.value.id) await gameStore.startGame(game.value.id)
+         await syncSessionStateFromStore()
+         await sampleLatencyAndLoss(true)
       } catch (e: any) {
          message.error(String(e?.message || e || i18n.global.t('dashboard.start_failed')))
       }
@@ -406,7 +453,7 @@ function onSingboxEvent(name: string, data: any) {
    } else if (name === 'singbox-error') {
       message.error(String(data || i18n.global.t('dashboard.singbox_error')))
    } else if (name === 'singbox-status' && data === 'stopped') {
-      if (game.value && isRunning.value) {
+      if (game.value?.id && isRunning.value) {
          gameStore.setGameStatus(game.value.id, 'idle')
          startTime.value = 0
          lastConnection.value = ''
@@ -416,16 +463,44 @@ function onSingboxEvent(name: string, data: any) {
 
 onMounted(() => {
    nodeStore.loadNodes()
-   // @ts-ignore
+   if (isRunning.value) {
+      void syncSessionStateFromStore().then(() => sampleLatencyAndLoss(true))
+      resumeSampling()
+      resumeDuration()
+   }
    if (window.electron?.on) {
-      window.electron.on('singbox-log', (d) => onSingboxEvent('singbox-log', d))
-      window.electron.on('singbox-error', (d) => onSingboxEvent('singbox-error', d))
-      window.electron.on('singbox-status', (d) => onSingboxEvent('singbox-status', d))
+      window.electron.on('singbox-log', (d: any) => onSingboxEvent('singbox-log', d))
+      window.electron.on('singbox-error', (d: any) => onSingboxEvent('singbox-error', d))
+      window.electron.on('singbox-status', (d: any) => onSingboxEvent('singbox-status', d))
    }
 })
 
+onActivated(() => {
+   if (isRunning.value) {
+      void syncSessionStateFromStore().then(() => sampleLatencyAndLoss(true))
+   }
+})
+
+watch(isRunning, (running) => {
+   if (running) {
+      void syncSessionStateFromStore().then(() => sampleLatencyAndLoss(true))
+      resumeSampling()
+      resumeDuration()
+   } else {
+      pauseSampling()
+      pauseDuration()
+      startTime.value = 0
+      durationSeconds.value = 0
+      currentLatency.value = 0
+      totalSamples.value = 0
+      lostSamples.value = 0
+      refreshSessionLossRate()
+   }
+}, { immediate: true })
+
 onUnmounted(() => {
-   pause()
+   pauseSampling()
+   pauseDuration()
    // @ts-ignore
    if (window.electron?.off) {
       // Logic for cleanup if necessary

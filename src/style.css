@@ -104,6 +104,54 @@ html.theme-red .n-button.n-button--primary-type:hover {
   border-color: #dc2626 !important;
 }
 
+/* Fix for Error and Warning buttons transparency issue */
+.n-button.n-button--error-type:not(.n-button--quaternary):not(
+    .n-button--tertiary
+  ):not(.n-button--secondary):not(.n-button--ghost) {
+  background-color: rgb(var(--rgb-error)) !important;
+  color: #ffffff !important;
+  border: 1px solid rgb(var(--rgb-error)) !important;
+}
+.n-button.n-button--error-type:not(.n-button--quaternary):not(
+    .n-button--tertiary
+  ):not(.n-button--secondary):not(.n-button--ghost):hover {
+  filter: brightness(0.9);
+}
+
+.n-button.n-button--warning-type:not(.n-button--quaternary):not(
+    .n-button--tertiary
+  ):not(.n-button--secondary):not(.n-button--ghost) {
+  background-color: rgb(var(--rgb-warning)) !important;
+  color: #ffffff !important;
+  border: 1px solid rgb(var(--rgb-warning)) !important;
+}
+.n-button.n-button--warning-type:not(.n-button--quaternary):not(
+    .n-button--tertiary
+  ):not(.n-button--secondary):not(.n-button--ghost):hover {
+  filter: brightness(0.9);
+}
+
+/* Electron Drag Region Support */
+.app-drag-region {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Ensure Naive UI modals and overlays are not draggable and thus clickable */
+.n-modal-container,
+.n-modal-mask,
+.n-modal-body-wrapper,
+.n-dialog,
+.n-notification-container,
+.n-message-container,
+.n-dropdown-menu,
+.n-popover {
+  -webkit-app-region: no-drag;
+}
+
 /* Disabled state for Primary Button */
 .n-button.n-button--primary-type.n-button--disabled {
   opacity: 0.6 !important;

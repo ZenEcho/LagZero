@@ -159,14 +159,6 @@ const close = () => window.electron.close()
 </script>
 
 <style>
-.app-drag-region {
-  -webkit-app-region: drag;
-}
-
-.no-drag {
-  -webkit-app-region: no-drag;
-}
-
 .slide-fade-enter-active {
   transition: all 0.2s ease-out;
 }

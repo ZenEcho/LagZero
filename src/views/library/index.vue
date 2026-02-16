@@ -68,11 +68,12 @@
 
       <div v-else
         :class="viewMode === 'grid' ? 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4' : 'flex flex-col gap-2'">
-        <div v-for="game in filteredGames" :key="game.id" @click="selectGame(game.id)"
+        <div v-for="game in filteredGames" :key="game.id" @click="game.id && selectGame(game.id!)"
           class="bg-surface-panel border border-transparent hover:border-primary rounded-lg cursor-pointer transition group relative"
-          :class="viewMode === 'grid' ? 'p-4 flex flex-col items-center text-center' : 'p-3 flex items-center gap-4'">
+          :class="viewMode === 'grid' ? 'p-4 flex flex-col items-center text-center' : 'p-3 pr-24 flex items-center gap-4'">
           <!-- Action Buttons (Hover) -->
-          <div class="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div class="absolute flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+            :class="viewMode === 'grid' ? 'top-2 right-2' : 'right-3 top-1/2 -translate-y-1/2'">
             <n-button quaternary circle size="small" @click.stop="editGame(game)" :title="$t('common.edit')">
               <template #icon>
                 <div class="i-carbon-edit text-xs"></div>
@@ -108,7 +109,7 @@
             <div class="w-2 h-2 rounded-full bg-primary"></div>
             {{ $t('games.selected') }}
           </div>
-          <div v-else-if="runningGames.includes(game.id)"
+          <div v-else-if="game.id && runningGames.includes(game.id)"
             class="text-success text-xs font-bold flex items-center gap-1">
             <div class="w-2 h-2 rounded-full bg-success animate-pulse"></div>
             {{ $t('games.running') }}
@@ -156,7 +157,7 @@ onMounted(() => {
 })
 
 const categories = computed(() => {
-  const list = categoryStore.categories.map(c => ({
+  const list = categoryStore.categories.map((c: any) => ({
     label: c.name,
     value: c.id
   }))
@@ -164,18 +165,18 @@ const categories = computed(() => {
 })
 
 function getCategoryLabel(id: string) {
-  const cat = categoryStore.categories.find(c => c.id === id)
+  const cat = categoryStore.categories.find((c: any) => c.id === id)
   return cat?.name || '未分类'
 }
 
 const filteredGames = computed(() => {
-  return gameStore.gameLibrary.filter(game => {
+  return gameStore.gameLibrary.filter((game: Game) => {
     const matchSearch = game.name.toLowerCase().includes(searchQuery.value.toLowerCase())
     const matchCat = activeCategory.value === 'all' || game.category === activeCategory.value
     return matchSearch && matchCat
-  }).sort((a, b) => {
-    const aRunning = runningGames.value.includes(a.id)
-    const bRunning = runningGames.value.includes(b.id)
+  }).sort((a: Game, b: Game) => {
+    const aRunning = a.id ? runningGames.value.includes(a.id) : false
+    const bRunning = b.id ? runningGames.value.includes(b.id) : false
     if (aRunning !== bRunning) return aRunning ? -1 : 1
 
     const aTime = a.lastPlayed || 0
@@ -223,8 +224,11 @@ async function deleteGame(game: Game) {
     content: t('games.delete_confirm') || '您确定要删除这个游戏吗？',
     positiveText: t('common.delete') || '删除',
     negativeText: t('common.cancel') || '取消',
+    positiveButtonProps: {
+      type: 'error'
+    },
     onPositiveClick: async () => {
-      await gameStore.removeGame(game.id)
+      if (game.id) await gameStore.removeGame(game.id)
       message.success(t('common.deleted') || '已删除')
     }
   })

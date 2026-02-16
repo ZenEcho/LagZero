@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
-import { ref, computed, toRaw } from 'vue'
+import { ref, computed, toRaw, reactive } from 'vue'
+import { useLocalStorage } from '@vueuse/core'
 import type { Game } from '@/types'
 import { useNodeStore } from './nodes'
 import { generateSingboxConfig } from '@/utils/singbox-config'
@@ -24,20 +25,19 @@ function normalizeProxyModeForPreset(game: Game): Game {
 }
 
 export const useGameStore = defineStore('games', () => {
-  // 游戏特征库
+  // All games in local library
   const gameLibrary = ref<Game[]>([])
+  // Current selected game ID (shared with dashboard)
+  const currentGameId = useLocalStorage<string | null>('games-current-id', null)
 
-  // 当前选中的游戏 (Dashboard 展示)
-  const currentGameId = ref<string | null>(null)
-
-  const currentGame = computed(() => 
+  const currentGame = computed(() =>
     gameLibrary.value.find(g => g.id === currentGameId.value) || null
   )
 
-  // 扫描到的运行中游戏
+  // Running game IDs matched by process names
   const runningGames = ref<string[]>([])
+  const accelerationStartedAt = reactive<Record<string, number>>({})
 
-  // 初始化加载
   async function init() {
     try {
       // @ts-ignore
@@ -47,31 +47,30 @@ export const useGameStore = defineStore('games', () => {
         status: 'idle',
         latency: 0
       }))
-      // 默认选中第一个
-      if (!currentGameId.value && gameLibrary.value.length > 0) {
+      const hasCurrentGame = !!currentGameId.value && gameLibrary.value.some(g => g.id === currentGameId.value)
+      if (!hasCurrentGame && gameLibrary.value.length > 0) {
         const firstGame = gameLibrary.value[0]
-        if (firstGame) {
+        if (firstGame && firstGame.id) {
           currentGameId.value = firstGame.id
         }
+      } else if (!hasCurrentGame) {
+        currentGameId.value = null
       }
     } catch (e) {
       console.error('Failed to load games:', e)
     }
   }
 
-  // 添加游戏
   async function addGame(game: Game) {
     game = normalizeProxyModeForPreset(game)
     // @ts-ignore
     const updatedGames = await window.games.save(toIpcGame(game))
-    // 更新本地状态
     syncGames(updatedGames)
   }
 
-  // 更新游戏
   async function updateGame(game: Game) {
     game = normalizeProxyModeForPreset(game)
-    // 乐观更新：立即更新本地状态
+    // Optimistic local update
     const index = gameLibrary.value.findIndex(g => g.id === game.id)
     if (index !== -1) {
       gameLibrary.value[index] = { ...gameLibrary.value[index], ...game }
@@ -82,23 +81,20 @@ export const useGameStore = defineStore('games', () => {
       const updatedGames = await window.games.save(toIpcGame(game))
       syncGames(updatedGames)
     } catch (e) {
-      console.error('更新游戏失败：', e)
-      // 如果失败，可能需要回滚（这里暂不实现复杂回滚，依赖 syncGames 下次同步）
+      console.error('Failed to update game:', e)
     }
   }
 
-  // 删除游戏
   async function removeGame(id: string) {
     // @ts-ignore
     const updatedGames = await window.games.delete(id)
     syncGames(updatedGames)
     if (currentGameId.value === id) {
       const firstGame = gameLibrary.value[0]
-      currentGameId.value = (gameLibrary.value.length > 0 && firstGame) ? firstGame.id : null
+      currentGameId.value = (gameLibrary.value.length > 0 && firstGame && firstGame.id) ? firstGame.id : null
     }
   }
 
-  // 同步状态（保留运行状态）
   function syncGames(remoteGames: Game[]) {
     gameLibrary.value = remoteGames.map((rg: Game) => {
       const existing = gameLibrary.value.find(lg => lg.id === rg.id)
@@ -116,7 +112,6 @@ export const useGameStore = defineStore('games', () => {
     const game = gameLibrary.value.find(g => g.id === id)
     if (game) {
       game.lastPlayed = Date.now()
-      // 可选：更新 lastPlayed 到后端
       // @ts-ignore
       window.games.save(toIpcGame({ ...game, lastPlayed: Date.now() }))
     }
@@ -127,6 +122,17 @@ export const useGameStore = defineStore('games', () => {
     if (game) {
       game.status = status
     }
+    if (status === 'accelerating') {
+      if (!accelerationStartedAt[id]) {
+        accelerationStartedAt[id] = Date.now()
+      }
+    } else {
+      delete accelerationStartedAt[id]
+    }
+  }
+
+  function getAccelerationStartedAt(id: string) {
+    return accelerationStartedAt[id] || 0
   }
 
   function updateLatency(id: string, ms: number) {
@@ -136,12 +142,12 @@ export const useGameStore = defineStore('games', () => {
     }
   }
 
-  // 根据扫描到的进程名匹配游戏
   function matchRunningGames(processNames: string[]) {
     const matchedIds: string[] = []
     processNames.forEach(pName => {
       const pNameLower = pName.toLowerCase()
       gameLibrary.value.forEach(game => {
+        if (!game.id) return
         const targets = Array.isArray(game.processName) ? game.processName : [game.processName]
         if (targets.some(t => t.toLowerCase() === pNameLower)) {
           if (!matchedIds.includes(game.id)) {
@@ -154,7 +160,6 @@ export const useGameStore = defineStore('games', () => {
     return matchedIds
   }
 
-  // 启动加速
   async function startGame(id: string) {
     const game = gameLibrary.value.find(g => g.id === id)
     if (!game) return
@@ -162,7 +167,7 @@ export const useGameStore = defineStore('games', () => {
     const nodeStore = useNodeStore()
     const selectedNodeId = String(game.nodeId || '')
     const node = nodeStore.nodes.find(n => n.id === selectedNodeId || n.tag === selectedNodeId)
-    
+
     if (!node) {
       const msg = 'Selected node not found. Please reselect a node and try again.'
       console.error(msg, { gameId: id, nodeId: selectedNodeId })
@@ -175,34 +180,32 @@ export const useGameStore = defineStore('games', () => {
       const config = String(generateSingboxConfig(rawGame, rawNode))
       // @ts-ignore
       await window.singbox.start(config)
-      
+
       const procs = Array.isArray(rawGame.processName) ? rawGame.processName.map(p => String(p)) : [String(rawGame.processName)]
       // @ts-ignore
       await window.proxyMonitor.start(String(rawGame.id), procs)
 
       setGameStatus(id, 'accelerating')
     } catch (e) {
-      console.error('启动加速失败：', e)
+      console.error('Failed to start game acceleration:', e)
       throw e
     }
   }
 
-  // 停止加速
   async function stopGame(id: string) {
     try {
       // @ts-ignore
       await window.singbox.stop()
       // @ts-ignore
       await window.proxyMonitor.stop()
-      
+
       setGameStatus(id, 'idle')
     } catch (e) {
-      console.error('停止加速失败：', e)
+      console.error('Failed to stop game acceleration:', e)
       throw e
     }
   }
 
-  // 初始化调用
   init()
 
   return {
@@ -213,6 +216,7 @@ export const useGameStore = defineStore('games', () => {
     init,
     setCurrentGame,
     setGameStatus,
+    getAccelerationStartedAt,
     updateLatency,
     matchRunningGames,
     addGame,
