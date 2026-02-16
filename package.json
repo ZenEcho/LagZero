@@ -1,0 +1,113 @@
+{
+  "name": "lagzero",
+  "private": true,
+  "version": "0.1.0",
+  "main": "dist-electron/main.js",
+  "type": "module",
+  "author": "LagZero Team",
+  "description": "Cross-platform Game Accelerator",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "preview": "vite preview",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "test": "vitest run --coverage"
+  },
+  "build": {
+    "appId": "com.lagzero.client",
+    "productName": "LagZero",
+    "directories": {
+      "output": "release/${version}"
+    },
+    "files": [
+      "dist",
+      "dist-electron"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-Setup-${version}-${os}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": true
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm",
+        "pacman"
+      ],
+      "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+      "category": "Utility"
+    }
+  },
+  "dependencies": {
+    "@vueuse/core": "^14.2.0",
+    "adm-zip": "^0.5.16",
+    "better-sqlite3": "^12.6.2",
+    "echarts": "^6.0.0",
+    "electron-updater": "^6.7.3",
+    "fs-extra": "^11.3.3",
+    "js-base64": "^3.7.8",
+    "kysely": "^0.28.11",
+    "pinia": "^3.0.4",
+    "sortablejs": "^1.15.6",
+    "tar": "^7.5.7",
+    "uuid": "^13.0.0",
+    "vue": "^3.5.24",
+    "vue-i18n": "^11.2.8",
+    "vue-router": "^5.0.2",
+    "vuedraggable": "^4.1.0"
+  },
+  "devDependencies": {
+    "@iconify-json/carbon": "^1.2.18",
+    "@iconify-json/material-symbols": "^1.2.54",
+    "@types/adm-zip": "^0.5.7",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^24.10.1",
+    "@types/tar": "^6.1.13",
+    "@types/uuid": "^11.0.0",
+    "@unocss/reset": "^66.6.0",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "@vitest/coverage-v8": "^4.0.18",
+    "@vue/tsconfig": "^0.8.1",
+    "electron": "^40.2.1",
+    "electron-builder": "^26.7.0",
+    "happy-dom": "^20.5.3",
+    "naive-ui": "^2.43.2",
+    "sass": "^1.97.3",
+    "typescript": "~5.9.3",
+    "unocss": "^66.6.0",
+    "unplugin-auto-import": "^21.0.0",
+    "unplugin-vue-components": "^31.0.0",
+    "vfonts": "^0.0.3",
+    "vite": "^7.2.4",
+    "vite-plugin-electron": "^0.29.0",
+    "vite-plugin-electron-renderer": "^0.14.6",
+    "vitest": "^4.0.18",
+    "vue-tsc": "^3.1.4"
+  }
+}

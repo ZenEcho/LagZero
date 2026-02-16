@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="boltGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4ade80;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#22c55e;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="15" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Background Circle (Optional, can be removed for transparent logo) -->
+  <circle cx="256" cy="256" r="240" fill="#1e293b" stroke="#334155" stroke-width="10" />
+
+  <!-- Lightning Bolt Shape -->
+  <path d="M280 40 L160 260 L260 260 L230 460 L380 220 L270 220 L320 40 Z" 
+        fill="url(#boltGradient)" 
+        stroke="#ffffff" 
+        stroke-width="5"
+        filter="url(#glow)"
+        stroke-linejoin="round"
+  />
+  
+  <!-- Speed Lines -->
+  <path d="M100 150 L60 180 M90 200 L50 230 M100 250 L60 280" 
+        stroke="#4ade80" 
+        stroke-width="8" 
+        stroke-linecap="round" 
+        opacity="0.6"
+  />
+</svg>

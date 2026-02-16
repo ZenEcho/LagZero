@@ -1,0 +1,113 @@
+:root {
+  /* Primitive Colors (Semantic Base) */
+  --rgb-white: 255, 255, 255;
+  --rgb-black: 0, 0, 0;
+  
+  /* Status Colors (Default) */
+  --rgb-success: 34, 197, 94;       /* #22c55e */
+  --rgb-success-bg: 220, 252, 231;  /* #dcfce7 */
+  --rgb-on-success: 255, 255, 255;  /* #ffffff */
+  
+  --rgb-warning: 234, 179, 8;       /* #eab308 */
+  --rgb-warning-bg: 254, 249, 195;  /* #fef9c3 */
+  --rgb-on-warning: 255, 255, 255;  /* #ffffff */
+  
+  --rgb-error: 239, 68, 68;         /* #ef4444 */
+  --rgb-error-bg: 254, 226, 226;    /* #fee2e2 */
+  --rgb-on-error: 255, 255, 255;    /* #ffffff */
+  
+  --rgb-info: 59, 130, 246;         /* #3b82f6 */
+  --rgb-info-bg: 219, 234, 254;     /* #dbeafe */
+  --rgb-on-info: 255, 255, 255;     /* #ffffff */
+
+  /* Theme: Light (Default) */
+  --rgb-primary: 62, 175, 124;      /* #3eaf7c */
+  --rgb-primary-hover: 16, 185, 129;/* #10b981 */
+  --rgb-on-primary: 255, 255, 255;  /* #ffffff */
+  
+  --rgb-secondary: 100, 116, 139;   /* #64748b */
+  --rgb-secondary-hover: 71, 85, 105;/* #475569 */
+  --rgb-on-secondary: 255, 255, 255;/* #ffffff */
+
+  --rgb-background: 255, 255, 255;  /* #ffffff */
+  --rgb-surface: 248, 250, 252;     /* #f8fafc */
+  --rgb-surface-panel: 255, 255, 255;/* #ffffff */
+  --rgb-surface-overlay: 255, 255, 255;/* #ffffff */
+  
+  --rgb-on-surface: 15, 23, 42;     /* #0f172a */
+  --rgb-on-surface-variant: 71, 85, 105; /* #475569 */
+  --rgb-on-surface-muted: 148, 163, 184; /* #94a3b8 */
+  
+  --rgb-border: 226, 232, 240;      /* #e2e8f0 */
+  --rgb-border-hover: 203, 213, 225;/* #cbd5e1 */
+  
+  --rgb-overlay: 0, 0, 0;
+  
+  /* CSS Variables for direct usage (Legacy/Fallback) */
+  --color-primary: rgb(var(--rgb-primary));
+  --color-background: rgb(var(--rgb-background));
+  --color-surface: rgb(var(--rgb-surface));
+  --color-on-surface: rgb(var(--rgb-on-surface));
+  --color-border: rgb(var(--rgb-border));
+}
+
+/* Theme Colors Override */
+html.theme-green {
+  --rgb-primary: 62, 175, 124;
+  --rgb-primary-hover: 16, 185, 129;
+}
+html.theme-blue {
+  --rgb-primary: 59, 130, 246;
+  --rgb-primary-hover: 37, 99, 235;
+}
+html.theme-purple {
+  --rgb-primary: 139, 92, 246;
+  --rgb-primary-hover: 124, 58, 237;
+}
+html.theme-orange {
+  --rgb-primary: 249, 115, 22;
+  --rgb-primary-hover: 234, 88, 12;
+}
+html.theme-red {
+  --rgb-primary: 239, 68, 68;
+  --rgb-primary-hover: 220, 38, 38;
+}
+
+html.dark {
+  /* Theme: Dark */
+  --rgb-on-primary: 255, 255, 255;
+
+  --rgb-secondary: 71, 85, 105;     /* #475569 */
+  --rgb-secondary-hover: 51, 65, 85;/* #334155 */
+  --rgb-on-secondary: 248, 250, 252;/* #f8fafc */
+
+  --rgb-background: 15, 23, 42;     /* #0f172a */
+  --rgb-surface: 15, 23, 42;        /* #0f172a */
+  --rgb-surface-panel: 30, 41, 59;  /* #1e293b */
+  --rgb-surface-overlay: 51, 65, 85;/* #334155 */
+  
+  --rgb-on-surface: 241, 245, 249;  /* #f1f5f9 */
+  --rgb-on-surface-variant: 148, 163, 184; /* #94a3b8 */
+  --rgb-on-surface-muted: 71, 85, 105; /* #475569 */
+
+  --rgb-border: 51, 65, 85;         /* #334155 */
+  --rgb-border-hover: 71, 85, 105;  /* #475569 */
+
+  --rgb-success: 74, 222, 128;      /* #4ade80 */
+  --rgb-warning: 250, 204, 21;      /* #facc15 */
+  --rgb-error: 248, 113, 113;       /* #f87171 */
+  --rgb-info: 96, 165, 250;         /* #60a5fa */
+}
+
+/* Transitions */
+*, *::before, *::after {
+  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), 
+              border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), 
+              color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition: none !important;
+  }
+}
