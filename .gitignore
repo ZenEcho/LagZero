@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 dist-electron
+release
 *.local
 .lagzero-dev
 # Editor directories and files

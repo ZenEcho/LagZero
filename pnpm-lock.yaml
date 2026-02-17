@@ -8,54 +8,27 @@ importers:
 
   .:
     dependencies:
-      '@vueuse/core':
-        specifier: ^14.2.0
-        version: 14.2.0(vue@3.5.27(typescript@5.9.3))
       adm-zip:
         specifier: ^0.5.16
         version: 0.5.16
       better-sqlite3:
         specifier: ^12.6.2
         version: 12.6.2
-      echarts:
-        specifier: ^6.0.0
-        version: 6.0.0
       electron-updater:
         specifier: ^6.7.3
         version: 6.7.3
       fs-extra:
         specifier: ^11.3.3
         version: 11.3.3
-      js-base64:
-        specifier: ^3.7.8
-        version: 3.7.8
       kysely:
         specifier: ^0.28.11
         version: 0.28.11
-      pinia:
-        specifier: ^3.0.4
-        version: 3.0.4(typescript@5.9.3)(vue@3.5.27(typescript@5.9.3))
-      sortablejs:
-        specifier: ^1.15.6
-        version: 1.15.6
       tar:
         specifier: ^7.5.7
         version: 7.5.7
       uuid:
         specifier: ^13.0.0
         version: 13.0.0
-      vue:
-        specifier: ^3.5.24
-        version: 3.5.27(typescript@5.9.3)
-      vue-i18n:
-        specifier: ^11.2.8
-        version: 11.2.8(vue@3.5.27(typescript@5.9.3))
-      vue-router:
-        specifier: ^5.0.2
-        version: 5.0.2(@vue/compiler-sfc@3.5.27)(pinia@3.0.4(typescript@5.9.3)(vue@3.5.27(typescript@5.9.3)))(vue@3.5.27(typescript@5.9.3))
-      vuedraggable:
-        specifier: ^4.1.0
-        version: 4.1.0(vue@3.5.27(typescript@5.9.3))
     devDependencies:
       '@iconify-json/carbon':
         specifier: ^1.2.18
@@ -93,6 +66,12 @@ importers:
       '@vue/tsconfig':
         specifier: ^0.8.1
         version: 0.8.1(typescript@5.9.3)(vue@3.5.27(typescript@5.9.3))
+      '@vueuse/core':
+        specifier: ^14.2.0
+        version: 14.2.0(vue@3.5.27(typescript@5.9.3))
+      echarts:
+        specifier: ^6.0.0
+        version: 6.0.0
       electron:
         specifier: ^40.2.1
         version: 40.2.1
@@ -102,12 +81,21 @@ importers:
       happy-dom:
         specifier: ^20.5.3
         version: 20.5.3
+      js-base64:
+        specifier: ^3.7.8
+        version: 3.7.8
       naive-ui:
         specifier: ^2.43.2
         version: 2.43.2(vue@3.5.27(typescript@5.9.3))
+      pinia:
+        specifier: ^3.0.4
+        version: 3.0.4(typescript@5.9.3)(vue@3.5.27(typescript@5.9.3))
       sass:
         specifier: ^1.97.3
         version: 1.97.3
+      sortablejs:
+        specifier: ^1.15.6
+        version: 1.15.6
       typescript:
         specifier: ~5.9.3
         version: 5.9.3
@@ -135,9 +123,21 @@ importers:
       vitest:
         specifier: ^4.0.18
         version: 4.0.18(@types/node@24.10.12)(happy-dom@20.5.3)(jiti@2.6.1)(sass@1.97.3)(yaml@2.8.2)
+      vue:
+        specifier: ^3.5.24
+        version: 3.5.27(typescript@5.9.3)
+      vue-i18n:
+        specifier: ^11.2.8
+        version: 11.2.8(vue@3.5.27(typescript@5.9.3))
+      vue-router:
+        specifier: ^5.0.2
+        version: 5.0.2(@vue/compiler-sfc@3.5.27)(pinia@3.0.4(typescript@5.9.3)(vue@3.5.27(typescript@5.9.3)))(vue@3.5.27(typescript@5.9.3))
       vue-tsc:
         specifier: ^3.1.4
         version: 3.2.4(typescript@5.9.3)
+      vuedraggable:
+        specifier: ^4.1.0
+        version: 4.1.0(vue@3.5.27(typescript@5.9.3))
 
 packages:
 

@@ -16,21 +16,37 @@
     "preview": "vite preview",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
+    "dist:win:x64:nsis": "electron-builder --win nsis --x64",
+    "dist:win:arm64:nsis": "electron-builder --win nsis --arm64",
+    "dist:win:x64:portable": "electron-builder --win portable --x64",
+    "dist:win:arm64:portable": "electron-builder --win portable --arm64",
+    "dist:win:all": "electron-builder --win nsis portable --x64 --arm64",
     "test": "vitest run --coverage"
   },
   "build": {
     "appId": "com.lagzero.client",
     "productName": "LagZero",
+    "compression": "maximum",
     "directories": {
       "output": "release/${version}"
     },
     "files": [
       "dist",
-      "dist-electron"
+      "dist-electron",
+      "!**/*.map",
+      "!**/node_modules/better-sqlite3/deps/**",
+      "!**/node_modules/better-sqlite3/src/**",
+      "!**/node_modules/better-sqlite3/build/**/obj/**",
+      "!**/node_modules/better-sqlite3/build/**/obj.target/**"
     ],
     "asar": true,
+    "electronLanguages": [
+      "en-US",
+      "zh-CN"
+    ],
     "win": {
       "icon": "public/logo.ico",
+      "signAndEditExecutable": false,
       "target": [
         {
           "target": "nsis",
@@ -38,9 +54,15 @@
             "x64",
             "arm64"
           ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
-      ],
-      "artifactName": "${productName}-Setup-${version}-${os}-${arch}.${ext}"
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -48,7 +70,11 @@
       "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": true,
       "installerIcon": "public/logo.ico",
-      "uninstallerIcon": "public/logo.ico"
+      "uninstallerIcon": "public/logo.ico",
+      "artifactName": "${productName}-Setup-${version}-${os}-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}-${os}-${arch}.${ext}"
     },
     "mac": {
       "target": [
@@ -78,24 +104,16 @@
     ]
   },
   "dependencies": {
-    "@vueuse/core": "^14.2.0",
     "adm-zip": "^0.5.16",
     "better-sqlite3": "^12.6.2",
-    "echarts": "^6.0.0",
     "electron-updater": "^6.7.3",
     "fs-extra": "^11.3.3",
-    "js-base64": "^3.7.8",
     "kysely": "^0.28.11",
-    "pinia": "^3.0.4",
-    "sortablejs": "^1.15.6",
     "tar": "^7.5.7",
-    "uuid": "^13.0.0",
-    "vue": "^3.5.24",
-    "vue-i18n": "^11.2.8",
-    "vue-router": "^5.0.2",
-    "vuedraggable": "^4.1.0"
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@vueuse/core": "^14.2.0",
     "@iconify-json/carbon": "^1.2.18",
     "@iconify-json/material-symbols": "^1.2.54",
     "@types/adm-zip": "^0.5.7",
@@ -108,11 +126,15 @@
     "@vitejs/plugin-vue": "^6.0.1",
     "@vitest/coverage-v8": "^4.0.18",
     "@vue/tsconfig": "^0.8.1",
+    "echarts": "^6.0.0",
     "electron": "^40.2.1",
     "electron-builder": "^26.7.0",
     "happy-dom": "^20.5.3",
+    "js-base64": "^3.7.8",
     "naive-ui": "^2.43.2",
+    "pinia": "^3.0.4",
     "sass": "^1.97.3",
+    "sortablejs": "^1.15.6",
     "typescript": "~5.9.3",
     "unocss": "^66.6.0",
     "unplugin-auto-import": "^21.0.0",
@@ -122,6 +144,10 @@
     "vite-plugin-electron": "^0.29.0",
     "vite-plugin-electron-renderer": "^0.14.6",
     "vitest": "^4.0.18",
+    "vue": "^3.5.24",
+    "vue-i18n": "^11.2.8",
+    "vue-router": "^5.0.2",
+    "vuedraggable": "^4.1.0",
     "vue-tsc": "^3.1.4"
   }
 }
