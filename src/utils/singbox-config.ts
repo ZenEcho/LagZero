@@ -5,6 +5,7 @@
 
 import type { Game } from '@/types'
 import type { NodeConfig } from '@/utils/protocol'
+import pkg from '../../package.json'
 
 /**
  * Singbox 核心配置结构接口
@@ -50,12 +51,13 @@ export interface DnsConfigOptions {
  * @param dnsOptions DNS 配置选项
  * @returns 格式化后的 JSON 字符串
  */
-export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?: DnsConfigOptions): string {
+export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?: DnsConfigOptions & { tunInterfaceName?: string }): string {
   const isRoutingMode = game.proxyMode === 'routing'
   const processes = normalizeProcessNames(Array.isArray(game.processName) ? game.processName : [game.processName])
   const dnsMode = dnsOptions?.mode || 'secure'
   const dnsPrimary = String(dnsOptions?.primary || 'https://dns.google/dns-query').trim()
   const dnsSecondary = String(dnsOptions?.secondary || 'https://1.1.1.1/dns-query').trim()
+  const tunInterfaceName = String(dnsOptions?.tunInterfaceName || pkg.productName).trim() || pkg.productName
   const useSecureDns = dnsMode === 'secure'
 
   // 基础配置结构
@@ -81,12 +83,12 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
     },
     inbounds: [
       {
-        type: 'tun',
-        tag: 'tun-in',
-        interface_name: 'singbox-tun',
-        inet4_address: '172.19.0.1/30',
-        mtu: 1280,
-        auto_route: true,
+        type: 'tun', // 虚拟网卡类型
+        tag: 'tun-in', // 虚拟网卡标签
+        interface_name: tunInterfaceName, // 虚拟网卡名称
+        inet4_address: '172.19.0.1/30', // 虚拟网卡 IP 地址
+        mtu: 1280, // 1280 是 Sing-box 推荐的 MTU 值
+        auto_route: true, // 自动路由
         strict_route: false, // 设置为 true 可以绝对防止泄漏，但 false 兼容性更好
         stack: 'system', // 可选 'gvisor', 'system' 或 'mixed'
         sniff: true

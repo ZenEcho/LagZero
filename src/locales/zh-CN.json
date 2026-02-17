@@ -175,7 +175,18 @@
     "preferences": "偏好设置",
     "theme_desc": "选择符合您风格的主题色。",
     "dns_flush_failed": "清理 DNS 缓存失败",
-    "tun_reinstall_failed": "重装 TUN 网卡失败"
+    "tun_reinstall_failed": "重装 TUN 网卡失败",
+    "logs": "日志",
+    "runtime_logs": "运行日志",
+    "logs_search_placeholder": "搜索日志关键字...",
+    "logs_clear": "清空日志",
+    "logs_empty": "暂无日志",
+    "logs_count_info": "共 {filtered} 条（当前缓存 {total} 条）",
+    "logs_all_categories": "全部分类",
+    "logs_category_frontend": "前端",
+    "logs_category_backend": "后端",
+    "logs_category_core": "核心",
+    "logs_all_levels": "全部级别"
   },
   "categories": {
     "new_category_placeholder": "输入新分类名称..."

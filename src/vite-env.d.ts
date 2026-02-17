@@ -18,6 +18,7 @@ interface Window {
       detail?: string
     }>>
     clear: () => Promise<void>
+    getFilePath: () => Promise<string>
     pushFrontend: (entry: {
       level?: 'debug' | 'info' | 'warn' | 'error'
       source?: string

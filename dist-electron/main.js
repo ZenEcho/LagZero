@@ -6661,8 +6661,8 @@ const pos = (buf) => {
 };
 const onesComp = (byte) => (255 ^ byte) & 255;
 const twosComp = (byte) => (255 ^ byte) + 1 & 255;
-const isCode = (c) => name.has(c);
-const name = /* @__PURE__ */ new Map([
+const isCode = (c) => name$1.has(c);
+const name$1 = /* @__PURE__ */ new Map([
   ["0", "File"],
   // same as File
   ["", "OldFile"],
@@ -6701,7 +6701,7 @@ const name = /* @__PURE__ */ new Map([
   // like x
   ["X", "OldExtendedHeader"]
 ]);
-const code = new Map(Array.from(name).map((kv) => [kv[1], kv[0]]));
+const code = new Map(Array.from(name$1).map((kv) => [kv[1], kv[0]]));
 class Header {
   cksumValid = false;
   needPax = false;
@@ -6843,7 +6843,7 @@ class Header {
     return this.needPax;
   }
   get type() {
-    return this.#type === "Unsupported" ? this.#type : name.get(this.#type);
+    return this.#type === "Unsupported" ? this.#type : name$1.get(this.#type);
   }
   get typeKey() {
     return this.#type;
@@ -11862,18 +11862,24 @@ function tcpPing(host, port, timeout = 2e3) {
     }
   });
 }
+const name = "lagzero";
+const productName = "LagZero";
+const pkg = {
+  name,
+  productName
+};
 const __dirname$1 = path$1.dirname(fileURLToPath(import.meta.url));
 const __filename$1 = fileURLToPath(import.meta.url);
 global.__filename = __filename$1;
 global.__dirname = __dirname$1;
 process.env.APP_ROOT = path$1.join(__dirname$1, "..");
-const APP_ID = "com.lagzero.client";
+const APP_ID = "com." + pkg.name + ".client";
 const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 const MAIN_DIST = path$1.join(process.env.APP_ROOT, "dist-electron");
 const RENDERER_DIST = path$1.join(process.env.APP_ROOT, "dist");
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path$1.join(process.env.APP_ROOT, "public") : RENDERER_DIST;
 if (VITE_DEV_SERVER_URL) {
-  app.setPath("userData", path$1.join(process.env.APP_ROOT, ".lagzero-dev"));
+  app.setPath("userData", path$1.join(process.env.APP_ROOT, "." + pkg.name + "-dev"));
 }
 if (process.platform === "win32") {
   app.setAppUserModelId(APP_ID);
@@ -11885,6 +11891,99 @@ let processManager = null;
 let dbManager = null;
 const MAX_LOG_ENTRIES = 3e3;
 const appLogs = [];
+const MAX_LOG_FILE_BYTES = 5 * 1024 * 1024;
+const MAX_LOG_DIR_BYTES = 500 * 1024 * 1024;
+const LOG_FILE_PREFIX = pkg.name;
+let logWriteChain = Promise.resolve();
+let sessionLogFilePath = "";
+function getAppLogDir() {
+  return path$1.join(app.getPath("userData"), "logs");
+}
+function getAppLogFilePath() {
+  if (sessionLogFilePath) return sessionLogFilePath;
+  const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
+  sessionLogFilePath = path$1.join(getAppLogDir(), `${LOG_FILE_PREFIX}-${stamp}-${process.pid}.log`);
+  return sessionLogFilePath;
+}
+function queueLogWrite(task) {
+  logWriteChain = logWriteChain.then(task).catch(() => {
+  });
+}
+function sanitizeLogText(text) {
+  if (!text) return "";
+  return String(text).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+function formatLogLine(row) {
+  const iso = new Date(row.timestamp).toISOString();
+  const base = `[${iso}] [${row.level.toUpperCase()}] [${row.category}] [${row.source}] ${sanitizeLogText(row.message)}`;
+  if (!row.detail) return `${base}
+`;
+  return `${base}
+${sanitizeLogText(row.detail)}
+`;
+}
+async function ensureSingleFileLimit(logFilePath, incomingBytes) {
+  const exists = await fs.pathExists(logFilePath);
+  if (!exists) return;
+  const stat2 = await fs.stat(logFilePath);
+  const nextSize = stat2.size + incomingBytes;
+  if (nextSize <= MAX_LOG_FILE_BYTES) return;
+  await fs.truncate(logFilePath, 0);
+}
+async function pruneLogDirIfNeeded(logDir) {
+  const exists = await fs.pathExists(logDir);
+  if (!exists) return;
+  const dirents = await fs.readdir(logDir, { withFileTypes: true });
+  const files = [];
+  for (const dirent of dirents) {
+    if (!dirent.isFile() || !dirent.name.toLowerCase().endsWith(".log")) continue;
+    if (!dirent.name.toLowerCase().startsWith(`${LOG_FILE_PREFIX}-`)) continue;
+    const full = path$1.join(logDir, dirent.name);
+    try {
+      const st = await fs.stat(full);
+      files.push({ path: full, size: st.size, mtimeMs: st.mtimeMs });
+    } catch {
+    }
+  }
+  files.sort((a, b) => a.mtimeMs - b.mtimeMs);
+  let total = files.reduce((sum, f) => sum + f.size, 0);
+  for (const file2 of files) {
+    if (total <= MAX_LOG_DIR_BYTES) break;
+    const active = path$1.normalize(file2.path) === path$1.normalize(getAppLogFilePath());
+    if (active && files.length > 1) continue;
+    try {
+      await fs.remove(file2.path);
+      total -= file2.size;
+    } catch {
+    }
+  }
+}
+async function writeStartupSection() {
+  const logFilePath = getAppLogFilePath();
+  const now = /* @__PURE__ */ new Date();
+  const section = [
+    "",
+    "=".repeat(88),
+    `Session Start: ${now.toISOString()}`,
+    `Version: ${app.getVersion()} | PID: ${process.pid} | Platform: ${process.platform} ${process.arch}`,
+    `Electron: ${process.versions.electron} | Node: ${process.versions.node} | Chromium: ${process.versions.chrome}`,
+    "=".repeat(88),
+    ""
+  ].join("\n");
+  await fs.ensureDir(path$1.dirname(logFilePath));
+  await fs.writeFile(logFilePath, section, "utf8");
+  await pruneLogDirIfNeeded(path$1.dirname(logFilePath));
+}
+function appendLogToFile(row) {
+  const line = formatLogLine(row);
+  const logFilePath = getAppLogFilePath();
+  queueLogWrite(async () => {
+    await fs.ensureDir(path$1.dirname(logFilePath));
+    await ensureSingleFileLimit(logFilePath, Buffer.byteLength(line, "utf8"));
+    await fs.appendFile(logFilePath, line, "utf8");
+    await pruneLogDirIfNeeded(path$1.dirname(logFilePath));
+  });
+}
 function pushAppLog(entry) {
   const row = {
     id: randomUUID(),
@@ -11894,6 +11993,7 @@ function pushAppLog(entry) {
   appLogs.push(row);
   if (appLogs.length > MAX_LOG_ENTRIES) appLogs.shift();
   win?.webContents.send("app-log:new", row);
+  appendLogToFile(row);
 }
 function stringifyConsoleArg(value) {
   if (typeof value === "string") return value;
@@ -11934,10 +12034,29 @@ function installMainConsoleLogCapture() {
   install("log", "info");
 }
 installMainConsoleLogCapture();
+queueLogWrite(writeStartupSection);
+pushAppLog({
+  level: "info",
+  category: "backend",
+  source: "logger",
+  message: `App log file: ${getAppLogFilePath()}`
+});
 ipcMain.handle("logs:get-all", () => appLogs);
 ipcMain.handle("logs:clear", () => {
   appLogs.length = 0;
+  const logDir = getAppLogDir();
+  queueLogWrite(async () => {
+    if (!await fs.pathExists(logDir)) return;
+    const dirents = await fs.readdir(logDir, { withFileTypes: true });
+    for (const dirent of dirents) {
+      if (!dirent.isFile() || !dirent.name.toLowerCase().endsWith(".log")) continue;
+      if (!dirent.name.toLowerCase().startsWith(`${LOG_FILE_PREFIX}-`)) continue;
+      await fs.remove(path$1.join(logDir, dirent.name)).catch(() => {
+      });
+    }
+  });
 });
+ipcMain.handle("logs:get-file-path", () => getAppLogFilePath());
 ipcMain.handle("logs:push-frontend", (_, payload) => {
   const level = payload.level === "debug" || payload.level === "warn" || payload.level === "error" ? payload.level : "info";
   pushAppLog({
@@ -12025,7 +12144,7 @@ function createTray(icon) {
   if (tray || !icon) return;
   const trayIcon = icon.resize({ width: 20, height: 20, quality: "best" });
   tray = new Tray(trayIcon);
-  tray.setToolTip("LagZero");
+  tray.setToolTip(pkg.productName);
   tray.setContextMenu(Menu.buildFromTemplate([
     {
       label: "Show Window",
@@ -12540,7 +12659,7 @@ async function flushDnsCache() {
     message: `Unsupported platform: ${process.platform}`
   };
 }
-async function reinstallTunAdapter(interfaceName = "singbox-tun") {
+async function reinstallTunAdapter(interfaceName = "LagZero") {
   if (process.platform !== "win32") {
     return {
       ok: false,
@@ -12574,7 +12693,7 @@ async function reinstallTunAdapter(interfaceName = "singbox-tun") {
 }
 ipcMain.handle("system:flush-dns-cache", () => flushDnsCache());
 ipcMain.handle("system:tun-reinstall", async (_, interfaceName) => {
-  return reinstallTunAdapter(interfaceName || "singbox-tun");
+  return reinstallTunAdapter(interfaceName || "LagZero");
 });
 ipcMain.handle("app:get-version", () => app.getVersion());
 ipcMain.handle("app:check-update", async () => {

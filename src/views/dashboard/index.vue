@@ -427,7 +427,13 @@ async function toggleAccelerator() {
          await syncSessionStateFromStore()
          await sampleLatencyAndLoss(true)
       } catch (e: any) {
-         message.error(String(e?.message || e || i18n.global.t('dashboard.start_failed')))
+         const rawMsg = String(e?.message || e || '')
+         if (rawMsg.startsWith('Another game is already accelerating:')) {
+            const gameName = rawMsg.replace('Another game is already accelerating:', '').trim()
+            message.warning(gameName ? `已有游戏正在加速：${gameName}，请先停止后再切换。` : '已有游戏正在加速，请先停止后再切换。')
+         } else {
+            message.error(rawMsg || i18n.global.t('dashboard.start_failed'))
+         }
       }
    }
 }
@@ -453,11 +459,9 @@ function onSingboxEvent(name: string, data: any) {
    } else if (name === 'singbox-error') {
       message.error(String(data || i18n.global.t('dashboard.singbox_error')))
    } else if (name === 'singbox-status' && data === 'stopped') {
-      if (game.value?.id && isRunning.value) {
-         gameStore.setGameStatus(game.value.id, 'idle')
-         startTime.value = 0
-         lastConnection.value = ''
-      }
+      gameStore.resetAllAccelerationStatus()
+      startTime.value = 0
+      lastConnection.value = ''
    }
 }
 

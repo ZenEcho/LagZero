@@ -38,6 +38,16 @@ export const useGameStore = defineStore('games', () => {
   // Running game IDs matched by process names
   const runningGames = ref<string[]>([])
   const accelerationStartedAt = reactive<Record<string, number>>({})
+  function getAcceleratingGame(excludeId?: string): Game | null {
+    return gameLibrary.value.find(g => g.status === 'accelerating' && (!excludeId || g.id !== excludeId)) || null
+  }
+
+  function resetAllAccelerationStatus() {
+    gameLibrary.value.forEach(g => {
+      if (g.status === 'accelerating') g.status = 'idle'
+      if (g.id) delete accelerationStartedAt[g.id]
+    })
+  }
 
   async function init() {
     try {
@@ -109,6 +119,9 @@ export const useGameStore = defineStore('games', () => {
   }
 
   function setCurrentGame(id: string) {
+    const runningOther = getAcceleratingGame(id)
+    if (runningOther) return false
+
     currentGameId.value = id
     const game = gameLibrary.value.find(g => g.id === id)
     if (game) {
@@ -116,6 +129,7 @@ export const useGameStore = defineStore('games', () => {
       // @ts-ignore
       window.games.save(toIpcGame({ ...game, lastPlayed: Date.now() }))
     }
+    return true
   }
 
   function setGameStatus(id: string, status: 'idle' | 'accelerating') {
@@ -124,6 +138,12 @@ export const useGameStore = defineStore('games', () => {
       game.status = status
     }
     if (status === 'accelerating') {
+      gameLibrary.value.forEach(g => {
+        if (g.id !== id && g.status === 'accelerating') {
+          g.status = 'idle'
+          if (g.id) delete accelerationStartedAt[g.id]
+        }
+      })
       if (!accelerationStartedAt[id]) {
         accelerationStartedAt[id] = Date.now()
       }
@@ -164,6 +184,12 @@ export const useGameStore = defineStore('games', () => {
   async function startGame(id: string) {
     const game = gameLibrary.value.find(g => g.id === id)
     if (!game) return
+    if (game.status === 'accelerating') return
+
+    const runningOther = getAcceleratingGame(id)
+    if (runningOther) {
+      throw new Error(`Another game is already accelerating: ${runningOther.name}`)
+    }
 
     const nodeStore = useNodeStore()
     const settingsStore = useSettingsStore()
@@ -182,7 +208,8 @@ export const useGameStore = defineStore('games', () => {
       const config = String(generateSingboxConfig(rawGame, rawNode, {
         mode: settingsStore.dnsMode,
         primary: settingsStore.dnsPrimary,
-        secondary: settingsStore.dnsSecondary
+        secondary: settingsStore.dnsSecondary,
+        tunInterfaceName: settingsStore.tunInterfaceName
       }))
       // @ts-ignore
       await window.singbox.start(config)
@@ -200,14 +227,14 @@ export const useGameStore = defineStore('games', () => {
     }
   }
 
-  async function stopGame(id: string) {
+  async function stopGame(_id: string) {
     try {
       // @ts-ignore
       await window.singbox.stop()
       // @ts-ignore
       await window.proxyMonitor.stop()
 
-      setGameStatus(id, 'idle')
+      resetAllAccelerationStatus()
     } catch (e) {
       console.error('Failed to stop game acceleration:', e)
       throw e
@@ -224,6 +251,8 @@ export const useGameStore = defineStore('games', () => {
     init,
     setCurrentGame,
     setGameStatus,
+    getAcceleratingGame,
+    resetAllAccelerationStatus,
     getAccelerationStartedAt,
     updateLatency,
     matchRunningGames,

@@ -4,8 +4,8 @@
     <div
       class="h-12 flex-shrink-0 flex items-center justify-between px-4 z-50 select-none app-drag-region bg-surface/80 backdrop-blur-md border-b border-border">
       <div class="text-xs font-bold text-on-surface-variant flex items-center gap-2">
-        <img src="/logo.svg" alt="LagZero" class="h-6">
-        <span class="text-lg font-bold text-on-surface">LagZero</span>
+        <img src="/logo.svg" alt="log" class="h-6">
+        <span class="text-lg font-bold text-on-surface">{{ pkg.name }}</span>
         <div @click="checkUpdate"
           class="no-drag cursor-pointer flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-overlay border border-border/50 hover:border-primary/50 transition-colors translate-y-[1px]"
           :title="$t('settings.check_update')">
@@ -122,7 +122,7 @@ import { useWindowSize } from '@vueuse/core'
 import { useNotification, NButton } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import ThemeToggle from '@/components/common/ThemeToggle.vue'
-
+import pkg from '../../package.json'
 const { width } = useWindowSize()
 const isCollapsed = ref(true)
 const $route = useRoute()

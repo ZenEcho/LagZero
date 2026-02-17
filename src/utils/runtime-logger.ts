@@ -66,7 +66,7 @@ export function setupRuntimeLogging() {
     const original = console[name]
     if (typeof original !== 'function') continue
     console[name] = ((...args: unknown[]) => {
-      original(...args as any[])
+      ; (original as any).apply(console, args)
       push(makePayload(level, args))
     }) as any
   }

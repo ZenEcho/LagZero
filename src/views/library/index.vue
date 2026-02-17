@@ -58,6 +58,13 @@
       </button>
     </div>
 
+    <div v-if="acceleratingGame"
+      class="mb-4 px-4 py-3 rounded-xl border border-success/30 bg-success/10 text-success flex items-center gap-2">
+      <div class="w-2 h-2 rounded-full bg-success animate-pulse"></div>
+      <span class="text-sm font-semibold">正在加速：{{ acceleratingGame.name }}</span>
+      <span class="text-xs text-success/80">加速期间不可切换其它游戏</span>
+    </div>
+
     <!-- Game Grid/List -->
     <div class="flex-1 overflow-y-auto min-h-0 pr-2">
       <div v-if="filteredGames.length === 0"
@@ -69,8 +76,12 @@
       <div v-else
         :class="viewMode === 'grid' ? 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4' : 'flex flex-col gap-2'">
         <div v-for="game in filteredGames" :key="game.id" @click="game.id && selectGame(game.id!)"
-          class="bg-surface-panel border border-transparent hover:border-primary rounded-lg cursor-pointer transition group relative"
-          :class="viewMode === 'grid' ? 'p-4 flex flex-col items-center text-center' : 'p-3 pr-24 flex items-center gap-4'">
+          class="bg-surface-panel border rounded-lg transition group relative"
+          :class="[
+            isAccelerationLockedFor(game) ? 'border-border cursor-not-allowed opacity-60' : 'cursor-pointer hover:border-primary',
+            game.status === 'accelerating' ? 'ring-2 ring-success/40 border-success/50 shadow-[0_0_0_1px_rgba(var(--rgb-success),0.2)]' : 'border-transparent',
+            viewMode === 'grid' ? 'p-4 flex flex-col items-center text-center' : 'p-3 pr-24 flex items-center gap-4'
+          ]">
           <!-- Action Buttons (Hover) -->
           <div class="absolute flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
             :class="viewMode === 'grid' ? 'top-2 right-2' : 'right-3 top-1/2 -translate-y-1/2'">
@@ -104,7 +115,12 @@
             </div>
           </div>
 
-          <div v-if="game.id === gameStore.currentGameId"
+          <div v-if="game.status === 'accelerating'"
+            class="text-success text-xs font-extrabold flex items-center gap-1">
+            <div class="w-2 h-2 rounded-full bg-success animate-pulse"></div>
+            正在加速
+          </div>
+          <div v-else-if="game.id === gameStore.currentGameId"
             class="text-primary text-xs font-bold flex items-center gap-1">
             <div class="w-2 h-2 rounded-full bg-primary"></div>
             {{ $t('games.selected') }}
@@ -147,6 +163,7 @@ const searchQuery = ref('')
 const activeCategory = ref('all')
 const isScanning = ref(false)
 const runningGames = computed(() => gameStore.runningGames)
+const acceleratingGame = computed(() => gameStore.getAcceleratingGame())
 type LocalScanGame = {
   name: string
   processName: string
@@ -181,6 +198,10 @@ const filteredGames = computed(() => {
     const matchCat = activeCategory.value === 'all' || game.category === activeCategory.value
     return matchSearch && matchCat
   }).sort((a: Game, b: Game) => {
+    const aAccelerating = a.status === 'accelerating'
+    const bAccelerating = b.status === 'accelerating'
+    if (aAccelerating !== bAccelerating) return aAccelerating ? -1 : 1
+
     const aRunning = a.id ? runningGames.value.includes(a.id) : false
     const bRunning = b.id ? runningGames.value.includes(b.id) : false
     if (aRunning !== bRunning) return aRunning ? -1 : 1
@@ -256,8 +277,18 @@ async function autoAddGamesFromLibraryScan(localGames: LocalScanGame[]) {
 }
 
 function selectGame(id: string) {
-  gameStore.setCurrentGame(id)
+  const ok = gameStore.setCurrentGame(id)
+  if (!ok) {
+    const name = acceleratingGame.value?.name || '当前游戏'
+    message.warning(`正在加速「${name}」，请先停止加速后再切换。`)
+    return
+  }
   router.push('/dashboard')
+}
+
+function isAccelerationLockedFor(game: Game) {
+  const active = acceleratingGame.value
+  return !!active && game.id !== active.id
 }
 
 function formatTime(timestamp: number) {

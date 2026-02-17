@@ -24,9 +24,10 @@ import { ProxyMonitor } from './proxy/monitor'
 import { NodeManager } from './nodes/manager'
 import { DatabaseManager } from './db'
 import { ping, tcpPing } from './network/ping'
+import pkg from '../package.json'
 
 process.env.APP_ROOT = path.join(__dirname, '..')
-const APP_ID = 'com.lagzero.client'
+const APP_ID = 'com.' + pkg.name + '.client'
 
 // 🚧 Use ['ENV_NAME'] avoid vite:define plugin - Vite@2.x
 export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
@@ -36,7 +37,7 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
 if (VITE_DEV_SERVER_URL) {
-  app.setPath('userData', path.join(process.env.APP_ROOT, '.lagzero-dev'))
+  app.setPath('userData', path.join(process.env.APP_ROOT, '.' + pkg.name + '-dev'))
 }
 if (process.platform === 'win32') {
   app.setAppUserModelId(APP_ID)
@@ -67,6 +68,117 @@ type AppLogEntry = {
 
 const MAX_LOG_ENTRIES = 3000
 const appLogs: AppLogEntry[] = []
+const MAX_LOG_FILE_BYTES = 5 * 1024 * 1024
+const MAX_LOG_DIR_BYTES = 500 * 1024 * 1024
+const LOG_FILE_PREFIX = pkg.name
+let logWriteChain: Promise<void> = Promise.resolve()
+let sessionLogFilePath = ''
+
+function getAppLogDir() {
+  return path.join(app.getPath('userData'), 'logs')
+}
+
+function getAppLogFilePath() {
+  if (sessionLogFilePath) return sessionLogFilePath
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  sessionLogFilePath = path.join(getAppLogDir(), `${LOG_FILE_PREFIX}-${stamp}-${process.pid}.log`)
+  return sessionLogFilePath
+}
+
+function queueLogWrite(task: () => Promise<void>) {
+  logWriteChain = logWriteChain
+    .then(task)
+    .catch(() => {
+      // Avoid recursive logging when filesystem write fails.
+    })
+}
+
+function sanitizeLogText(text?: string) {
+  if (!text) return ''
+  return String(text).replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+}
+
+function formatLogLine(row: AppLogEntry) {
+  const iso = new Date(row.timestamp).toISOString()
+  const base = `[${iso}] [${row.level.toUpperCase()}] [${row.category}] [${row.source}] ${sanitizeLogText(row.message)}`
+  if (!row.detail) return `${base}\n`
+  return `${base}\n${sanitizeLogText(row.detail)}\n`
+}
+
+async function ensureSingleFileLimit(logFilePath: string, incomingBytes: number) {
+  const exists = await fs.pathExists(logFilePath)
+  if (!exists) return
+  const stat = await fs.stat(logFilePath)
+  const nextSize = stat.size + incomingBytes
+  if (nextSize <= MAX_LOG_FILE_BYTES) return
+  await fs.truncate(logFilePath, 0)
+}
+
+async function pruneLogDirIfNeeded(logDir: string) {
+  const exists = await fs.pathExists(logDir)
+  if (!exists) return
+
+  const dirents = await fs.readdir(logDir, { withFileTypes: true })
+  const files: Array<{ path: string, size: number, mtimeMs: number }> = []
+
+  for (const dirent of dirents) {
+    if (!dirent.isFile() || !dirent.name.toLowerCase().endsWith('.log')) continue
+    if (!dirent.name.toLowerCase().startsWith(`${LOG_FILE_PREFIX}-`)) continue
+    const full = path.join(logDir, dirent.name)
+    try {
+      const st = await fs.stat(full)
+      files.push({ path: full, size: st.size, mtimeMs: st.mtimeMs })
+    } catch {
+      // ignore read failures
+    }
+  }
+
+  files.sort((a, b) => a.mtimeMs - b.mtimeMs)
+  let total = files.reduce((sum, f) => sum + f.size, 0)
+
+  for (const file of files) {
+    if (total <= MAX_LOG_DIR_BYTES) break
+    const active = path.normalize(file.path) === path.normalize(getAppLogFilePath())
+    if (active && files.length > 1) continue
+
+    try {
+      await fs.remove(file.path)
+      total -= file.size
+    } catch {
+      // ignore delete failures
+    }
+  }
+}
+
+async function writeStartupSection() {
+  const logFilePath = getAppLogFilePath()
+  const now = new Date()
+  const section = [
+    '',
+    '='.repeat(88),
+    `Session Start: ${now.toISOString()}`,
+    `Version: ${app.getVersion()} | PID: ${process.pid} | Platform: ${process.platform} ${process.arch}`,
+    `Electron: ${process.versions.electron} | Node: ${process.versions.node} | Chromium: ${process.versions.chrome}`,
+    '='.repeat(88),
+    ''
+  ].join('\n')
+
+  await fs.ensureDir(path.dirname(logFilePath))
+  await fs.writeFile(logFilePath, section, 'utf8')
+  await pruneLogDirIfNeeded(path.dirname(logFilePath))
+}
+
+function appendLogToFile(row: AppLogEntry) {
+  const line = formatLogLine(row)
+  const logFilePath = getAppLogFilePath()
+
+  queueLogWrite(async () => {
+    await fs.ensureDir(path.dirname(logFilePath))
+    await ensureSingleFileLimit(logFilePath, Buffer.byteLength(line, 'utf8'))
+    await fs.appendFile(logFilePath, line, 'utf8')
+    await pruneLogDirIfNeeded(path.dirname(logFilePath))
+  })
+}
 
 function pushAppLog(entry: Omit<AppLogEntry, 'id' | 'timestamp'>) {
   const row: AppLogEntry = {
@@ -77,6 +189,7 @@ function pushAppLog(entry: Omit<AppLogEntry, 'id' | 'timestamp'>) {
   appLogs.push(row)
   if (appLogs.length > MAX_LOG_ENTRIES) appLogs.shift()
   win?.webContents.send('app-log:new', row)
+  appendLogToFile(row)
 }
 
 function stringifyConsoleArg(value: unknown): string {
@@ -104,7 +217,7 @@ function installMainConsoleLogCapture() {
   }
 
   const install = (method: keyof typeof original, level: AppLogLevel) => {
-    ;(console as any)[method] = (...args: unknown[]) => {
+    ; (console as any)[method] = (...args: unknown[]) => {
       original[method](...args as any[])
       const text = truncateLogText(args.map(stringifyConsoleArg).join(' ').trim())
       pushAppLog({
@@ -124,11 +237,29 @@ function installMainConsoleLogCapture() {
 }
 
 installMainConsoleLogCapture()
+queueLogWrite(writeStartupSection)
+pushAppLog({
+  level: 'info',
+  category: 'backend',
+  source: 'logger',
+  message: `App log file: ${getAppLogFilePath()}`
+})
 
 ipcMain.handle('logs:get-all', () => appLogs)
 ipcMain.handle('logs:clear', () => {
   appLogs.length = 0
+  const logDir = getAppLogDir()
+  queueLogWrite(async () => {
+    if (!await fs.pathExists(logDir)) return
+    const dirents = await fs.readdir(logDir, { withFileTypes: true })
+    for (const dirent of dirents) {
+      if (!dirent.isFile() || !dirent.name.toLowerCase().endsWith('.log')) continue
+      if (!dirent.name.toLowerCase().startsWith(`${LOG_FILE_PREFIX}-`)) continue
+      await fs.remove(path.join(logDir, dirent.name)).catch(() => { })
+    }
+  })
 })
+ipcMain.handle('logs:get-file-path', () => getAppLogFilePath())
 ipcMain.handle('logs:push-frontend', (_, payload: Partial<AppLogEntry>) => {
   const level: AppLogLevel = payload.level === 'debug' || payload.level === 'warn' || payload.level === 'error'
     ? payload.level
@@ -238,7 +369,7 @@ function createTray(icon: NativeImage | null) {
 
   const trayIcon = icon.resize({ width: 20, height: 20, quality: 'best' })
   tray = new Tray(trayIcon)
-  tray.setToolTip('LagZero')
+  tray.setToolTip(pkg.productName)
   tray.setContextMenu(Menu.buildFromTemplate([
     {
       label: 'Show Window',
@@ -380,6 +511,7 @@ ipcMain.handle('dialog:pick-process', async () => {
   // but let's see. 
   // `matchRunningGames` in store uses `t.toLowerCase() === pNameLower`. `pName` from `scanProcesses` is just name.
   // So we should return basenames.
+
   return result.filePaths.map(p => path.basename(p))
 })
 
@@ -856,7 +988,7 @@ async function flushDnsCache(): Promise<SystemCommandResult> {
   }
 }
 
-async function reinstallTunAdapter(interfaceName: string = 'singbox-tun'): Promise<SystemCommandResult> {
+async function reinstallTunAdapter(interfaceName: string = 'LagZero'): Promise<SystemCommandResult> {
   if (process.platform !== 'win32') {
     return {
       ok: false,
@@ -896,7 +1028,7 @@ async function reinstallTunAdapter(interfaceName: string = 'singbox-tun'): Promi
 
 ipcMain.handle('system:flush-dns-cache', () => flushDnsCache())
 ipcMain.handle('system:tun-reinstall', async (_, interfaceName?: string) => {
-  return reinstallTunAdapter(interfaceName || 'singbox-tun')
+  return reinstallTunAdapter(interfaceName || 'LagZero')
 })
 
 // Update & Info handlers

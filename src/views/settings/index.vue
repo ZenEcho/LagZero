@@ -49,7 +49,7 @@
               <img src="/logo.svg" class="w-5 h-5" alt="Logo" />
             </div>
             <div>
-              <div class="text-sm font-bold">LagZero</div>
+              <div class="text-sm font-bold">{{ pkg.name }}</div>
               <div class="text-[10px] text-on-surface-muted font-mono">v{{ appVersion }}</div>
             </div>
           </div>
@@ -201,8 +201,7 @@
                   <div class="space-y-2">
                     <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">{{
                       $t('settings.tun_interface') }}</label>
-                    <n-input v-model:value="settingsStore.tunInterfaceName" placeholder="singbox-tun"
-                      class="glass-input" />
+                    <n-input v-model:value="settingsStore.tunInterfaceName" placeholder="LagZero" class="glass-input" />
                   </div>
 
                   <div class="flex flex-wrap gap-4 pt-2">
@@ -237,39 +236,38 @@
               <section>
                 <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
                   <div class="i-material-symbols-article-outline text-primary"></div>
-                  运行日志
+                  {{ $t('settings.runtime_logs') }}
                 </h2>
                 <div class="bg-surface-panel/50 border border-border/50 rounded-2xl p-5 backdrop-blur-sm space-y-4">
                   <div class="grid grid-cols-1 lg:grid-cols-[1fr_1fr_2fr_auto] gap-3">
                     <n-select v-model:value="logCategory" :options="logCategoryOptions" />
                     <n-select v-model:value="logLevel" :options="logLevelOptions" />
-                    <n-input v-model:value="logKeyword" placeholder="搜索日志关键字..." clearable />
-                    <n-button secondary @click="clearLogs">清空日志</n-button>
+                    <n-input v-model:value="logKeyword" :placeholder="$t('settings.logs_search_placeholder')"
+                      clearable />
+                    <n-button secondary @click="clearLogs">{{ $t('settings.logs_clear') }}</n-button>
                   </div>
 
                   <div class="text-xs text-on-surface-muted">
-                    共 {{ filteredLogs.length }} 条（当前缓存 {{ logEntries.length }} 条）
+                    {{ $t('settings.logs_count_info', { filtered: filteredLogs.length, total: logEntries.length }) }}
                   </div>
 
                   <div
                     class="rounded-xl border border-border/60 bg-black/30 h-[520px] overflow-y-auto custom-scrollbar">
                     <div v-if="filteredLogs.length === 0"
                       class="h-full flex items-center justify-center text-sm text-on-surface-muted">
-                      暂无日志
+                      {{ $t('settings.logs_empty') }}
                     </div>
                     <div v-else class="divide-y divide-white/5">
                       <div v-for="row in filteredLogs" :key="row.id"
-                        class="group flex gap-4 px-4 py-3 font-mono text-sm transition-all border-l-[3px] hover:bg-white/10"
-                        :class="[
-                          row.level === 'error' ? 'border-red-500 bg-red-500/[0.06]' :
-                            row.level === 'warn' ? 'border-amber-500 bg-amber-500/[0.06]' :
-                              row.level === 'debug' ? 'border-transparent opacity-50 grayscale hover:grayscale-0 hover:opacity-100' :
-                                'border-emerald-500 bg-emerald-500/[0.02]'
+                        class="flex gap-4 px-4 py-3 font-mono text-sm border-l-[4px]" :class="[
+                          row.level === 'error' ? 'border-[#ff4d4f] bg-[#ff4d4f]/10' :
+                            row.level === 'warn' ? 'border-[#faad14] bg-[#faad14]/10' :
+                              row.level === 'debug' ? 'border-[#8c8c8c] bg-[#8c8c8c]/5' :
+                                'border-[#52c41a] bg-[#52c41a]/10'
                         ]">
                         <!-- Left Side: Fixed Meta -->
                         <div class="flex-none flex flex-col items-center gap-2 w-20">
-                          <span
-                            class="text-[11px] font-bold tracking-tighter opacity-40 group-hover:opacity-100 transition-opacity">
+                          <span class="text-[11px] font-bold tracking-tighter ">
                             {{ formatLogTime(row.timestamp) }}
                           </span>
                           <span
@@ -284,19 +282,20 @@
                           <div class="flex items-center gap-2">
                             <span
                               class="text-[10px] font-black px-1.5 py-0.5 rounded bg-white/5 text-primary/80 uppercase tracking-tighter shadow-inner">
-                              {{ row.category }}
+                              {{ $t('settings.logs_category_' + row.category) }}
                             </span>
-                            <span class="text-[10px] text-on-surface-muted/30 italic truncate">
+                            <span class="text-[10px] text-white dark:text-gray-400 italic truncate">
                               {{ row.source }}
                             </span>
                           </div>
 
-                          <div class="break-words leading-relaxed font-medium" :class="logMessageTextClass(row.level)">
+                          <div class="break-words leading-relaxed font-medium text-white dark:text-gray-400"
+                            :class="logMessageTextClass(row.level)">
                             {{ row.message }}
                           </div>
 
                           <div v-if="row.detail"
-                            class="mt-2 p-3 rounded-lg bg-black/40 border border-white/5 text-xs text-on-surface-muted/60 break-all whitespace-pre-wrap leading-relaxed shadow-inner">
+                            class="mt-2 p-3 rounded-lg text-white dark:text-gray-400 bg-black/40 border border-white/5 text-xs  break-all whitespace-pre-wrap leading-relaxed shadow-inner">
                             {{ row.detail }}
                           </div>
                         </div>
@@ -321,7 +320,7 @@
 
               <h1
                 class=" h-14 text-4xl font-black bg-gradient-to-br from-primary via-purple-500 to-secondary bg-clip-text text-transparent mb-2">
-                LagZero
+                {{ pkg.name }}
               </h1>
               <p class="text-on-surface-muted mb-8 tracking-wide">{{ $t('settings.tagline') }}</p>
 
@@ -402,6 +401,7 @@ import { useI18n } from 'vue-i18n'
 import { useTheme, type ThemeColor } from '@/composables/useTheme'
 import { useSettingsStore } from '@/stores/settings'
 import { NSelect, NInput, NButton } from 'naive-ui'
+import pkg from '../../../package.json'
 
 const { locale, t } = useI18n()
 const { themeColor, setThemeColor } = useTheme()
@@ -411,7 +411,7 @@ const activeTab = ref('general')
 const tabs = computed(() => [
   { name: 'general', label: t('settings.general'), icon: 'i-material-symbols-tune' },
   { name: 'network', label: t('settings.network'), icon: 'i-material-symbols-wifi' },
-  { name: 'logs', label: '日志', icon: 'i-material-symbols-article' },
+  { name: 'logs', label: t('settings.logs'), icon: 'i-material-symbols-article' },
   { name: 'about', label: t('settings.about'), icon: 'i-material-symbols-info-outline' },
 ])
 
@@ -435,19 +435,19 @@ const logEntries = ref<AppLogEntry[]>([])
 const logCategory = ref<'all' | 'frontend' | 'backend' | 'core'>('all')
 const logLevel = ref<'all' | 'debug' | 'info' | 'warn' | 'error'>('all')
 const logKeyword = ref('')
-const logCategoryOptions = [
-  { label: '全部分类', value: 'all' },
-  { label: '前端', value: 'frontend' },
-  { label: '后端', value: 'backend' },
-  { label: '核心', value: 'core' },
-]
-const logLevelOptions = [
-  { label: '全部级别', value: 'all' },
+const logCategoryOptions = computed(() => [
+  { label: t('settings.logs_all_categories'), value: 'all' },
+  { label: t('settings.logs_category_frontend'), value: 'frontend' },
+  { label: t('settings.logs_category_backend'), value: 'backend' },
+  { label: t('settings.logs_category_core'), value: 'core' },
+])
+const logLevelOptions = computed(() => [
+  { label: t('settings.logs_all_levels'), value: 'all' },
   { label: 'Debug', value: 'debug' },
   { label: 'Info', value: 'info' },
   { label: 'Warn', value: 'warn' },
   { label: 'Error', value: 'error' },
-]
+])
 const filteredLogs = computed(() => {
   const keyword = logKeyword.value.trim().toLowerCase()
   return logEntries.value
@@ -522,7 +522,7 @@ async function handleReinstallTun() {
   working.value = true
   opMessage.value = ''
   try {
-    const result = await window.system.reinstallTunAdapter(settingsStore.tunInterfaceName || 'singbox-tun')
+    const result = await window.system.reinstallTunAdapter(settingsStore.tunInterfaceName || 'LagZero')
     opOk.value = !!result?.ok
     opMessage.value = String(result?.message || '')
   } catch (e: any) {
@@ -601,10 +601,10 @@ function logLevelLabelClass(level: AppLogEntry['level']) {
 
 function logMessageTextClass(level: AppLogEntry['level']) {
   switch (level) {
-    case 'error': return 'text-red-400'
-    case 'warn': return 'text-amber-200'
-    case 'debug': return 'text-on-surface-muted/70'
-    default: return 'text-on-surface'
+    case 'error': return 'text-[#ff4d4f] font-bold'
+    case 'warn': return 'text-[#fadb14] font-bold'
+    case 'debug': return 'text-[#bfbfbf]'
+    default: return 'text-[#95de64] font-bold'
   }
 }
 

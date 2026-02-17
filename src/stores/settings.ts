@@ -13,7 +13,10 @@ export const useSettingsStore = defineStore('settings', () => {
     const dnsMode = useLocalStorage<DnsMode>('settings-dns-mode', 'secure')
     const dnsPrimary = useLocalStorage('settings-dns-primary', 'https://dns.google/dns-query')
     const dnsSecondary = useLocalStorage('settings-dns-secondary', 'https://1.1.1.1/dns-query')
-    const tunInterfaceName = useLocalStorage('settings-tun-interface-name', 'singbox-tun')
+    const tunInterfaceName = useLocalStorage('settings-tun-interface-name', 'LagZero')
+    if (tunInterfaceName.value === 'singbox-tun') {
+        tunInterfaceName.value = 'LagZero'
+    }
 
     return {
         checkInterval,

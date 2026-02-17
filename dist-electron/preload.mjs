@@ -66,6 +66,7 @@ electron.contextBridge.exposeInMainWorld("app", {
 electron.contextBridge.exposeInMainWorld("logs", {
   getAll: () => electron.ipcRenderer.invoke("logs:get-all"),
   clear: () => electron.ipcRenderer.invoke("logs:clear"),
+  getFilePath: () => electron.ipcRenderer.invoke("logs:get-file-path"),
   pushFrontend: (entry) => electron.ipcRenderer.invoke("logs:push-frontend", entry),
   onNew: (callback) => {
     const wrapped = (_event, entry) => callback(entry);
