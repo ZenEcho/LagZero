@@ -1,6 +1,7 @@
 "use strict";
 const electron = require("electron");
 const ipcListenerMap = /* @__PURE__ */ new Map();
+const appLogListenerMap = /* @__PURE__ */ new Map();
 electron.contextBridge.exposeInMainWorld("electron", {
   minimize: () => electron.ipcRenderer.invoke("window-minimize"),
   maximize: () => electron.ipcRenderer.invoke("window-maximize"),
@@ -30,6 +31,7 @@ electron.contextBridge.exposeInMainWorld("singbox", {
 });
 electron.contextBridge.exposeInMainWorld("system", {
   scanProcesses: () => electron.ipcRenderer.invoke("process-scan"),
+  scanLocalGames: () => electron.ipcRenderer.invoke("system:scan-local-games"),
   getProcessTree: () => electron.ipcRenderer.invoke("process-tree"),
   ping: (host) => electron.ipcRenderer.invoke("system:ping", host),
   tcpPing: (host, port) => electron.ipcRenderer.invoke("system:tcp-ping", host, port),
@@ -60,4 +62,20 @@ electron.contextBridge.exposeInMainWorld("app", {
   getVersion: () => electron.ipcRenderer.invoke("app:get-version"),
   checkUpdate: () => electron.ipcRenderer.invoke("app:check-update"),
   openUrl: (url) => electron.ipcRenderer.invoke("app:open-url", url)
+});
+electron.contextBridge.exposeInMainWorld("logs", {
+  getAll: () => electron.ipcRenderer.invoke("logs:get-all"),
+  clear: () => electron.ipcRenderer.invoke("logs:clear"),
+  pushFrontend: (entry) => electron.ipcRenderer.invoke("logs:push-frontend", entry),
+  onNew: (callback) => {
+    const wrapped = (_event, entry) => callback(entry);
+    appLogListenerMap.set(callback, wrapped);
+    electron.ipcRenderer.on("app-log:new", wrapped);
+  },
+  offNew: (callback) => {
+    const wrapped = appLogListenerMap.get(callback);
+    if (!wrapped) return;
+    electron.ipcRenderer.removeListener("app-log:new", wrapped);
+    appLogListenerMap.delete(callback);
+  }
 });

@@ -20,6 +20,8 @@ export class SingBoxManager {
   private downloadPromise: Promise<string> | null = null
   private lastLogs: string[] = []
   private isStopping = false
+  private suppressNextStoppedStatus = false
+  private processRuleUpdateQueue: Promise<void> = Promise.resolve()
 
   constructor(window: BrowserWindow) {
     this.mainWindow = window
@@ -138,7 +140,11 @@ export class SingBoxManager {
     this.process.on('close', (code) => {
       this.log(`sing-box exited with code ${code}`)
       this.process = null
-      this.sendStatus('stopped')
+      if (this.suppressNextStoppedStatus) {
+        this.suppressNextStoppedStatus = false
+      } else {
+        this.sendStatus('stopped')
+      }
 
       if (this.isStopping) return
       if (code !== 0 && this.retryCount < this.maxRetries) {
@@ -259,6 +265,122 @@ console.log(text);
 
   private stripAnsi(input: string): string {
     return input.replace(/\x1B\[[0-9;]*m/g, '')
+  }
+
+  async updateProcessNames(processNames: string[]): Promise<void> {
+    this.processRuleUpdateQueue = this.processRuleUpdateQueue
+      .then(() => this.applyProcessNameUpdate(processNames))
+      .catch((err) => {
+        const msg = `更新进程规则失败: ${String((err as any)?.message || err)}`
+        this.log(msg, 'error')
+      })
+    return this.processRuleUpdateQueue
+  }
+
+  private async applyProcessNameUpdate(processNames: string[]): Promise<void> {
+    const configPath = path.join(app.getPath('userData'), 'config.json')
+    if (!await fs.pathExists(configPath)) return
+    if (!this.process) return
+
+    const normalized = this.normalizeProcessNames(processNames)
+    if (normalized.length === 0) return
+
+    let configRaw = ''
+    try {
+      configRaw = await fs.readFile(configPath, 'utf8')
+    } catch {
+      return
+    }
+
+    let config: any
+    try {
+      config = JSON.parse(configRaw)
+    } catch {
+      return
+    }
+
+    let changed = false
+    const routeRules = Array.isArray(config?.route?.rules) ? config.route.rules : []
+    const routeRule = routeRules.find((r: any) => Array.isArray(r?.process_name) && r?.outbound === 'proxy')
+    if (routeRule) {
+      if (!this.sameStringArray(routeRule.process_name, normalized)) {
+        routeRule.process_name = normalized
+        changed = true
+      }
+    } else {
+      routeRules.push({ process_name: normalized, outbound: 'proxy' })
+      if (config?.route) config.route.rules = routeRules
+      changed = true
+    }
+
+    const dnsRules = Array.isArray(config?.dns?.rules) ? config.dns.rules : []
+    const hasRemotePrimaryServer = Array.isArray(config?.dns?.servers)
+      && config.dns.servers.some((s: any) => s?.tag === 'remote-primary')
+    if (hasRemotePrimaryServer) {
+      const dnsRule = dnsRules.find((r: any) => Array.isArray(r?.process_name) && r?.server === 'remote-primary')
+      if (dnsRule) {
+        if (!this.sameStringArray(dnsRule.process_name, normalized)) {
+          dnsRule.process_name = normalized
+          changed = true
+        }
+      } else {
+        dnsRules.unshift({ process_name: normalized, server: 'remote-primary' })
+        if (config?.dns) config.dns.rules = dnsRules
+        changed = true
+      }
+    }
+
+    if (!changed) return
+
+    await fs.writeFile(configPath, JSON.stringify(config, null, 2))
+    this.log(`检测到子进程，已更新进程匹配规则(${normalized.length})并重启 sing-box`)
+    await this.restartWithCurrentConfig(configPath)
+  }
+
+  private async restartWithCurrentConfig(configPath: string): Promise<void> {
+    this.suppressNextStoppedStatus = true
+    await this.stopAndWaitForExit(5000)
+    await this.start(configPath)
+  }
+
+  private async stopAndWaitForExit(timeoutMs: number): Promise<void> {
+    if (!this.process) return
+    const current = this.process
+    this.stop()
+    await new Promise<void>((resolve) => {
+      let done = false
+      const finish = () => {
+        if (done) return
+        done = true
+        resolve()
+      }
+
+      const timer = setTimeout(finish, timeoutMs)
+      current.once('close', () => {
+        clearTimeout(timer)
+        finish()
+      })
+    })
+  }
+
+  private normalizeProcessNames(processes: string[]): string[] {
+    const set = new Set<string>()
+    for (const item of processes) {
+      const normalized = String(item || '').replace(/\\/g, '/').split('/').pop()?.trim() || ''
+      if (!normalized) continue
+      set.add(normalized)
+      const lower = normalized.toLowerCase()
+      if (lower !== normalized) set.add(lower)
+    }
+    return Array.from(set)
+  }
+
+  private sameStringArray(a: unknown, b: unknown): boolean {
+    if (!Array.isArray(a) || !Array.isArray(b)) return false
+    if (a.length !== b.length) return false
+    const left = [...a].map(v => String(v)).sort()
+    const right = [...b].map(v => String(v)).sort()
+    return left.every((v, i) => v === right[i])
   }
 
   private async downloadAndInstallBinary(platform: NodeJS.Platform, arch: string): Promise<string> {

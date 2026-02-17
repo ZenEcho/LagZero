@@ -1,7 +1,9 @@
-import { app, ipcMain, BrowserWindow, net as net$1, shell, Tray, Menu, nativeImage, dialog } from "electron";
+import { app, ipcMain, BrowserWindow, dialog, net as net$1, shell, Tray, Menu, nativeImage } from "electron";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path$1, { posix, basename, win32, join } from "node:path";
 import { exec as exec$1, spawn as spawn$1 } from "node:child_process";
+import { inspect } from "node:util";
+import { randomBytes, randomUUID, randomFillSync } from "node:crypto";
 import fs$2, { createWriteStream } from "fs";
 import require$$0 from "constants";
 import require$$0$1 from "stream";
@@ -19,7 +21,6 @@ import { StringDecoder } from "node:string_decoder";
 import fs$3 from "node:fs";
 import { Buffer as Buffer$1 } from "buffer";
 import assert$1 from "node:assert";
-import { randomBytes, randomUUID, randomFillSync } from "node:crypto";
 import fsp from "node:fs/promises";
 import { pipeline } from "stream/promises";
 import https from "node:https";
@@ -10554,6 +10555,8 @@ class SingBoxManager {
     this.downloadPromise = null;
     this.lastLogs = [];
     this.isStopping = false;
+    this.suppressNextStoppedStatus = false;
+    this.processRuleUpdateQueue = Promise.resolve();
     this.mainWindow = window2;
     this.setupIPC();
   }
@@ -10654,7 +10657,11 @@ ${detail}` : ""}`;
     this.process.on("close", (code2) => {
       this.log(`sing-box exited with code ${code2}`);
       this.process = null;
-      this.sendStatus("stopped");
+      if (this.suppressNextStoppedStatus) {
+        this.suppressNextStoppedStatus = false;
+      } else {
+        this.sendStatus("stopped");
+      }
       if (this.isStopping) return;
       if (code2 !== 0 && this.retryCount < this.maxRetries) {
         this.retryCount++;
@@ -10757,6 +10764,105 @@ ${detail}` : ""}`;
   }
   stripAnsi(input) {
     return input.replace(/\x1B\[[0-9;]*m/g, "");
+  }
+  async updateProcessNames(processNames) {
+    this.processRuleUpdateQueue = this.processRuleUpdateQueue.then(() => this.applyProcessNameUpdate(processNames)).catch((err) => {
+      const msg = `更新进程规则失败: ${String(err?.message || err)}`;
+      this.log(msg, "error");
+    });
+    return this.processRuleUpdateQueue;
+  }
+  async applyProcessNameUpdate(processNames) {
+    const configPath = path.join(app.getPath("userData"), "config.json");
+    if (!await fs.pathExists(configPath)) return;
+    if (!this.process) return;
+    const normalized = this.normalizeProcessNames(processNames);
+    if (normalized.length === 0) return;
+    let configRaw = "";
+    try {
+      configRaw = await fs.readFile(configPath, "utf8");
+    } catch {
+      return;
+    }
+    let config;
+    try {
+      config = JSON.parse(configRaw);
+    } catch {
+      return;
+    }
+    let changed = false;
+    const routeRules = Array.isArray(config?.route?.rules) ? config.route.rules : [];
+    const routeRule = routeRules.find((r) => Array.isArray(r?.process_name) && r?.outbound === "proxy");
+    if (routeRule) {
+      if (!this.sameStringArray(routeRule.process_name, normalized)) {
+        routeRule.process_name = normalized;
+        changed = true;
+      }
+    } else {
+      routeRules.push({ process_name: normalized, outbound: "proxy" });
+      if (config?.route) config.route.rules = routeRules;
+      changed = true;
+    }
+    const dnsRules = Array.isArray(config?.dns?.rules) ? config.dns.rules : [];
+    const hasRemotePrimaryServer = Array.isArray(config?.dns?.servers) && config.dns.servers.some((s) => s?.tag === "remote-primary");
+    if (hasRemotePrimaryServer) {
+      const dnsRule = dnsRules.find((r) => Array.isArray(r?.process_name) && r?.server === "remote-primary");
+      if (dnsRule) {
+        if (!this.sameStringArray(dnsRule.process_name, normalized)) {
+          dnsRule.process_name = normalized;
+          changed = true;
+        }
+      } else {
+        dnsRules.unshift({ process_name: normalized, server: "remote-primary" });
+        if (config?.dns) config.dns.rules = dnsRules;
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    await fs.writeFile(configPath, JSON.stringify(config, null, 2));
+    this.log(`检测到子进程，已更新进程匹配规则(${normalized.length})并重启 sing-box`);
+    await this.restartWithCurrentConfig(configPath);
+  }
+  async restartWithCurrentConfig(configPath) {
+    this.suppressNextStoppedStatus = true;
+    await this.stopAndWaitForExit(5e3);
+    await this.start(configPath);
+  }
+  async stopAndWaitForExit(timeoutMs) {
+    if (!this.process) return;
+    const current = this.process;
+    this.stop();
+    await new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        resolve();
+      };
+      const timer = setTimeout(finish, timeoutMs);
+      current.once("close", () => {
+        clearTimeout(timer);
+        finish();
+      });
+    });
+  }
+  normalizeProcessNames(processes) {
+    const set = /* @__PURE__ */ new Set();
+    for (const item of processes) {
+      const normalized = String(item || "").replace(/\\/g, "/").split("/").pop()?.trim() || "";
+      if (!normalized) continue;
+      set.add(normalized);
+      const lower = normalized.toLowerCase();
+      if (lower !== normalized) set.add(lower);
+    }
+    return Array.from(set);
+  }
+  sameStringArray(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b)) return false;
+    if (a.length !== b.length) return false;
+    const left = [...a].map((v) => String(v)).sort();
+    const right = [...b].map((v) => String(v)).sort();
+    return left.every((v, i) => v === right[i]);
   }
   async downloadAndInstallBinary(platform2, arch) {
     const ext = platform2 === "win32" ? ".exe" : "";
@@ -11086,11 +11192,12 @@ class ProxyMonitor {
   startMonitoring(gameId, processNames) {
     this.stopMonitoring();
     this.activeGameId = gameId;
-    this.monitoredProcessNames = new Set(processNames);
+    this.monitoredProcessNames = new Set(this.normalizeProcessNames(processNames));
     this.detectedChildProcesses.clear();
-    console.log(`[ProxyMonitor] Started monitoring for game ${gameId} with processes:`, processNames);
+    console.log(`[ProxyMonitor] Started monitoring for game ${gameId} with processes:`, [...this.monitoredProcessNames]);
     this.interval = setInterval(() => this.checkChainProxy(), 3e3);
     this.mainWindow.webContents.send("proxy-monitor:status", { status: "active", gameId });
+    void this.singboxManager.updateProcessNames([...this.monitoredProcessNames]);
   }
   stopMonitoring() {
     if (this.interval) {
@@ -11107,16 +11214,15 @@ class ProxyMonitor {
     if (!this.activeGameId) return;
     try {
       const tree = await this.processManager.getProcessTree();
-      const newChildren = this.findNewChildren(tree);
+      const newChildren = this.normalizeProcessNames(this.findNewChildren(tree)).filter((name2) => !this.monitoredProcessNames.has(name2));
       if (newChildren.length > 0) {
         newChildren.forEach((name2) => {
-          if (!this.monitoredProcessNames.has(name2)) {
-            this.monitoredProcessNames.add(name2);
-            this.detectedChildProcesses.add(name2);
-            console.log(`[ProxyMonitor] Detected new child process: ${name2}`);
-          }
+          this.monitoredProcessNames.add(name2);
+          this.detectedChildProcesses.add(name2);
+          console.log(`[ProxyMonitor] Detected new child process: ${name2}`);
         });
         this.mainWindow.webContents.send("proxy-monitor:detected", newChildren);
+        await this.singboxManager.updateProcessNames([...this.monitoredProcessNames]);
       }
     } catch (error) {
       console.error("Proxy monitor error:", error);
@@ -11125,10 +11231,12 @@ class ProxyMonitor {
   findNewChildren(nodes) {
     const found = [];
     const traverse = (node, isProxiedParent) => {
-      const isMonitored = this.monitoredProcessNames.has(node.name);
+      const normalizedName = this.normalizeProcessName(node.name);
+      if (!normalizedName) return;
+      const isMonitored = this.monitoredProcessNames.has(normalizedName);
       const shouldProxy = isProxiedParent || isMonitored;
       if (shouldProxy && !isMonitored) {
-        found.push(node.name);
+        found.push(normalizedName);
       }
       if (node.children) {
         node.children.forEach((child) => traverse(child, shouldProxy));
@@ -11136,6 +11244,23 @@ class ProxyMonitor {
     };
     nodes.forEach((node) => traverse(node, false));
     return found;
+  }
+  normalizeProcessNames(processNames) {
+    const set = /* @__PURE__ */ new Set();
+    processNames.forEach((name2) => {
+      const normalized = this.normalizeProcessName(name2);
+      if (!normalized) return;
+      set.add(normalized);
+      const lower = normalized.toLowerCase();
+      if (lower !== normalized) set.add(lower);
+    });
+    return Array.from(set);
+  }
+  normalizeProcessName(processName) {
+    const raw2 = String(processName || "").trim();
+    if (!raw2) return "";
+    const normalized = raw2.replace(/\\/g, "/");
+    return (normalized.split("/").pop() || normalized).trim();
   }
 }
 class NodeManager {
@@ -11758,6 +11883,99 @@ let tray = null;
 let singboxManager = null;
 let processManager = null;
 let dbManager = null;
+const MAX_LOG_ENTRIES = 3e3;
+const appLogs = [];
+function pushAppLog(entry) {
+  const row = {
+    id: randomUUID(),
+    timestamp: Date.now(),
+    ...entry
+  };
+  appLogs.push(row);
+  if (appLogs.length > MAX_LOG_ENTRIES) appLogs.shift();
+  win?.webContents.send("app-log:new", row);
+}
+function stringifyConsoleArg(value) {
+  if (typeof value === "string") return value;
+  if (value instanceof Error) return value.stack || value.message;
+  return inspect(value, { depth: 3, breakLength: 120 });
+}
+function truncateLogText(text, max = 4e3) {
+  if (text.length <= max) return text;
+  return `${text.slice(0, max)}...`;
+}
+function inferLogCategory(message) {
+  return message.includes("[SingBox]") ? "core" : "backend";
+}
+function installMainConsoleLogCapture() {
+  const original = {
+    debug: console.debug.bind(console),
+    info: console.info.bind(console),
+    warn: console.warn.bind(console),
+    error: console.error.bind(console),
+    log: console.log.bind(console)
+  };
+  const install = (method, level) => {
+    console[method] = (...args) => {
+      original[method](...args);
+      const text = truncateLogText(args.map(stringifyConsoleArg).join(" ").trim());
+      pushAppLog({
+        level,
+        category: inferLogCategory(text),
+        source: "main",
+        message: text || "(empty)"
+      });
+    };
+  };
+  install("debug", "debug");
+  install("info", "info");
+  install("warn", "warn");
+  install("error", "error");
+  install("log", "info");
+}
+installMainConsoleLogCapture();
+ipcMain.handle("logs:get-all", () => appLogs);
+ipcMain.handle("logs:clear", () => {
+  appLogs.length = 0;
+});
+ipcMain.handle("logs:push-frontend", (_, payload) => {
+  const level = payload.level === "debug" || payload.level === "warn" || payload.level === "error" ? payload.level : "info";
+  pushAppLog({
+    level,
+    category: "frontend",
+    source: String(payload.source || "renderer"),
+    message: truncateLogText(String(payload.message || "(empty)")),
+    detail: payload.detail ? truncateLogText(String(payload.detail)) : void 0
+  });
+});
+function formatStartupError(error) {
+  const raw2 = String(error?.stack || error?.message || error || "Unknown error");
+  const lower = raw2.toLowerCase();
+  if (lower.includes("better_sqlite3.node") && lower.includes("not a valid win32 application")) {
+    return [
+      "Failed to load better-sqlite3 native module due to architecture mismatch.",
+      "",
+      `Current runtime arch: ${process.arch}`,
+      "Fix command: pnpm rebuild better-sqlite3",
+      "",
+      "Details:",
+      raw2
+    ].join("\n");
+  }
+  if (lower.includes("better_sqlite3.node") && lower.includes("compiled against a different node.js version")) {
+    return [
+      "Failed to load better-sqlite3 due to native ABI mismatch.",
+      "",
+      `Current runtime: electron ${process.versions.electron}, modules ${process.versions.modules}, arch ${process.arch}`,
+      "Fix command: pnpm run rebuild:native",
+      "Fallback command: pnpm run rebuild:sqlite",
+      "",
+      "Details:",
+      raw2
+    ].join("\n");
+  }
+  return raw2;
+}
 function loadAppIcon() {
   const baseDir = process.env.VITE_PUBLIC || "";
   const candidates = [
@@ -11882,6 +12100,15 @@ app.on("activate", () => {
 });
 app.whenReady().then(() => {
   createWindow();
+}).catch((error) => {
+  const message = formatStartupError(error);
+  console.error("[Main] App startup failed:", message);
+  dialog.showErrorBox("LagZero startup failed", message);
+  app.quit();
+});
+process.on("unhandledRejection", (reason) => {
+  const message = formatStartupError(reason);
+  console.error("[Main] Unhandled rejection:", message);
 });
 app.on("before-quit", () => {
   tray?.destroy();
@@ -11938,6 +12165,312 @@ async function scanDir(dir, maxDepth, currentDepth = 1) {
   }
   return results;
 }
+const GAME_SCAN_IGNORE_DIR_NAMES = /* @__PURE__ */ new Set([
+  "_commonredist",
+  "redist",
+  "redistributable",
+  "installer",
+  "installers",
+  "directx",
+  "vcredist",
+  "prereq",
+  "prerequisites",
+  "support",
+  "tools",
+  "launcher"
+]);
+const GAME_SCAN_IGNORE_EXE_KEYWORDS = [
+  "setup",
+  "unins",
+  "uninstall",
+  "installer",
+  "crashreport",
+  "updater",
+  "helper",
+  "bootstrap"
+];
+const GAME_SCAN_EXE_HARD_EXCLUDE = /* @__PURE__ */ new Set([
+  "unitycrashhandler64.exe",
+  "unitycrashhandler32.exe"
+]);
+function normalizeDisplayName(name2) {
+  return name2.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+}
+function normalizeFsPath(p) {
+  return path$1.normalize(p).replace(/[\\\/]+$/, "").toLowerCase();
+}
+async function safeReadDir(dir) {
+  try {
+    return await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+}
+async function getWindowsDriveRoots() {
+  if (process.platform !== "win32") return [];
+  const roots = [];
+  for (let i = 67; i <= 90; i += 1) {
+    const letter = String.fromCharCode(i);
+    const root = `${letter}:\\`;
+    if (await fs.pathExists(root)) roots.push(root);
+  }
+  return roots;
+}
+function basenameLower(p) {
+  return path$1.basename(p).toLowerCase();
+}
+function shouldSkipExeByName(exeName) {
+  const lower = exeName.toLowerCase();
+  if (!lower.endsWith(".exe")) return true;
+  if (GAME_SCAN_EXE_HARD_EXCLUDE.has(lower)) return true;
+  return GAME_SCAN_IGNORE_EXE_KEYWORDS.some((k) => lower.includes(k));
+}
+async function collectExePaths(dir, maxDepth, currentDepth = 1) {
+  const results = [];
+  const dirents = await safeReadDir(dir);
+  for (const dirent of dirents) {
+    const full = path$1.join(dir, dirent.name);
+    if (dirent.isDirectory()) {
+      const folderName = dirent.name.toLowerCase();
+      if (GAME_SCAN_IGNORE_DIR_NAMES.has(folderName)) continue;
+      if (currentDepth < maxDepth) {
+        const sub = await collectExePaths(full, maxDepth, currentDepth + 1);
+        results.push(...sub);
+      }
+      continue;
+    }
+    if (!dirent.isFile() || !dirent.name.toLowerCase().endsWith(".exe")) continue;
+    if (shouldSkipExeByName(dirent.name)) continue;
+    results.push(full);
+  }
+  return results;
+}
+async function pickBestExecutable(gameDir, displayName) {
+  const exes = await collectExePaths(gameDir, 3);
+  if (exes.length === 0) return null;
+  if (exes.length === 1) return exes[0] || null;
+  const target = normalizeDisplayName(displayName).toLowerCase();
+  const ranked = await Promise.all(exes.map(async (exe) => {
+    let score = 0;
+    const base = basenameLower(exe).replace(/\.exe$/, "");
+    const full = exe.toLowerCase();
+    if (base === target) score += 10;
+    if (base.includes(target)) score += 6;
+    if (target.includes(base)) score += 4;
+    if (!full.includes("launcher")) score += 2;
+    try {
+      const stat2 = await fs.stat(exe);
+      score += Math.min(8, Math.floor((stat2.size || 0) / (40 * 1024 * 1024)));
+    } catch {
+    }
+    return { exe, score };
+  }));
+  ranked.sort((a, b) => b.score - a.score);
+  return ranked[0]?.exe || null;
+}
+async function readSteamLibraryRoots() {
+  const drives = await getWindowsDriveRoots();
+  const candidateSteamRoots = Array.from(new Set(
+    drives.flatMap((root) => [
+      path$1.join(root, "Program Files (x86)", "Steam"),
+      path$1.join(root, "Program Files", "Steam"),
+      path$1.join(root, "Steam")
+    ])
+  ));
+  const libs = /* @__PURE__ */ new Set();
+  for (const steamRoot of candidateSteamRoots) {
+    const libraryVdf = path$1.join(steamRoot, "steamapps", "libraryfolders.vdf");
+    if (!await fs.pathExists(libraryVdf)) continue;
+    libs.add(path$1.normalize(steamRoot));
+    try {
+      const content = await fs.readFile(libraryVdf, "utf8");
+      const lines = content.split(/\r?\n/);
+      for (const line of lines) {
+        const m = line.match(/"path"\s+"([^"]+)"/i);
+        if (!m?.[1]) continue;
+        const p = m[1].replace(/\\\\/g, "\\").trim();
+        if (p) libs.add(path$1.normalize(p));
+      }
+    } catch (e) {
+      console.warn("[GameScan] Failed to parse Steam libraryfolders.vdf:", e);
+    }
+  }
+  return Array.from(libs);
+}
+async function scanSteamGames() {
+  const roots = await readSteamLibraryRoots();
+  const results = [];
+  for (const libRoot of roots) {
+    const commonDir = path$1.join(libRoot, "steamapps", "common");
+    if (!await fs.pathExists(commonDir)) continue;
+    const games = await safeReadDir(commonDir);
+    for (const entry of games) {
+      if (!entry.isDirectory()) continue;
+      const installDir = path$1.join(commonDir, entry.name);
+      const exe = await pickBestExecutable(installDir, entry.name);
+      if (!exe) continue;
+      results.push({
+        name: normalizeDisplayName(entry.name),
+        processName: path$1.basename(exe),
+        source: "steam",
+        installDir
+      });
+    }
+  }
+  return results;
+}
+async function scanFlatPlatformFolder(source, roots) {
+  const results = [];
+  for (const root of roots) {
+    if (!await fs.pathExists(root)) continue;
+    const entries = await safeReadDir(root);
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const installDir = path$1.join(root, entry.name);
+      const exe = await pickBestExecutable(installDir, entry.name);
+      if (!exe) continue;
+      results.push({
+        name: normalizeDisplayName(entry.name),
+        processName: path$1.basename(exe),
+        source,
+        installDir
+      });
+    }
+  }
+  return results;
+}
+function pickBestNameFromHints(installDir, hints) {
+  const dirKey = normalizeFsPath(installDir);
+  let bestName = "";
+  let bestLen = -1;
+  for (const [hintPath, hintName] of hints.entries()) {
+    if (!hintName) continue;
+    if (dirKey === hintPath || dirKey.startsWith(`${hintPath}\\`) || hintPath.startsWith(`${dirKey}\\`)) {
+      if (hintPath.length > bestLen) {
+        bestLen = hintPath.length;
+        bestName = hintName;
+      }
+    }
+  }
+  return bestName;
+}
+function parsePowershellJson(raw2) {
+  const text = raw2.trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) return parsed;
+    if (parsed && typeof parsed === "object") return [parsed];
+    return [];
+  } catch {
+    return [];
+  }
+}
+async function getRegistryDisplayNameHints() {
+  const map = /* @__PURE__ */ new Map();
+  if (process.platform !== "win32") return map;
+  const script = [
+    "$roots = @(",
+    "  'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',",
+    "  'HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',",
+    "  'HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'",
+    ")",
+    "$items = foreach ($r in $roots) {",
+    "  Get-ItemProperty -Path $r -ErrorAction SilentlyContinue |",
+    "    Where-Object { $_.DisplayName -and $_.InstallLocation } |",
+    "    Select-Object DisplayName, InstallLocation",
+    "}",
+    "$items | ConvertTo-Json -Compress"
+  ].join("; ");
+  const { code: code2, output } = await runCommand("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script], 15e3);
+  if (code2 !== 0 || !output) return map;
+  const rows = parsePowershellJson(output);
+  for (const row of rows) {
+    const name2 = String(row.DisplayName || "").trim();
+    const location = String(row.InstallLocation || "").trim();
+    if (!name2 || !location) continue;
+    map.set(normalizeFsPath(location), name2);
+  }
+  return map;
+}
+function parseDisplayNameFromManifest(content) {
+  const displayName = content.match(/<DisplayName>([^<]+)<\/DisplayName>/i)?.[1]?.trim() || "";
+  const identityName = content.match(/<Identity[^>]*\sName="([^"]+)"/i)?.[1]?.trim() || "";
+  if (displayName && !/^ms-resource:/i.test(displayName)) return displayName;
+  return identityName;
+}
+async function getManifestDisplayNameHints(xboxRoots) {
+  const map = /* @__PURE__ */ new Map();
+  for (const root of xboxRoots) {
+    if (!await fs.pathExists(root)) continue;
+    const entries = await safeReadDir(root);
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const gameDir = path$1.join(root, entry.name);
+      const manifestCandidates = [
+        path$1.join(gameDir, "AppxManifest.xml"),
+        path$1.join(gameDir, "Content", "AppxManifest.xml")
+      ];
+      for (const manifestPath of manifestCandidates) {
+        if (!await fs.pathExists(manifestPath)) continue;
+        try {
+          const content = await fs.readFile(manifestPath, "utf8");
+          const parsedName = parseDisplayNameFromManifest(content);
+          if (!parsedName) continue;
+          map.set(normalizeFsPath(gameDir), normalizeDisplayName(parsedName));
+          break;
+        } catch {
+        }
+      }
+    }
+  }
+  return map;
+}
+async function scanMicrosoftGames() {
+  const drives = await getWindowsDriveRoots();
+  const roots = drives.map((root) => path$1.join(root, "XboxGames"));
+  const base = await scanFlatPlatformFolder("microsoft", roots);
+  const [registryHints, manifestHints] = await Promise.all([
+    getRegistryDisplayNameHints(),
+    getManifestDisplayNameHints(roots)
+  ]);
+  const hints = new Map([...registryHints, ...manifestHints]);
+  return base.map((game) => {
+    const hintName = pickBestNameFromHints(game.installDir, hints);
+    return hintName ? { ...game, name: hintName } : game;
+  });
+}
+async function scanLocalGamesFromPlatforms() {
+  if (process.platform !== "win32") return [];
+  const drives = await getWindowsDriveRoots();
+  const [steam, microsoft, epic, ea] = await Promise.all([
+    scanSteamGames(),
+    scanMicrosoftGames(),
+    scanFlatPlatformFolder("epic", Array.from(new Set(
+      drives.flatMap((root) => [
+        path$1.join(root, "Epic Games"),
+        path$1.join(root, "Program Files", "Epic Games"),
+        path$1.join(root, "Program Files (x86)", "Epic Games")
+      ])
+    ))),
+    scanFlatPlatformFolder("ea", Array.from(new Set(
+      drives.flatMap((root) => [
+        path$1.join(root, "EA Games"),
+        path$1.join(root, "Electronic Arts"),
+        path$1.join(root, "Program Files", "EA Games"),
+        path$1.join(root, "Program Files", "Electronic Arts"),
+        path$1.join(root, "Program Files (x86)", "EA Games"),
+        path$1.join(root, "Program Files (x86)", "Electronic Arts")
+      ])
+    )))
+  ]);
+  const dedup = /* @__PURE__ */ new Map();
+  for (const game of [...steam, ...microsoft, ...epic, ...ea]) {
+    const key = `${game.name.toLowerCase()}|${game.processName.toLowerCase()}`;
+    if (!dedup.has(key)) dedup.set(key, game);
+  }
+  return Array.from(dedup.values());
+}
 ipcMain.handle("dialog:pick-process-folder", async (_, maxDepth = 1) => {
   if (!win) return null;
   const result = await dialog.showOpenDialog(win, {
@@ -11953,6 +12486,14 @@ ipcMain.handle("system:tcp-ping", async (_, host, port) => {
     return await tcpPing(host, port);
   } catch (e) {
     return { latency: -1, loss: 100 };
+  }
+});
+ipcMain.handle("system:scan-local-games", async () => {
+  try {
+    return await scanLocalGamesFromPlatforms();
+  } catch (error) {
+    console.error("[GameScan] Failed to scan local games:", error);
+    return [];
   }
 });
 function runCommand(command, args, timeoutMs = 15e3) {

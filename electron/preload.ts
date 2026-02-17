@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 const ipcListenerMap = new Map<string, Map<(...args: any[]) => void, (...args: any[]) => void>>()
+const appLogListenerMap = new Map<(entry: any) => void, (...args: any[]) => void>()
 
 contextBridge.exposeInMainWorld('electron', {
   minimize: () => ipcRenderer.invoke('window-minimize'),
@@ -33,6 +34,7 @@ contextBridge.exposeInMainWorld('singbox', {
 
 contextBridge.exposeInMainWorld('system', {
   scanProcesses: () => ipcRenderer.invoke('process-scan'),
+  scanLocalGames: () => ipcRenderer.invoke('system:scan-local-games'),
   getProcessTree: () => ipcRenderer.invoke('process-tree'),
   ping: (host: string) => ipcRenderer.invoke('system:ping', host),
   tcpPing: (host: string, port: number) => ipcRenderer.invoke('system:tcp-ping', host, port),
@@ -68,4 +70,21 @@ contextBridge.exposeInMainWorld('app', {
   getVersion: () => ipcRenderer.invoke('app:get-version'),
   checkUpdate: () => ipcRenderer.invoke('app:check-update'),
   openUrl: (url: string) => ipcRenderer.invoke('app:open-url', url),
+})
+
+contextBridge.exposeInMainWorld('logs', {
+  getAll: () => ipcRenderer.invoke('logs:get-all'),
+  clear: () => ipcRenderer.invoke('logs:clear'),
+  pushFrontend: (entry: any) => ipcRenderer.invoke('logs:push-frontend', entry),
+  onNew: (callback: (entry: any) => void) => {
+    const wrapped = (_event: any, entry: any) => callback(entry)
+    appLogListenerMap.set(callback, wrapped)
+    ipcRenderer.on('app-log:new', wrapped)
+  },
+  offNew: (callback: (entry: any) => void) => {
+    const wrapped = appLogListenerMap.get(callback)
+    if (!wrapped) return
+    ipcRenderer.removeListener('app-log:new', wrapped)
+    appLogListenerMap.delete(callback)
+  }
 })

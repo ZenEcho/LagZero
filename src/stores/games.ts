@@ -188,8 +188,10 @@ export const useGameStore = defineStore('games', () => {
       await window.singbox.start(config)
 
       const procs = Array.isArray(rawGame.processName) ? rawGame.processName.map(p => String(p)) : [String(rawGame.processName)]
+      const shouldEnableChainProxy = rawGame.proxyMode === 'process' && rawGame.chainProxy !== false
       // @ts-ignore
-      await window.proxyMonitor.start(String(rawGame.id), procs)
+      if (shouldEnableChainProxy) await window.proxyMonitor.start(String(rawGame.id), procs)
+      else await window.proxyMonitor.stop()
 
       setGameStatus(id, 'accelerating')
     } catch (e) {

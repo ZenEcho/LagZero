@@ -38,14 +38,16 @@ export class ProxyMonitor {
   startMonitoring(gameId: string, processNames: string[]) {
     this.stopMonitoring();
     this.activeGameId = gameId;
-    this.monitoredProcessNames = new Set(processNames);
+    this.monitoredProcessNames = new Set(this.normalizeProcessNames(processNames));
     this.detectedChildProcesses.clear();
 
-    console.log(`[ProxyMonitor] Started monitoring for game ${gameId} with processes:`, processNames);
+    console.log(`[ProxyMonitor] Started monitoring for game ${gameId} with processes:`, [...this.monitoredProcessNames]);
 
     // Start polling
     this.interval = setInterval(() => this.checkChainProxy(), 3000);
     this.mainWindow.webContents.send('proxy-monitor:status', { status: 'active', gameId });
+
+    void this.singboxManager.updateProcessNames([...this.monitoredProcessNames]);
   }
 
   stopMonitoring() {
@@ -65,23 +67,21 @@ export class ProxyMonitor {
 
     try {
       const tree = await this.processManager.getProcessTree();
-      const newChildren = this.findNewChildren(tree);
+      const newChildren = this.normalizeProcessNames(this.findNewChildren(tree))
+        .filter(name => !this.monitoredProcessNames.has(name));
 
       if (newChildren.length > 0) {
         // Add new children to monitored set
         newChildren.forEach(name => {
-          if (!this.monitoredProcessNames.has(name)) {
-            this.monitoredProcessNames.add(name);
-            this.detectedChildProcesses.add(name);
-            console.log(`[ProxyMonitor] Detected new child process: ${name}`);
-          }
+          this.monitoredProcessNames.add(name);
+          this.detectedChildProcesses.add(name);
+          console.log(`[ProxyMonitor] Detected new child process: ${name}`);
         });
 
         // Notify frontend
         this.mainWindow.webContents.send('proxy-monitor:detected', newChildren);
 
-        // TODO: Dynamically update SingBox rules
-        // this.singboxManager.updateRules([...this.monitoredProcessNames]);
+        await this.singboxManager.updateProcessNames([...this.monitoredProcessNames]);
       }
     } catch (error) {
       console.error('Proxy monitor error:', error);
@@ -93,12 +93,15 @@ export class ProxyMonitor {
     
     // Recursive traversal to find children of monitored processes
     const traverse = (node: ProcessInfo, isProxiedParent: boolean) => {
-      const isMonitored = this.monitoredProcessNames.has(node.name);
+      const normalizedName = this.normalizeProcessName(node.name);
+      if (!normalizedName) return;
+
+      const isMonitored = this.monitoredProcessNames.has(normalizedName);
       // If parent is proxied, child should be proxied (Chain Proxy)
       const shouldProxy = isProxiedParent || isMonitored;
 
       if (shouldProxy && !isMonitored) {
-        found.push(node.name);
+        found.push(normalizedName);
       }
 
       if (node.children) {
@@ -108,5 +111,24 @@ export class ProxyMonitor {
 
     nodes.forEach(node => traverse(node, false));
     return found;
+  }
+
+  private normalizeProcessNames(processNames: string[]): string[] {
+    const set = new Set<string>();
+    processNames.forEach(name => {
+      const normalized = this.normalizeProcessName(name);
+      if (!normalized) return;
+      set.add(normalized);
+      const lower = normalized.toLowerCase();
+      if (lower !== normalized) set.add(lower);
+    });
+    return Array.from(set);
+  }
+
+  private normalizeProcessName(processName: string): string {
+    const raw = String(processName || '').trim();
+    if (!raw) return '';
+    const normalized = raw.replace(/\\/g, '/');
+    return (normalized.split('/').pop() || normalized).trim();
   }
 }

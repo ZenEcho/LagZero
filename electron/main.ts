@@ -3,6 +3,8 @@ import { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, NativeIma
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
+import { inspect } from 'node:util'
+import { randomUUID } from 'node:crypto'
 import fs from 'fs-extra'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -49,6 +51,129 @@ let categoryManager: CategoryManager | null = null
 let proxyMonitor: ProxyMonitor | null = null
 let nodeManager: NodeManager | null = null
 let dbManager: DatabaseManager | null = null
+
+type AppLogLevel = 'debug' | 'info' | 'warn' | 'error'
+type AppLogCategory = 'frontend' | 'backend' | 'core'
+
+type AppLogEntry = {
+  id: string
+  timestamp: number
+  level: AppLogLevel
+  category: AppLogCategory
+  source: string
+  message: string
+  detail?: string
+}
+
+const MAX_LOG_ENTRIES = 3000
+const appLogs: AppLogEntry[] = []
+
+function pushAppLog(entry: Omit<AppLogEntry, 'id' | 'timestamp'>) {
+  const row: AppLogEntry = {
+    id: randomUUID(),
+    timestamp: Date.now(),
+    ...entry
+  }
+  appLogs.push(row)
+  if (appLogs.length > MAX_LOG_ENTRIES) appLogs.shift()
+  win?.webContents.send('app-log:new', row)
+}
+
+function stringifyConsoleArg(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (value instanceof Error) return value.stack || value.message
+  return inspect(value, { depth: 3, breakLength: 120 })
+}
+
+function truncateLogText(text: string, max = 4000) {
+  if (text.length <= max) return text
+  return `${text.slice(0, max)}...`
+}
+
+function inferLogCategory(message: string): AppLogCategory {
+  return message.includes('[SingBox]') ? 'core' : 'backend'
+}
+
+function installMainConsoleLogCapture() {
+  const original = {
+    debug: console.debug.bind(console),
+    info: console.info.bind(console),
+    warn: console.warn.bind(console),
+    error: console.error.bind(console),
+    log: console.log.bind(console)
+  }
+
+  const install = (method: keyof typeof original, level: AppLogLevel) => {
+    ;(console as any)[method] = (...args: unknown[]) => {
+      original[method](...args as any[])
+      const text = truncateLogText(args.map(stringifyConsoleArg).join(' ').trim())
+      pushAppLog({
+        level,
+        category: inferLogCategory(text),
+        source: 'main',
+        message: text || '(empty)'
+      })
+    }
+  }
+
+  install('debug', 'debug')
+  install('info', 'info')
+  install('warn', 'warn')
+  install('error', 'error')
+  install('log', 'info')
+}
+
+installMainConsoleLogCapture()
+
+ipcMain.handle('logs:get-all', () => appLogs)
+ipcMain.handle('logs:clear', () => {
+  appLogs.length = 0
+})
+ipcMain.handle('logs:push-frontend', (_, payload: Partial<AppLogEntry>) => {
+  const level: AppLogLevel = payload.level === 'debug' || payload.level === 'warn' || payload.level === 'error'
+    ? payload.level
+    : 'info'
+
+  pushAppLog({
+    level,
+    category: 'frontend',
+    source: String(payload.source || 'renderer'),
+    message: truncateLogText(String(payload.message || '(empty)')),
+    detail: payload.detail ? truncateLogText(String(payload.detail)) : undefined
+  })
+})
+
+function formatStartupError(error: unknown) {
+  const raw = String((error as any)?.stack || (error as any)?.message || error || 'Unknown error')
+  const lower = raw.toLowerCase()
+
+  if (lower.includes('better_sqlite3.node') && lower.includes('not a valid win32 application')) {
+    return [
+      'Failed to load better-sqlite3 native module due to architecture mismatch.',
+      '',
+      `Current runtime arch: ${process.arch}`,
+      'Fix command: pnpm rebuild better-sqlite3',
+      '',
+      'Details:',
+      raw
+    ].join('\n')
+  }
+
+  if (lower.includes('better_sqlite3.node') && lower.includes('compiled against a different node.js version')) {
+    return [
+      'Failed to load better-sqlite3 due to native ABI mismatch.',
+      '',
+      `Current runtime: electron ${process.versions.electron}, modules ${process.versions.modules}, arch ${process.arch}`,
+      'Fix command: pnpm run rebuild:native',
+      'Fallback command: pnpm run rebuild:sqlite',
+      '',
+      'Details:',
+      raw
+    ].join('\n')
+  }
+
+  return raw
+}
 
 function loadAppIcon(): NativeImage | null {
   const baseDir = process.env.VITE_PUBLIC || ''
@@ -196,8 +321,20 @@ app.on('activate', () => {
   }
 })
 
-app.whenReady().then(() => {
-  createWindow()
+app.whenReady()
+  .then(() => {
+    createWindow()
+  })
+  .catch((error) => {
+    const message = formatStartupError(error)
+    console.error('[Main] App startup failed:', message)
+    dialog.showErrorBox('LagZero startup failed', message)
+    app.quit()
+  })
+
+process.on('unhandledRejection', (reason) => {
+  const message = formatStartupError(reason)
+  console.error('[Main] Unhandled rejection:', message)
 })
 
 app.on('before-quit', () => {
@@ -266,6 +403,374 @@ async function scanDir(dir: string, maxDepth: number, currentDepth: number = 1):
   return results
 }
 
+type LocalGameScanResult = {
+  name: string
+  processName: string
+  source: 'steam' | 'microsoft' | 'epic' | 'ea'
+  installDir: string
+}
+
+const GAME_SCAN_IGNORE_DIR_NAMES = new Set([
+  '_commonredist',
+  'redist',
+  'redistributable',
+  'installer',
+  'installers',
+  'directx',
+  'vcredist',
+  'prereq',
+  'prerequisites',
+  'support',
+  'tools',
+  'launcher'
+])
+
+const GAME_SCAN_IGNORE_EXE_KEYWORDS = [
+  'setup',
+  'unins',
+  'uninstall',
+  'installer',
+  'crashreport',
+  'updater',
+  'helper',
+  'bootstrap'
+]
+
+const GAME_SCAN_EXE_HARD_EXCLUDE = new Set([
+  'unitycrashhandler64.exe',
+  'unitycrashhandler32.exe'
+])
+
+function normalizeDisplayName(name: string) {
+  return name
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function normalizeFsPath(p: string) {
+  return path.normalize(p).replace(/[\\\/]+$/, '').toLowerCase()
+}
+
+async function safeReadDir(dir: string) {
+  try {
+    return await fs.readdir(dir, { withFileTypes: true })
+  } catch {
+    return []
+  }
+}
+
+async function getWindowsDriveRoots(): Promise<string[]> {
+  if (process.platform !== 'win32') return []
+  const roots: string[] = []
+  for (let i = 67; i <= 90; i += 1) {
+    const letter = String.fromCharCode(i)
+    const root = `${letter}:\\`
+    if (await fs.pathExists(root)) roots.push(root)
+  }
+  return roots
+}
+
+function basenameLower(p: string) {
+  return path.basename(p).toLowerCase()
+}
+
+function shouldSkipExeByName(exeName: string) {
+  const lower = exeName.toLowerCase()
+  if (!lower.endsWith('.exe')) return true
+  if (GAME_SCAN_EXE_HARD_EXCLUDE.has(lower)) return true
+  return GAME_SCAN_IGNORE_EXE_KEYWORDS.some(k => lower.includes(k))
+}
+
+async function collectExePaths(dir: string, maxDepth: number, currentDepth: number = 1): Promise<string[]> {
+  const results: string[] = []
+  const dirents = await safeReadDir(dir)
+
+  for (const dirent of dirents) {
+    const full = path.join(dir, dirent.name)
+    if (dirent.isDirectory()) {
+      const folderName = dirent.name.toLowerCase()
+      if (GAME_SCAN_IGNORE_DIR_NAMES.has(folderName)) continue
+      if (maxDepth === -1 || currentDepth < maxDepth) {
+        const sub = await collectExePaths(full, maxDepth, currentDepth + 1)
+        results.push(...sub)
+      }
+      continue
+    }
+
+    if (!dirent.isFile() || !dirent.name.toLowerCase().endsWith('.exe')) continue
+    if (shouldSkipExeByName(dirent.name)) continue
+    results.push(full)
+  }
+
+  return results
+}
+
+async function pickBestExecutable(gameDir: string, displayName: string): Promise<string | null> {
+  const exes = await collectExePaths(gameDir, 3)
+  if (exes.length === 0) return null
+  if (exes.length === 1) return exes[0] || null
+
+  const target = normalizeDisplayName(displayName).toLowerCase()
+  const ranked = await Promise.all(exes.map(async (exe) => {
+    let score = 0
+    const base = basenameLower(exe).replace(/\.exe$/, '')
+    const full = exe.toLowerCase()
+
+    if (base === target) score += 10
+    if (base.includes(target)) score += 6
+    if (target.includes(base)) score += 4
+    if (!full.includes('launcher')) score += 2
+
+    try {
+      const stat = await fs.stat(exe)
+      score += Math.min(8, Math.floor((stat.size || 0) / (40 * 1024 * 1024)))
+    } catch {
+      // ignore stat errors and keep heuristic score
+    }
+
+    return { exe, score }
+  }))
+
+  ranked.sort((a, b) => b.score - a.score)
+  return ranked[0]?.exe || null
+}
+
+async function readSteamLibraryRoots(): Promise<string[]> {
+  const drives = await getWindowsDriveRoots()
+  const candidateSteamRoots = Array.from(new Set(
+    drives.flatMap(root => [
+      path.join(root, 'Program Files (x86)', 'Steam'),
+      path.join(root, 'Program Files', 'Steam'),
+      path.join(root, 'Steam')
+    ])
+  ))
+  const libs = new Set<string>()
+
+  for (const steamRoot of candidateSteamRoots) {
+    const libraryVdf = path.join(steamRoot, 'steamapps', 'libraryfolders.vdf')
+    if (!await fs.pathExists(libraryVdf)) continue
+
+    libs.add(path.normalize(steamRoot))
+    try {
+      const content = await fs.readFile(libraryVdf, 'utf8')
+      const lines = content.split(/\r?\n/)
+      for (const line of lines) {
+        const m = line.match(/"path"\s+"([^"]+)"/i)
+        if (!m?.[1]) continue
+        const p = m[1].replace(/\\\\/g, '\\').trim()
+        if (p) libs.add(path.normalize(p))
+      }
+    } catch (e) {
+      console.warn('[GameScan] Failed to parse Steam libraryfolders.vdf:', e)
+    }
+  }
+
+  return Array.from(libs)
+}
+
+async function scanSteamGames(): Promise<LocalGameScanResult[]> {
+  const roots = await readSteamLibraryRoots()
+  const results: LocalGameScanResult[] = []
+
+  for (const libRoot of roots) {
+    const commonDir = path.join(libRoot, 'steamapps', 'common')
+    if (!await fs.pathExists(commonDir)) continue
+
+    const games = await safeReadDir(commonDir)
+    for (const entry of games) {
+      if (!entry.isDirectory()) continue
+      const installDir = path.join(commonDir, entry.name)
+      const exe = await pickBestExecutable(installDir, entry.name)
+      if (!exe) continue
+      results.push({
+        name: normalizeDisplayName(entry.name),
+        processName: path.basename(exe),
+        source: 'steam',
+        installDir
+      })
+    }
+  }
+
+  return results
+}
+
+async function scanFlatPlatformFolder(source: 'epic' | 'ea' | 'microsoft', roots: string[]): Promise<LocalGameScanResult[]> {
+  const results: LocalGameScanResult[] = []
+
+  for (const root of roots) {
+    if (!await fs.pathExists(root)) continue
+    const entries = await safeReadDir(root)
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const installDir = path.join(root, entry.name)
+      const exe = await pickBestExecutable(installDir, entry.name)
+      if (!exe) continue
+      results.push({
+        name: normalizeDisplayName(entry.name),
+        processName: path.basename(exe),
+        source,
+        installDir
+      })
+    }
+  }
+
+  return results
+}
+
+function pickBestNameFromHints(installDir: string, hints: Map<string, string>) {
+  const dirKey = normalizeFsPath(installDir)
+  let bestName = ''
+  let bestLen = -1
+
+  for (const [hintPath, hintName] of hints.entries()) {
+    if (!hintName) continue
+    if (dirKey === hintPath || dirKey.startsWith(`${hintPath}\\`) || hintPath.startsWith(`${dirKey}\\`)) {
+      if (hintPath.length > bestLen) {
+        bestLen = hintPath.length
+        bestName = hintName
+      }
+    }
+  }
+  return bestName
+}
+
+function parsePowershellJson<T>(raw: string): T[] {
+  const text = raw.trim()
+  if (!text) return []
+  try {
+    const parsed = JSON.parse(text)
+    if (Array.isArray(parsed)) return parsed as T[]
+    if (parsed && typeof parsed === 'object') return [parsed as T]
+    return []
+  } catch {
+    return []
+  }
+}
+
+async function getRegistryDisplayNameHints(): Promise<Map<string, string>> {
+  const map = new Map<string, string>()
+  if (process.platform !== 'win32') return map
+
+  const script = [
+    "$roots = @(",
+    "  'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',",
+    "  'HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',",
+    "  'HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'",
+    ")",
+    "$items = foreach ($r in $roots) {",
+    "  Get-ItemProperty -Path $r -ErrorAction SilentlyContinue |",
+    "    Where-Object { $_.DisplayName -and $_.InstallLocation } |",
+    "    Select-Object DisplayName, InstallLocation",
+    "}",
+    "$items | ConvertTo-Json -Compress"
+  ].join('; ')
+
+  const { code, output } = await runCommand('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], 15000)
+  if (code !== 0 || !output) return map
+
+  const rows = parsePowershellJson<{ DisplayName?: string, InstallLocation?: string }>(output)
+  for (const row of rows) {
+    const name = String(row.DisplayName || '').trim()
+    const location = String(row.InstallLocation || '').trim()
+    if (!name || !location) continue
+    map.set(normalizeFsPath(location), name)
+  }
+
+  return map
+}
+
+function parseDisplayNameFromManifest(content: string): string {
+  const displayName = content.match(/<DisplayName>([^<]+)<\/DisplayName>/i)?.[1]?.trim() || ''
+  const identityName = content.match(/<Identity[^>]*\sName="([^"]+)"/i)?.[1]?.trim() || ''
+  if (displayName && !/^ms-resource:/i.test(displayName)) return displayName
+  return identityName
+}
+
+async function getManifestDisplayNameHints(xboxRoots: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>()
+
+  for (const root of xboxRoots) {
+    if (!await fs.pathExists(root)) continue
+    const entries = await safeReadDir(root)
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const gameDir = path.join(root, entry.name)
+      const manifestCandidates = [
+        path.join(gameDir, 'AppxManifest.xml'),
+        path.join(gameDir, 'Content', 'AppxManifest.xml')
+      ]
+
+      for (const manifestPath of manifestCandidates) {
+        if (!await fs.pathExists(manifestPath)) continue
+        try {
+          const content = await fs.readFile(manifestPath, 'utf8')
+          const parsedName = parseDisplayNameFromManifest(content)
+          if (!parsedName) continue
+          map.set(normalizeFsPath(gameDir), normalizeDisplayName(parsedName))
+          break
+        } catch {
+          // ignore manifest read errors
+        }
+      }
+    }
+  }
+
+  return map
+}
+
+async function scanMicrosoftGames(): Promise<LocalGameScanResult[]> {
+  const drives = await getWindowsDriveRoots()
+  const roots = drives.map(root => path.join(root, 'XboxGames'))
+  const base = await scanFlatPlatformFolder('microsoft', roots)
+
+  const [registryHints, manifestHints] = await Promise.all([
+    getRegistryDisplayNameHints(),
+    getManifestDisplayNameHints(roots)
+  ])
+  const hints = new Map<string, string>([...registryHints, ...manifestHints])
+
+  return base.map(game => {
+    const hintName = pickBestNameFromHints(game.installDir, hints)
+    return hintName ? { ...game, name: hintName } : game
+  })
+}
+
+async function scanLocalGamesFromPlatforms(): Promise<LocalGameScanResult[]> {
+  if (process.platform !== 'win32') return []
+  const drives = await getWindowsDriveRoots()
+
+  const [steam, microsoft, epic, ea] = await Promise.all([
+    scanSteamGames(),
+    scanMicrosoftGames(),
+    scanFlatPlatformFolder('epic', Array.from(new Set(
+      drives.flatMap(root => [
+        path.join(root, 'Epic Games'),
+        path.join(root, 'Program Files', 'Epic Games'),
+        path.join(root, 'Program Files (x86)', 'Epic Games')
+      ])
+    ))),
+    scanFlatPlatformFolder('ea', Array.from(new Set(
+      drives.flatMap(root => [
+        path.join(root, 'EA Games'),
+        path.join(root, 'Electronic Arts'),
+        path.join(root, 'Program Files', 'EA Games'),
+        path.join(root, 'Program Files', 'Electronic Arts'),
+        path.join(root, 'Program Files (x86)', 'EA Games'),
+        path.join(root, 'Program Files (x86)', 'Electronic Arts')
+      ])
+    )))
+  ])
+
+  const dedup = new Map<string, LocalGameScanResult>()
+  for (const game of [...steam, ...microsoft, ...epic, ...ea]) {
+    const key = `${game.name.toLowerCase()}|${game.processName.toLowerCase()}`
+    if (!dedup.has(key)) dedup.set(key, game)
+  }
+
+  return Array.from(dedup.values())
+}
+
 ipcMain.handle('dialog:pick-process-folder', async (_, maxDepth: number = 1) => {
   if (!win) return null
   const result = await dialog.showOpenDialog(win, {
@@ -282,6 +787,14 @@ ipcMain.handle('system:tcp-ping', async (_, host: string, port: number) => {
     return await tcpPing(host, port)
   } catch (e: any) {
     return { latency: -1, loss: 100 }
+  }
+})
+ipcMain.handle('system:scan-local-games', async () => {
+  try {
+    return await scanLocalGamesFromPlatforms()
+  } catch (error) {
+    console.error('[GameScan] Failed to scan local games:', error)
+    return []
   }
 })
 

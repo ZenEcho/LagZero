@@ -233,6 +233,80 @@
               </section>
             </div>
 
+            <div v-else-if="activeTab === 'logs'" class="space-y-6 animate-fade-in-up">
+              <section>
+                <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
+                  <div class="i-material-symbols-article-outline text-primary"></div>
+                  运行日志
+                </h2>
+                <div class="bg-surface-panel/50 border border-border/50 rounded-2xl p-5 backdrop-blur-sm space-y-4">
+                  <div class="grid grid-cols-1 lg:grid-cols-[1fr_1fr_2fr_auto] gap-3">
+                    <n-select v-model:value="logCategory" :options="logCategoryOptions" />
+                    <n-select v-model:value="logLevel" :options="logLevelOptions" />
+                    <n-input v-model:value="logKeyword" placeholder="搜索日志关键字..." clearable />
+                    <n-button secondary @click="clearLogs">清空日志</n-button>
+                  </div>
+
+                  <div class="text-xs text-on-surface-muted">
+                    共 {{ filteredLogs.length }} 条（当前缓存 {{ logEntries.length }} 条）
+                  </div>
+
+                  <div
+                    class="rounded-xl border border-border/60 bg-black/30 h-[520px] overflow-y-auto custom-scrollbar">
+                    <div v-if="filteredLogs.length === 0"
+                      class="h-full flex items-center justify-center text-sm text-on-surface-muted">
+                      暂无日志
+                    </div>
+                    <div v-else class="divide-y divide-white/5">
+                      <div v-for="row in filteredLogs" :key="row.id"
+                        class="group flex gap-4 px-4 py-3 font-mono text-sm transition-all border-l-[3px] hover:bg-white/10"
+                        :class="[
+                          row.level === 'error' ? 'border-red-500 bg-red-500/[0.06]' :
+                            row.level === 'warn' ? 'border-amber-500 bg-amber-500/[0.06]' :
+                              row.level === 'debug' ? 'border-transparent opacity-50 grayscale hover:grayscale-0 hover:opacity-100' :
+                                'border-emerald-500 bg-emerald-500/[0.02]'
+                        ]">
+                        <!-- Left Side: Fixed Meta -->
+                        <div class="flex-none flex flex-col items-center gap-2 w-20">
+                          <span
+                            class="text-[11px] font-bold tracking-tighter opacity-40 group-hover:opacity-100 transition-opacity">
+                            {{ formatLogTime(row.timestamp) }}
+                          </span>
+                          <span
+                            class="w-full text-center py-0.5 rounded text-[10px] font-black uppercase tracking-widest shadow-sm"
+                            :class="logLevelLabelClass(row.level)">
+                            {{ row.level }}
+                          </span>
+                        </div>
+
+                        <!-- Right Side: Content -->
+                        <div class="flex-1 min-w-0 space-y-1">
+                          <div class="flex items-center gap-2">
+                            <span
+                              class="text-[10px] font-black px-1.5 py-0.5 rounded bg-white/5 text-primary/80 uppercase tracking-tighter shadow-inner">
+                              {{ row.category }}
+                            </span>
+                            <span class="text-[10px] text-on-surface-muted/30 italic truncate">
+                              {{ row.source }}
+                            </span>
+                          </div>
+
+                          <div class="break-words leading-relaxed font-medium" :class="logMessageTextClass(row.level)">
+                            {{ row.message }}
+                          </div>
+
+                          <div v-if="row.detail"
+                            class="mt-2 p-3 rounded-lg bg-black/40 border border-white/5 text-xs text-on-surface-muted/60 break-all whitespace-pre-wrap leading-relaxed shadow-inner">
+                            {{ row.detail }}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+
             <!-- About Tab -->
             <div v-else-if="activeTab === 'about'"
               class="flex flex-col items-center justify-center min-h-[400px] text-center animate-fade-in-up">
@@ -256,7 +330,7 @@
                   class="bg-surface-overlay/50 border border-border/50 rounded-xl p-3 flex justify-between items-center mb-4 backdrop-blur-sm">
                   <span class="text-sm font-medium text-on-surface-muted">{{ $t('settings.current_version') }}</span>
                   <span class="font-mono font-bold text-primary bg-primary/10 px-2 py-1 rounded">v{{ appVersion
-                  }}</span>
+                    }}</span>
                 </div>
 
                 <n-button type="primary" block secondary size="large" @click="checkUpdate" :loading="checkingUpdate"
@@ -323,7 +397,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTheme, type ThemeColor } from '@/composables/useTheme'
 import { useSettingsStore } from '@/stores/settings'
@@ -337,6 +411,7 @@ const activeTab = ref('general')
 const tabs = computed(() => [
   { name: 'general', label: t('settings.general'), icon: 'i-material-symbols-tune' },
   { name: 'network', label: t('settings.network'), icon: 'i-material-symbols-wifi' },
+  { name: 'logs', label: '日志', icon: 'i-material-symbols-article' },
   { name: 'about', label: t('settings.about'), icon: 'i-material-symbols-info-outline' },
 ])
 
@@ -347,6 +422,52 @@ const opOk = ref(true)
 const appVersion = ref('0.0.0')
 const checkingUpdate = ref(false)
 const updateInfo = ref<{ available: boolean, version?: string, date?: string, note?: string, error?: string } | null>(null)
+type AppLogEntry = {
+  id: string
+  timestamp: number
+  level: 'debug' | 'info' | 'warn' | 'error'
+  category: 'frontend' | 'backend' | 'core'
+  source: string
+  message: string
+  detail?: string
+}
+const logEntries = ref<AppLogEntry[]>([])
+const logCategory = ref<'all' | 'frontend' | 'backend' | 'core'>('all')
+const logLevel = ref<'all' | 'debug' | 'info' | 'warn' | 'error'>('all')
+const logKeyword = ref('')
+const logCategoryOptions = [
+  { label: '全部分类', value: 'all' },
+  { label: '前端', value: 'frontend' },
+  { label: '后端', value: 'backend' },
+  { label: '核心', value: 'core' },
+]
+const logLevelOptions = [
+  { label: '全部级别', value: 'all' },
+  { label: 'Debug', value: 'debug' },
+  { label: 'Info', value: 'info' },
+  { label: 'Warn', value: 'warn' },
+  { label: 'Error', value: 'error' },
+]
+const filteredLogs = computed(() => {
+  const keyword = logKeyword.value.trim().toLowerCase()
+  return logEntries.value
+    .filter((row) => {
+      if (logCategory.value !== 'all' && row.category !== logCategory.value) return false
+      if (logLevel.value !== 'all' && row.level !== logLevel.value) return false
+      if (!keyword) return true
+      const text = `${row.message} ${row.detail || ''} ${row.source}`.toLowerCase()
+      return text.includes(keyword)
+    })
+    .slice()
+    .reverse()
+})
+
+const onLogNew = (row: AppLogEntry) => {
+  logEntries.value.push(row)
+  if (logEntries.value.length > 3000) {
+    logEntries.value.splice(0, logEntries.value.length - 3000)
+  }
+}
 
 const currentLocale = computed(() => locale.value)
 const availableLocales = [
@@ -443,10 +564,60 @@ function openReleasesUrl() {
   window.app.openUrl('https://github.com/ZenEcho/LagZero/releases')
 }
 
+async function loadLogs() {
+  if (!window.logs) return
+  try {
+    const rows = await window.logs.getAll()
+    logEntries.value = Array.isArray(rows) ? rows : []
+  } catch {
+    logEntries.value = []
+  }
+}
+
+async function clearLogs() {
+  try {
+    await window.logs.clear()
+  } finally {
+    logEntries.value = []
+  }
+}
+
+function formatLogTime(ts: number) {
+  const date = new Date(ts)
+  const h = date.getHours().toString().padStart(2, '0')
+  const m = date.getMinutes().toString().padStart(2, '0')
+  const s = date.getSeconds().toString().padStart(2, '0')
+  return `${h}:${m}:${s}`
+}
+
+function logLevelLabelClass(level: AppLogEntry['level']) {
+  switch (level) {
+    case 'error': return 'bg-red-500 text-white'
+    case 'warn': return 'bg-amber-500 text-black'
+    case 'debug': return 'bg-zinc-700 text-zinc-300'
+    default: return 'bg-emerald-500 text-white'
+  }
+}
+
+function logMessageTextClass(level: AppLogEntry['level']) {
+  switch (level) {
+    case 'error': return 'text-red-400'
+    case 'warn': return 'text-amber-200'
+    case 'debug': return 'text-on-surface-muted/70'
+    default: return 'text-on-surface'
+  }
+}
+
 onMounted(async () => {
   if (window.app) {
     appVersion.value = await window.app.getVersion()
   }
+  await loadLogs()
+  window.logs?.onNew(onLogNew)
+})
+
+onUnmounted(() => {
+  window.logs?.offNew(onLogNew)
 })
 </script>
 
