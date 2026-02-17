@@ -4,6 +4,7 @@ import { useLocalStorage } from '@vueuse/core'
 import type { Game } from '@/types'
 import { useNodeStore } from './nodes'
 import { generateSingboxConfig } from '@/utils/singbox-config'
+import { useSettingsStore } from './settings'
 
 export type { Game }
 
@@ -13,8 +14,8 @@ export function isRoutingOnlyPresetGame(game: Pick<Game, 'name' | 'routingRules'
   const rules = Array.isArray(game.routingRules) ? game.routingRules.map(r => String(r).toLowerCase()) : []
 
   if (rules.includes('bypass_cn')) return true
-  if (name.includes('global') || name.includes('全局加速')) return true
-  if (name.includes('bypass cn') || name.includes('绕过大陆')) return true
+  if (name.includes('global') || name.includes('加速全部游戏')) return true
+  if (name.includes('bypass cn') || name.includes('加速海外游戏')) return true
   return false
 }
 
@@ -165,6 +166,7 @@ export const useGameStore = defineStore('games', () => {
     if (!game) return
 
     const nodeStore = useNodeStore()
+    const settingsStore = useSettingsStore()
     const selectedNodeId = String(game.nodeId || '')
     const node = nodeStore.nodes.find(n => n.id === selectedNodeId || n.tag === selectedNodeId)
 
@@ -177,7 +179,11 @@ export const useGameStore = defineStore('games', () => {
     try {
       const rawGame = toRaw(game) as Game
       const rawNode = toRaw(node) as any
-      const config = String(generateSingboxConfig(rawGame, rawNode))
+      const config = String(generateSingboxConfig(rawGame, rawNode, {
+        mode: settingsStore.dnsMode,
+        primary: settingsStore.dnsPrimary,
+        secondary: settingsStore.dnsSecondary
+      }))
       // @ts-ignore
       await window.singbox.start(config)
 

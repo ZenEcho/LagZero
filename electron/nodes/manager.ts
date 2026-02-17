@@ -18,6 +18,9 @@ interface NodeConfig {
   security?: string
   path?: string
   host?: string
+  service_name?: string
+  alpn?: string
+  fingerprint?: string
   tls?: {
     enabled: boolean
     server_name?: string
@@ -26,9 +29,15 @@ interface NodeConfig {
         enabled: boolean
         fingerprint: string
     }
+    reality?: {
+      enabled: boolean
+      public_key?: string
+      short_id?: string
+    }
   }
   flow?: string
   packet_encoding?: string
+  username?: string
 }
 
 export class NodeManager {

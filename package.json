@@ -6,6 +6,10 @@
   "type": "module",
   "author": "LagZero Team",
   "description": "Cross-platform Game Accelerator",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ZenEcho/LagZero.git"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
@@ -26,6 +30,7 @@
     ],
     "asar": true,
     "win": {
+      "icon": "public/logo.ico",
       "target": [
         {
           "target": "nsis",
@@ -41,7 +46,9 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "deleteAppDataOnUninstall": true
+      "deleteAppDataOnUninstall": true,
+      "installerIcon": "public/logo.ico",
+      "uninstallerIcon": "public/logo.ico"
     },
     "mac": {
       "target": [
@@ -61,7 +68,14 @@
       ],
       "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
       "category": "Utility"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ZenEcho",
+        "repo": "LagZero"
+      }
+    ]
   },
   "dependencies": {
     "@vueuse/core": "^14.2.0",

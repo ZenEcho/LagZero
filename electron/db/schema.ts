@@ -15,9 +15,13 @@ export interface NodesTable {
   security: string | null
   path: string | null
   host: string | null
+  service_name: string | null
+  alpn: string | null
+  fingerprint: string | null
   tls: string | null // JSON
   flow: string | null
   packet_encoding: string | null
+  username: string | null
   created_at: Generated<string>
   updated_at: Generated<string>
 }

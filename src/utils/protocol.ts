@@ -15,6 +15,9 @@ export interface NodeConfig {
   security?: string
   path?: string
   host?: string
+  service_name?: string
+  alpn?: string
+  fingerprint?: string
   tls?: {
     enabled: boolean
     server_name?: string
@@ -23,14 +26,22 @@ export interface NodeConfig {
       enabled: boolean
       fingerprint: string
     }
+    reality?: {
+      enabled: boolean
+      public_key?: string
+      short_id?: string
+    }
   }
   flow?: string
   packet_encoding?: string
+  username?: string
 }
 
 export function normalizeNodeType(type: string | null | undefined): string {
   const t = String(type ?? '').trim().toLowerCase()
   if (t === 'ss' || t === 'shadowsocks') return 'shadowsocks'
+  if (t === 'socks5' || t === 'socks') return 'socks'
+  if (t === 'https' || t === 'http') return 'http'
   return t
 }
 
@@ -66,6 +77,10 @@ export function parseShareLink(link: string): NodeConfig | null {
     return parseShadowsocks(link)
   } else if (link.startsWith('trojan://')) {
     return parseTrojan(link)
+  } else if (link.startsWith('socks://') || link.startsWith('socks5://')) {
+    return parseSocks(link)
+  } else if (link.startsWith('http://') || link.startsWith('https://')) {
+    return parseHttp(link)
   }
   return null
 }
@@ -111,13 +126,21 @@ function parseVMess(link: string): NodeConfig | null {
       server: config.add,
       server_port: Number(config.port),
       uuid: config.id,
-      security: 'auto',
-      network: config.net,
+      security: config.scy || 'auto',
+      network: config.net || 'tcp',
       path: config.path,
       host: config.host,
+      service_name: config.net === 'grpc' ? (config.path || config.serviceName || '') : (config.serviceName || ''),
+      alpn: config.alpn || undefined,
+      fingerprint: config.fp || undefined,
       tls: {
         enabled: config.tls === 'tls',
-        server_name: config.host
+        server_name: config.sni || config.host,
+        insecure: String(config.allowInsecure || '0') === '1',
+        utls: {
+          enabled: !!config.fp,
+          fingerprint: config.fp || 'chrome'
+        }
       }
     }
   } catch (e) {
@@ -138,7 +161,13 @@ function parseVLESS(link: string): NodeConfig | null {
       uuid: url.username,
       network: params.get('type') || 'tcp',
       security: params.get('security') || 'none',
+      path: params.get('path') || undefined,
+      host: params.get('host') || undefined,
+      service_name: params.get('serviceName') || undefined,
       flow: params.get('flow') || undefined,
+      packet_encoding: params.get('packetEncoding') || undefined,
+      alpn: params.get('alpn') || undefined,
+      fingerprint: params.get('fp') || undefined,
       tls: {
         enabled: params.get('security') === 'tls' || params.get('security') === 'reality',
         server_name: params.get('sni') || undefined,
@@ -146,6 +175,11 @@ function parseVLESS(link: string): NodeConfig | null {
         utls: {
           enabled: !!params.get('fp'),
           fingerprint: params.get('fp') || 'chrome'
+        },
+        reality: {
+          enabled: params.get('security') === 'reality',
+          public_key: params.get('pbk') || undefined,
+          short_id: params.get('sid') || undefined
         }
       }
     }
@@ -235,11 +269,58 @@ function parseTrojan(link: string): NodeConfig | null {
       server_port: Number(url.port),
       password: url.username,
       network: params.get('type') || 'tcp',
+      path: params.get('path') || undefined,
+      host: params.get('host') || undefined,
+      service_name: params.get('serviceName') || undefined,
+      security: params.get('security') || 'tls',
+      alpn: params.get('alpn') || undefined,
+      fingerprint: params.get('fp') || undefined,
       tls: {
-        enabled: true,
+        enabled: params.get('security') !== 'none',
         server_name: params.get('sni') || undefined,
-        insecure: params.get('allowInsecure') === '1'
+        insecure: params.get('allowInsecure') === '1',
+        utls: {
+          enabled: !!params.get('fp'),
+          fingerprint: params.get('fp') || 'chrome'
+        }
       }
+    }
+  } catch (e) {
+    return null
+  }
+}
+
+function parseSocks(link: string): NodeConfig | null {
+  try {
+    const url = new URL(link)
+    const type = normalizeNodeType(url.protocol.replace(':', ''))
+    const port = Number(url.port)
+    if (!Number.isFinite(port) || port <= 0) return null
+    return {
+      type,
+      tag: decodeURIComponent(url.hash.slice(1)) || 'SOCKS Node',
+      server: url.hostname,
+      server_port: port,
+      username: decodeURIComponent(url.username || ''),
+      password: decodeURIComponent(url.password || '')
+    }
+  } catch (e) {
+    return null
+  }
+}
+
+function parseHttp(link: string): NodeConfig | null {
+  try {
+    const url = new URL(link)
+    const port = Number(url.port)
+    if (!Number.isFinite(port) || port <= 0) return null
+    return {
+      type: 'http',
+      tag: decodeURIComponent(url.hash.slice(1)) || 'HTTP Node',
+      server: url.hostname,
+      server_port: port,
+      username: decodeURIComponent(url.username || ''),
+      password: decodeURIComponent(url.password || '')
     }
   } catch (e) {
     return null
@@ -258,6 +339,8 @@ export function generateShareLink(node: NodeConfig): string | null {
     case 'shadowsocks':
     case 'ss': return generateShadowsocks(node)
     case 'trojan': return generateTrojan(node)
+    case 'socks': return generateSocks(node)
+    case 'http': return generateHttp(node)
     default: return null
   }
 }
@@ -274,8 +357,12 @@ function generateVMess(node: NodeConfig): string {
     net: node.network || "tcp",
     type: "none",
     host: node.host || "",
-    path: node.path || "",
-    tls: node.tls?.enabled ? "tls" : ""
+    path: (node.network === 'grpc' ? (node.service_name || '') : (node.path || "")),
+    tls: node.tls?.enabled ? "tls" : "",
+    sni: node.tls?.server_name || "",
+    alpn: node.alpn || "",
+    fp: node.fingerprint || node.tls?.utls?.fingerprint || "",
+    allowInsecure: node.tls?.insecure ? "1" : "0"
   }
   return 'vmess://' + Base64.encode(JSON.stringify(config))
 }
@@ -288,6 +375,11 @@ function generateVLESS(node: NodeConfig): string {
   if (node.network) params.set('type', node.network)
   if (node.security) params.set('security', node.security)
   if (node.flow) params.set('flow', node.flow)
+  if (node.path) params.set('path', node.path)
+  if (node.host) params.set('host', node.host)
+  if (node.service_name) params.set('serviceName', node.service_name)
+  if (node.packet_encoding) params.set('packetEncoding', node.packet_encoding)
+  if (node.alpn) params.set('alpn', node.alpn)
 
   if (node.tls?.enabled) {
     if (!node.security || node.security === 'none') {
@@ -298,6 +390,12 @@ function generateVLESS(node: NodeConfig): string {
     if (node.tls.insecure) params.set('allowInsecure', '1')
     if (node.tls.utls?.enabled && node.tls.utls.fingerprint) {
       params.set('fp', node.tls.utls.fingerprint)
+    }
+    if (node.fingerprint) params.set('fp', node.fingerprint)
+    if (node.tls.reality?.enabled) {
+      params.set('security', 'reality')
+      if (node.tls.reality.public_key) params.set('pbk', node.tls.reality.public_key)
+      if (node.tls.reality.short_id) params.set('sid', node.tls.reality.short_id)
     }
   }
 
@@ -331,9 +429,33 @@ function generateTrojan(node: NodeConfig): string {
   const params = new URLSearchParams()
 
   if (node.network) params.set('type', node.network)
+  if (node.path) params.set('path', node.path)
+  if (node.host) params.set('host', node.host)
+  if (node.service_name) params.set('serviceName', node.service_name)
+  if (node.security) params.set('security', node.security)
+  if (node.alpn) params.set('alpn', node.alpn)
   if (node.tls?.server_name) params.set('sni', node.tls.server_name)
   if (node.tls?.insecure) params.set('allowInsecure', '1')
+  if (node.fingerprint || node.tls?.utls?.fingerprint) {
+    params.set('fp', node.fingerprint || node.tls?.utls?.fingerprint || 'chrome')
+  }
 
   const hash = '#' + encodeURIComponent(node.tag)
   return `trojan://${password}@${node.server}:${node.server_port}?${params.toString()}${hash}`
+}
+
+function generateSocks(node: NodeConfig): string {
+  const username = encodeURIComponent(node.username || '')
+  const password = encodeURIComponent(node.password || '')
+  const auth = username ? `${username}${password ? `:${password}` : ''}@` : ''
+  const hash = '#' + encodeURIComponent(node.tag)
+  return `socks://${auth}${node.server}:${node.server_port}${hash}`
+}
+
+function generateHttp(node: NodeConfig): string {
+  const username = encodeURIComponent(node.username || '')
+  const password = encodeURIComponent(node.password || '')
+  const auth = username ? `${username}${password ? `:${password}` : ''}@` : ''
+  const hash = '#' + encodeURIComponent(node.tag)
+  return `http://${auth}${node.server}:${node.server_port}${hash}`
 }

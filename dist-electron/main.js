@@ -1,6 +1,7 @@
-import { app, ipcMain, BrowserWindow, dialog } from "electron";
+import { app, ipcMain, BrowserWindow, net as net$1, shell, Tray, Menu, nativeImage, dialog } from "electron";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path$1, { posix, basename, win32, join } from "node:path";
+import { exec as exec$1, spawn as spawn$1 } from "node:child_process";
 import fs$2, { createWriteStream } from "fs";
 import require$$0 from "constants";
 import require$$0$1 from "stream";
@@ -24,7 +25,6 @@ import { pipeline } from "stream/promises";
 import https from "node:https";
 import DatabaseConstructor from "better-sqlite3";
 import { Kysely, SqliteDialect } from "kysely";
-import { exec as exec$1 } from "node:child_process";
 import net from "node:net";
 import os from "node:os";
 var commonjsGlobal = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : {};
@@ -11270,9 +11270,13 @@ class DatabaseManager {
         security TEXT,
         path TEXT,
         host TEXT,
+        service_name TEXT,
+        alpn TEXT,
+        fingerprint TEXT,
         tls TEXT,
         flow TEXT,
         packet_encoding TEXT,
+        username TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       );
@@ -11319,6 +11323,10 @@ class DatabaseManager {
     `);
     this.ensureColumn("nodes", "plugin", "TEXT");
     this.ensureColumn("nodes", "plugin_opts", "TEXT");
+    this.ensureColumn("nodes", "service_name", "TEXT");
+    this.ensureColumn("nodes", "alpn", "TEXT");
+    this.ensureColumn("nodes", "fingerprint", "TEXT");
+    this.ensureColumn("nodes", "username", "TEXT");
     this.initDefaultData();
   }
   ensureColumn(table, column, definition) {
@@ -11366,7 +11374,7 @@ class DatabaseManager {
         const defaultGames = [
           {
             id: v4(),
-            name: "绕过大陆 (Bypass CN)",
+            name: "加速海外游戏",
             process_name: "[]",
             category_id: otherCategoryId,
             proxy_mode: "routing",
@@ -11376,7 +11384,7 @@ class DatabaseManager {
           },
           {
             id: v4(),
-            name: "全局加速 (Global)",
+            name: "加速全部游戏",
             process_name: "[]",
             category_id: otherCategoryId,
             proxy_mode: "routing",
@@ -11425,9 +11433,13 @@ class DatabaseManager {
       "security",
       "path",
       "host",
+      "service_name",
+      "alpn",
+      "fingerprint",
       "tls",
       "flow",
       "packet_encoding",
+      "username",
       "created_at",
       "updated_at"
     ];
@@ -11730,6 +11742,7 @@ const __filename$1 = fileURLToPath(import.meta.url);
 global.__filename = __filename$1;
 global.__dirname = __dirname$1;
 process.env.APP_ROOT = path$1.join(__dirname$1, "..");
+const APP_ID = "com.lagzero.client";
 const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 const MAIN_DIST = path$1.join(process.env.APP_ROOT, "dist-electron");
 const RENDERER_DIST = path$1.join(process.env.APP_ROOT, "dist");
@@ -11737,16 +11750,95 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path$1.join(process.env.APP_ROOT
 if (VITE_DEV_SERVER_URL) {
   app.setPath("userData", path$1.join(process.env.APP_ROOT, ".lagzero-dev"));
 }
+if (process.platform === "win32") {
+  app.setAppUserModelId(APP_ID);
+}
 let win;
+let tray = null;
 let singboxManager = null;
 let processManager = null;
 let dbManager = null;
+function loadAppIcon() {
+  const baseDir = process.env.VITE_PUBLIC || "";
+  const candidates = [
+    path$1.join(baseDir, "logo.png"),
+    path$1.join(baseDir, "logo.ico"),
+    path$1.join(baseDir, "logo.svg")
+  ];
+  const tryFromPath = (p) => {
+    if (!p || !fs.existsSync(p)) return null;
+    const img = nativeImage.createFromPath(p);
+    if (!img.isEmpty()) return img;
+    return null;
+  };
+  for (const p of candidates) {
+    const image2 = tryFromPath(p);
+    if (image2) return image2;
+  }
+  const svgPath = path$1.join(baseDir, "logo.svg");
+  if (!fs.existsSync(svgPath)) {
+    console.warn("[Main] Icon file not found:", svgPath);
+    return null;
+  }
+  const svg = fs.readFileSync(svgPath, "utf-8");
+  const toImage = (content) => {
+    const svgBase64 = Buffer.from(content, "utf-8").toString("base64");
+    return nativeImage.createFromDataURL(`data:image/svg+xml;base64,${svgBase64}`);
+  };
+  const sanitized = svg.replace(/<filter[\s\S]*?<\/filter>/gi, "").replace(/\sfilter="url\(#.*?\)"/gi, "");
+  const image = toImage(sanitized);
+  if (!image.isEmpty()) return image;
+  const fallbackSvg = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <rect width="256" height="256" rx="48" fill="#0f172a"/>
+  <path d="M145 20 L78 131 L136 131 L118 236 L202 111 L141 111 L168 20 Z"
+        fill="#22c55e" stroke="#ffffff" stroke-width="6" stroke-linejoin="round" />
+</svg>`;
+  const fallbackImage = toImage(fallbackSvg);
+  if (!fallbackImage.isEmpty()) {
+    console.warn("[Main] logo.svg decode failed, using built-in fallback icon");
+    return fallbackImage;
+  }
+  console.warn("[Main] Failed to load icon from:", svgPath);
+  console.warn("[Main] Recommended fallback: add public/logo.png or public/logo.ico");
+  return null;
+}
+function createTray(icon) {
+  if (tray || !icon) return;
+  const trayIcon = icon.resize({ width: 20, height: 20, quality: "best" });
+  tray = new Tray(trayIcon);
+  tray.setToolTip("LagZero");
+  tray.setContextMenu(Menu.buildFromTemplate([
+    {
+      label: "Show Window",
+      click: () => {
+        if (!win) return;
+        win.show();
+        win.focus();
+      }
+    },
+    {
+      label: "Quit",
+      click: () => app.quit()
+    }
+  ]));
+  tray.on("double-click", () => {
+    if (!win) return;
+    if (win.isVisible()) {
+      win.focus();
+    } else {
+      win.show();
+      win.focus();
+    }
+  });
+}
 function createWindow() {
+  const appIcon = loadAppIcon();
   win = new BrowserWindow({
     width: 1200,
     height: 800,
-    minWidth: 800,
-    minHeight: 600,
+    minWidth: 860,
+    minHeight: 620,
     frame: false,
     webPreferences: {
       preload: path$1.join(__dirname$1, "preload.mjs"),
@@ -11755,7 +11847,8 @@ function createWindow() {
       webSecurity: false
       // Allow loading local resources (file://)
     },
-    backgroundColor: "#1e1e1e"
+    backgroundColor: "#1e1e1e",
+    ...appIcon ? { icon: appIcon } : {}
   });
   dbManager = new DatabaseManager();
   singboxManager = new SingBoxManager(win);
@@ -11772,6 +11865,7 @@ function createWindow() {
   } else {
     win.loadFile(path$1.join(RENDERER_DIST, "index.html"));
   }
+  createTray(appIcon);
 }
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
@@ -11781,9 +11875,18 @@ app.on("window-all-closed", () => {
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
+  } else if (win) {
+    win.show();
+    win.focus();
   }
 });
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+});
+app.on("before-quit", () => {
+  tray?.destroy();
+  tray = null;
+});
 ipcMain.handle("window-minimize", () => win?.minimize());
 ipcMain.handle("window-maximize", () => {
   if (win && win.isMaximized()) {
@@ -11851,6 +11954,156 @@ ipcMain.handle("system:tcp-ping", async (_, host, port) => {
   } catch (e) {
     return { latency: -1, loss: 100 };
   }
+});
+function runCommand(command, args, timeoutMs = 15e3) {
+  return new Promise((resolve) => {
+    const p = spawn$1(command, args, { windowsHide: true });
+    const chunks = [];
+    const onData = (d) => chunks.push(Buffer.isBuffer(d) ? d : Buffer.from(String(d)));
+    p.stdout?.on("data", onData);
+    p.stderr?.on("data", onData);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      p.kill();
+    }, timeoutMs);
+    p.on("close", (code2) => {
+      clearTimeout(timer);
+      const output = Buffer.concat(chunks).toString("utf8").trim();
+      if (timedOut) {
+        resolve({ code: -1, output: output || "Command timeout" });
+        return;
+      }
+      resolve({ code: typeof code2 === "number" ? code2 : -1, output });
+    });
+    p.on("error", (err) => {
+      clearTimeout(timer);
+      resolve({ code: -1, output: String(err?.message || err) });
+    });
+  });
+}
+async function flushDnsCache() {
+  if (process.platform === "win32") {
+    const { code: code2, output } = await runCommand("ipconfig", ["/flushdns"]);
+    return {
+      ok: code2 === 0,
+      code: code2,
+      output,
+      message: code2 === 0 ? "DNS cache flushed." : "Failed to flush DNS cache. Try running LagZero as administrator."
+    };
+  }
+  return {
+    ok: false,
+    code: -1,
+    output: "",
+    message: `Unsupported platform: ${process.platform}`
+  };
+}
+async function reinstallTunAdapter(interfaceName = "singbox-tun") {
+  if (process.platform !== "win32") {
+    return {
+      ok: false,
+      code: -1,
+      output: "",
+      message: `Unsupported platform: ${process.platform}`
+    };
+  }
+  const psScript = [
+    `$name = '${interfaceName.replace(/'/g, "''")}'`,
+    "$adapter = Get-NetAdapter -Name $name -ErrorAction SilentlyContinue",
+    'if ($null -eq $adapter) { Write-Output "TUN adapter not found: $name"; exit 2 }',
+    "Disable-NetAdapter -Name $name -Confirm:$false -ErrorAction SilentlyContinue | Out-Null",
+    "Start-Sleep -Milliseconds 400",
+    "if (Get-Command Remove-NetAdapter -ErrorAction SilentlyContinue) {",
+    "  Remove-NetAdapter -Name $name -Confirm:$false -ErrorAction Stop",
+    '  Write-Output "TUN adapter removed: $name"',
+    "  exit 0",
+    "}",
+    'Write-Output "Remove-NetAdapter not available"',
+    "exit 3"
+  ].join("; ");
+  const { code: code2, output } = await runCommand("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psScript], 25e3);
+  const ok = code2 === 0 || code2 === 2;
+  return {
+    ok,
+    code: code2,
+    output,
+    message: ok ? "TUN adapter reset finished. Restart acceleration to recreate adapter." : "Failed to reset TUN adapter. Try running LagZero as administrator."
+  };
+}
+ipcMain.handle("system:flush-dns-cache", () => flushDnsCache());
+ipcMain.handle("system:tun-reinstall", async (_, interfaceName) => {
+  return reinstallTunAdapter(interfaceName || "singbox-tun");
+});
+ipcMain.handle("app:get-version", () => app.getVersion());
+ipcMain.handle("app:check-update", async () => {
+  try {
+    const fetchGithub = async (url) => {
+      return new Promise((resolve, reject) => {
+        const request = net$1.request(url);
+        request.setHeader("User-Agent", "LagZero-Client");
+        request.on("response", (response) => {
+          if (response.statusCode !== 200) {
+            reject(new Error(`GitHub API Error: ${response.statusCode}`));
+            return;
+          }
+          let data = "";
+          response.on("data", (chunk) => {
+            data += chunk;
+          });
+          response.on("end", () => resolve(data));
+        });
+        request.on("error", (err) => reject(err));
+        request.end();
+      });
+    };
+    let latestVersion = "";
+    let releaseDate = "";
+    let releaseNotes = "";
+    let hasUpdate = false;
+    try {
+      const rawRelease = await fetchGithub("https://api.github.com/repos/ZenEcho/LagZero/releases/latest");
+      const release = JSON.parse(rawRelease);
+      latestVersion = release.tag_name.replace(/^v/, "");
+      releaseDate = new Date(release.published_at).toLocaleDateString();
+      releaseNotes = release.body || "";
+    } catch (e) {
+      const rawTags = await fetchGithub("https://api.github.com/repos/ZenEcho/LagZero/tags");
+      const tags = JSON.parse(rawTags);
+      if (Array.isArray(tags) && tags.length > 0) {
+        latestVersion = tags[0].name.replace(/^v/, "");
+        releaseNotes = `Tag: ${tags[0].name}`;
+      } else {
+        throw new Error("No version info found");
+      }
+    }
+    const currentVersion = app.getVersion();
+    const v1Parts = latestVersion.split(".").map(Number);
+    const v2Parts = currentVersion.split(".").map(Number);
+    for (let i = 0; i < Math.max(v1Parts.length, v2Parts.length); i++) {
+      const u = v1Parts[i] || 0;
+      const c = v2Parts[i] || 0;
+      if (u > c) {
+        hasUpdate = true;
+        break;
+      }
+      if (u < c) {
+        hasUpdate = false;
+        break;
+      }
+    }
+    return {
+      updateAvailable: hasUpdate,
+      version: latestVersion,
+      releaseDate,
+      releaseNotes
+    };
+  } catch (e) {
+    return { error: e.message || "Update check failed" };
+  }
+});
+ipcMain.handle("app:open-url", (_, url) => {
+  shell.openExternal(url);
 });
 export {
   MAIN_DIST,

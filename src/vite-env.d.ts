@@ -27,6 +27,8 @@ interface Window {
     getProcessTree: () => Promise<any>
     ping: (host: string) => Promise<number>
     tcpPing: (host: string, port: number) => Promise<number>
+    flushDnsCache: () => Promise<{ ok: boolean, code: number, output: string, message: string }>
+    reinstallTunAdapter: (interfaceName?: string) => Promise<{ ok: boolean, code: number, output: string, message: string }>
   }
   proxyMonitor: {
     start: (gameId: string, processNames: string[]) => Promise<void>
@@ -47,5 +49,10 @@ interface Window {
     getAll: () => Promise<any[]>
     save: (category: any) => Promise<any[]>
     delete: (id: string) => Promise<any[]>
+  }
+  app: {
+    getVersion: () => Promise<string>
+    checkUpdate: () => Promise<{ updateAvailable: boolean; version?: string; releaseDate?: string; releaseNotes?: string; error?: string }>
+    openUrl: (url: string) => Promise<void>
   }
 }

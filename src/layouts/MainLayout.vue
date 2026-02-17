@@ -6,6 +6,14 @@
       <div class="text-xs font-bold text-on-surface-variant flex items-center gap-2">
         <img src="/logo.svg" alt="LagZero" class="h-6">
         <span class="text-lg font-bold text-on-surface">LagZero</span>
+        <div @click="checkUpdate"
+          class="no-drag cursor-pointer flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-overlay border border-border/50 hover:border-primary/50 transition-colors translate-y-[1px]"
+          :title="$t('settings.check_update')">
+          <span class="text-[10px] font-mono text-on-surface-muted leading-none">v{{ appVersion }}</span>
+          <div v-if="hasUpdate"
+            class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse shadow-[0_0_8px_rgba(var(--rgb-primary),0.5)]">
+          </div>
+        </div>
       </div>
       <div class="flex gap-1 no-drag items-center">
         <ThemeToggle />
@@ -108,15 +116,65 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watchEffect } from 'vue'
+import { ref, watchEffect, onMounted, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useWindowSize } from '@vueuse/core'
+import { useNotification, NButton } from 'naive-ui'
+import { useI18n } from 'vue-i18n'
 import ThemeToggle from '@/components/common/ThemeToggle.vue'
 
 const { width } = useWindowSize()
 const isCollapsed = ref(true)
 const $route = useRoute()
 const router = useRouter()
+const notification = useNotification()
+const { t } = useI18n()
+
+const appVersion = ref('0.0.0')
+const latestVersion = ref('')
+const hasUpdate = ref(false)
+
+async function checkUpdate() {
+  if (!window.app) return
+  try {
+    const res = await window.app.checkUpdate()
+    if (res && !res.error) {
+      latestVersion.value = res.version || ''
+      hasUpdate.value = res.updateAvailable
+
+      if (hasUpdate.value) {
+        const n = notification.info({
+          title: t('settings.update_available', { version: latestVersion.value }),
+          content: res.releaseNotes || t('settings.tagline'),
+          meta: res.releaseDate,
+          action: () =>
+            h(
+              NButton,
+              {
+                secondary: true,
+                type: 'primary',
+                size: 'small',
+                onClick: () => {
+                  window.app.openUrl('https://github.com/ZenEcho/LagZero/releases')
+                  n.destroy()
+                }
+              },
+              { default: () => t('settings.download_update') }
+            )
+        })
+      }
+    }
+  } catch (e) {
+    console.error('Failed to check version:', e)
+  }
+}
+
+onMounted(async () => {
+  if (window.app) {
+    appVersion.value = await window.app.getVersion()
+    void checkUpdate()
+  }
+})
 
 // 屏幕宽度小于 1024px 时自动收起侧边栏
 watchEffect(() => {

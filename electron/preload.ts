@@ -36,6 +36,8 @@ contextBridge.exposeInMainWorld('system', {
   getProcessTree: () => ipcRenderer.invoke('process-tree'),
   ping: (host: string) => ipcRenderer.invoke('system:ping', host),
   tcpPing: (host: string, port: number) => ipcRenderer.invoke('system:tcp-ping', host, port),
+  flushDnsCache: () => ipcRenderer.invoke('system:flush-dns-cache'),
+  reinstallTunAdapter: (interfaceName?: string) => ipcRenderer.invoke('system:tun-reinstall', interfaceName),
 })
 
 contextBridge.exposeInMainWorld('proxyMonitor', {
@@ -60,4 +62,10 @@ contextBridge.exposeInMainWorld('categories', {
   getAll: () => ipcRenderer.invoke('categories:get-all'),
   save: (category: any) => ipcRenderer.invoke('categories:save', category),
   delete: (id: string) => ipcRenderer.invoke('categories:delete', id),
+})
+
+contextBridge.exposeInMainWorld('app', {
+  getVersion: () => ipcRenderer.invoke('app:get-version'),
+  checkUpdate: () => ipcRenderer.invoke('app:check-update'),
+  openUrl: (url: string) => ipcRenderer.invoke('app:open-url', url),
 })

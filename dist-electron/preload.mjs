@@ -32,7 +32,9 @@ electron.contextBridge.exposeInMainWorld("system", {
   scanProcesses: () => electron.ipcRenderer.invoke("process-scan"),
   getProcessTree: () => electron.ipcRenderer.invoke("process-tree"),
   ping: (host) => electron.ipcRenderer.invoke("system:ping", host),
-  tcpPing: (host, port) => electron.ipcRenderer.invoke("system:tcp-ping", host, port)
+  tcpPing: (host, port) => electron.ipcRenderer.invoke("system:tcp-ping", host, port),
+  flushDnsCache: () => electron.ipcRenderer.invoke("system:flush-dns-cache"),
+  reinstallTunAdapter: (interfaceName) => electron.ipcRenderer.invoke("system:tun-reinstall", interfaceName)
 });
 electron.contextBridge.exposeInMainWorld("proxyMonitor", {
   start: (gameId, processNames) => electron.ipcRenderer.invoke("proxy-monitor:start", gameId, processNames),
@@ -53,4 +55,9 @@ electron.contextBridge.exposeInMainWorld("categories", {
   getAll: () => electron.ipcRenderer.invoke("categories:get-all"),
   save: (category) => electron.ipcRenderer.invoke("categories:save", category),
   delete: (id) => electron.ipcRenderer.invoke("categories:delete", id)
+});
+electron.contextBridge.exposeInMainWorld("app", {
+  getVersion: () => electron.ipcRenderer.invoke("app:get-version"),
+  checkUpdate: () => electron.ipcRenderer.invoke("app:check-update"),
+  openUrl: (url) => electron.ipcRenderer.invoke("app:open-url", url)
 });

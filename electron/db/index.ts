@@ -14,7 +14,7 @@ export class DatabaseManager {
   constructor() {
     const userDataPath = app.getPath('userData')
     const dbPath = path.join(userDataPath, 'lagzero.db')
-    
+
     fs.ensureDirSync(userDataPath)
 
     this.sqlite = new DatabaseConstructor(dbPath)
@@ -115,9 +115,13 @@ export class DatabaseManager {
         security TEXT,
         path TEXT,
         host TEXT,
+        service_name TEXT,
+        alpn TEXT,
+        fingerprint TEXT,
         tls TEXT,
         flow TEXT,
         packet_encoding TEXT,
+        username TEXT,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       );
@@ -166,6 +170,10 @@ export class DatabaseManager {
     // Lightweight migration for existing user DBs.
     this.ensureColumn('nodes', 'plugin', 'TEXT')
     this.ensureColumn('nodes', 'plugin_opts', 'TEXT')
+    this.ensureColumn('nodes', 'service_name', 'TEXT')
+    this.ensureColumn('nodes', 'alpn', 'TEXT')
+    this.ensureColumn('nodes', 'fingerprint', 'TEXT')
+    this.ensureColumn('nodes', 'username', 'TEXT')
 
     this.initDefaultData()
   }
@@ -185,7 +193,7 @@ export class DatabaseManager {
     try {
       const result = this.sqlite.prepare('SELECT COUNT(*) as count FROM categories').get() as { count: number }
       const otherCategoryId = await this.resolveOtherCategoryId()
-      
+
       if (result && result.count === 0) {
         console.log('正在初始化默认分类...')
         const defaultCategories = [
@@ -198,7 +206,7 @@ export class DatabaseManager {
           { name: 'Survival', order: 7 },
           // 'Other' is handled by resolveOtherCategoryId
         ]
-        
+
         const insert = this.sqlite.prepare('INSERT INTO categories (id, name, order_index) VALUES (@id, @name, @order)')
         const insertMany = this.sqlite.transaction((categories: typeof defaultCategories) => {
           for (const cat of categories) {
@@ -209,7 +217,7 @@ export class DatabaseManager {
             })
           }
         })
-        
+
         insertMany(defaultCategories)
         console.log('默认分类初始化完成。')
       }
@@ -217,43 +225,43 @@ export class DatabaseManager {
       // Init default games (Bypass Mainland China & Global Mode)
       const gamesCount = this.sqlite.prepare('SELECT COUNT(*) as count FROM games').get() as { count: number }
       if (gamesCount && gamesCount.count === 0) {
-          console.log('正在初始化默认模式...')
-          const defaultGames = [
-              {
-                  id: uuidv4(),
-                  name: '绕过大陆 (Bypass CN)',
-                  process_name: '[]',
-                  category_id: otherCategoryId,
-                  proxy_mode: 'routing',
-                  routing_rules: JSON.stringify(['bypass_cn']),
-                  status: 'idle',
-                  latency: 0
-              },
-              {
-                  id: uuidv4(),
-                  name: '全局加速 (Global)',
-                  process_name: '[]',
-                  category_id: otherCategoryId,
-                  proxy_mode: 'routing',
-                  routing_rules: JSON.stringify([]),
-                  status: 'idle',
-                  latency: 0
-              }
-          ]
+        console.log('正在初始化默认模式...')
+        const defaultGames = [
+          {
+            id: uuidv4(),
+            name: '加速海外游戏',
+            process_name: '[]',
+            category_id: otherCategoryId,
+            proxy_mode: 'routing',
+            routing_rules: JSON.stringify(['bypass_cn']),
+            status: 'idle',
+            latency: 0
+          },
+          {
+            id: uuidv4(),
+            name: '加速全部游戏',
+            process_name: '[]',
+            category_id: otherCategoryId,
+            proxy_mode: 'routing',
+            routing_rules: JSON.stringify([]),
+            status: 'idle',
+            latency: 0
+          }
+        ]
 
-          const insertGame = this.sqlite.prepare(`
+        const insertGame = this.sqlite.prepare(`
               INSERT INTO games (id, name, process_name, category_id, proxy_mode, routing_rules, status, latency, created_at, updated_at)
               VALUES (@id, @name, @process_name, @category_id, @proxy_mode, @routing_rules, @status, @latency, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
           `)
-          
-          const insertManyGames = this.sqlite.transaction((games: typeof defaultGames) => {
-              for (const game of games) {
-                  insertGame.run(game)
-              }
-          })
 
-          insertManyGames(defaultGames)
-          console.log('默认模式初始化完成。')
+        const insertManyGames = this.sqlite.transaction((games: typeof defaultGames) => {
+          for (const game of games) {
+            insertGame.run(game)
+          }
+        })
+
+        insertManyGames(defaultGames)
+        console.log('默认模式初始化完成。')
       }
     } catch (err) {
       console.error('初始化默认数据失败：', err)
@@ -271,15 +279,15 @@ export class DatabaseManager {
 
   async saveNode(node: any) {
     const validColumns = [
-      'id', 'type', 'tag', 'server', 'server_port', 
-      'uuid', 'password', 'method', 'plugin', 'plugin_opts', 'network', 'security', 
-      'path', 'host', 'tls', 'flow', 'packet_encoding',
+      'id', 'type', 'tag', 'server', 'server_port',
+      'uuid', 'password', 'method', 'plugin', 'plugin_opts', 'network', 'security',
+      'path', 'host', 'service_name', 'alpn', 'fingerprint', 'tls', 'flow', 'packet_encoding', 'username',
       'created_at', 'updated_at'
     ]
 
     const now = new Date().toISOString()
     const id = node.id || uuidv4()
-    
+
     const nodeData: any = {
       id,
       updated_at: now
@@ -296,11 +304,11 @@ export class DatabaseManager {
       }
     }
     nodeData.type = this.normalizeNodeType(nodeData.type)
-    
+
     if (!node.created_at && !node.id) {
-        nodeData.created_at = now
+      nodeData.created_at = now
     } else if (node.created_at) {
-        nodeData.created_at = node.created_at
+      nodeData.created_at = node.created_at
     }
 
     try {
@@ -323,7 +331,7 @@ export class DatabaseManager {
 
   async importNodes(nodes: any[]) {
     if (nodes.length === 0) return this.getAllNodes()
-    
+
     const values = nodes.map(node => ({
       ...node,
       id: node.id || uuidv4(),
@@ -333,7 +341,7 @@ export class DatabaseManager {
     }))
 
     await this.db.transaction().execute(async (trx) => {
-        await trx.insertInto('nodes').values(values).execute()
+      await trx.insertInto('nodes').values(values).execute()
     })
 
     return this.getAllNodes()
@@ -390,7 +398,7 @@ export class DatabaseManager {
       .values(gameData)
       .onConflict(oc => oc.column('id').doUpdateSet(gameData))
       .execute()
-    
+
     return this.getAllGames()
   }
 
@@ -488,76 +496,76 @@ export class DatabaseManager {
   async importData(data: any) {
     const otherCategoryId = await this.resolveOtherCategoryId()
     await this.db.transaction().execute(async (trx) => {
-        if (data.nodes && Array.isArray(data.nodes)) {
-            for (const node of data.nodes) {
-                const nodeData = {
-                  ...node,
-                  id: node.id || uuidv4(),
-                  type: this.normalizeNodeType(node.type),
-                  tls: node.tls ? JSON.stringify(node.tls) : null,
-                  updated_at: new Date().toISOString()
-                }
-                await trx.insertInto('nodes').values(nodeData).onConflict(oc => oc.column('id').doUpdateSet(nodeData)).execute()
-            }
+      if (data.nodes && Array.isArray(data.nodes)) {
+        for (const node of data.nodes) {
+          const nodeData = {
+            ...node,
+            id: node.id || uuidv4(),
+            type: this.normalizeNodeType(node.type),
+            tls: node.tls ? JSON.stringify(node.tls) : null,
+            updated_at: new Date().toISOString()
+          }
+          await trx.insertInto('nodes').values(nodeData).onConflict(oc => oc.column('id').doUpdateSet(nodeData)).execute()
         }
-        
-        if (data.categories) {
-            for (const cat of data.categories) {
-                 const catData = {
-                    id: cat.id || uuidv4(),
-                    name: cat.name,
-                    parent_id: cat.parentId || null,
-                    rules: cat.rules ? JSON.stringify(cat.rules) : null,
-                    icon: cat.icon || null,
-                    order_index: cat.order || 0,
-                    updated_at: new Date().toISOString()
-                 }
-                 await trx.insertInto('categories').values(catData).onConflict(oc => oc.column('id').doUpdateSet(catData)).execute()
-            }
-        }
+      }
 
-        if (data.games) {
-            for (const game of data.games) {
-                 const categoryId =
-                    game.category && game.category !== 'other'
-                      ? game.category
-                      : (otherCategoryId || 'other')
-                 const gameData = {
-                    id: game.id || uuidv4(),
-                    name: game.name,
-                    icon: game.iconUrl || game.icon || null,
-                    process_name: JSON.stringify(Array.isArray(game.processName) ? game.processName : [game.processName]),
-                    category_id: categoryId,
-                    tags: game.tags ? JSON.stringify(game.tags) : null,
-                    profile_id: game.profileId || null,
-                    last_played: game.lastPlayed || 0,
-                    status: game.status || 'idle',
-                    latency: game.latency || 0,
-                    node_id: game.nodeId || null,
-                    proxy_mode: game.proxyMode || 'process',
-                    routing_rules: game.routingRules ? JSON.stringify(game.routingRules) : null,
-                    chain_proxy: game.chainProxy ? 1 : 0,
-                    updated_at: new Date().toISOString()
-                 }
-                 await trx.insertInto('games').values(gameData).onConflict(oc => oc.column('id').doUpdateSet(gameData)).execute()
-            }
+      if (data.categories) {
+        for (const cat of data.categories) {
+          const catData = {
+            id: cat.id || uuidv4(),
+            name: cat.name,
+            parent_id: cat.parentId || null,
+            rules: cat.rules ? JSON.stringify(cat.rules) : null,
+            icon: cat.icon || null,
+            order_index: cat.order || 0,
+            updated_at: new Date().toISOString()
+          }
+          await trx.insertInto('categories').values(catData).onConflict(oc => oc.column('id').doUpdateSet(catData)).execute()
         }
+      }
 
-        if (data.profiles) {
-            for (const profile of data.profiles) {
-                const pData = {
-                  id: profile.id || uuidv4(),
-                  name: profile.name,
-                  description: profile.description || null,
-                  rules: JSON.stringify(profile.rules || []),
-                  chain_proxy: profile.chainProxy ? 1 : 0,
-                  updated_at: new Date().toISOString()
-                }
-                await trx.insertInto('profiles').values(pData).onConflict(oc => oc.column('id').doUpdateSet(pData)).execute()
-            }
+      if (data.games) {
+        for (const game of data.games) {
+          const categoryId =
+            game.category && game.category !== 'other'
+              ? game.category
+              : (otherCategoryId || 'other')
+          const gameData = {
+            id: game.id || uuidv4(),
+            name: game.name,
+            icon: game.iconUrl || game.icon || null,
+            process_name: JSON.stringify(Array.isArray(game.processName) ? game.processName : [game.processName]),
+            category_id: categoryId,
+            tags: game.tags ? JSON.stringify(game.tags) : null,
+            profile_id: game.profileId || null,
+            last_played: game.lastPlayed || 0,
+            status: game.status || 'idle',
+            latency: game.latency || 0,
+            node_id: game.nodeId || null,
+            proxy_mode: game.proxyMode || 'process',
+            routing_rules: game.routingRules ? JSON.stringify(game.routingRules) : null,
+            chain_proxy: game.chainProxy ? 1 : 0,
+            updated_at: new Date().toISOString()
+          }
+          await trx.insertInto('games').values(gameData).onConflict(oc => oc.column('id').doUpdateSet(gameData)).execute()
         }
+      }
+
+      if (data.profiles) {
+        for (const profile of data.profiles) {
+          const pData = {
+            id: profile.id || uuidv4(),
+            name: profile.name,
+            description: profile.description || null,
+            rules: JSON.stringify(profile.rules || []),
+            chain_proxy: profile.chainProxy ? 1 : 0,
+            updated_at: new Date().toISOString()
+          }
+          await trx.insertInto('profiles').values(pData).onConflict(oc => oc.column('id').doUpdateSet(pData)).execute()
+        }
+      }
     })
-    
+
     return true
   }
 }
