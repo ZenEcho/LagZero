@@ -43,7 +43,9 @@
     "more": "More",
     "fill_required": "Please complete required fields.",
     "none": "None",
-    "auto": "Auto"
+    "auto": "Auto",
+    "enabled": "Enabled",
+    "disabled": "Disabled"
   },
   "nodes": {
     "add_node": "Add Node",
@@ -185,7 +187,13 @@
     "logs_category_frontend": "Frontend",
     "logs_category_backend": "Backend",
     "logs_category_core": "Core",
-    "logs_all_levels": "All Levels"
+    "logs_all_levels": "All Levels",
+    "local_proxy": "Local Proxy",
+    "local_proxy_port": "HTTP Port",
+    "local_proxy_info": "SOCKS5 port will be automatically set to: {socks}",
+    "local_proxy_node_strategy": "Node Selection",
+    "local_proxy_node_recursive": "Auto test nodes in order (Google + Apple), then use the first available one.",
+    "local_proxy_fixed_node_index": "Fixed Node Index (1-based)"
   },
   "categories": {
     "new_category_placeholder": "Enter new category name..."

@@ -36,7 +36,9 @@ electron.contextBridge.exposeInMainWorld("system", {
   ping: (host) => electron.ipcRenderer.invoke("system:ping", host),
   tcpPing: (host, port) => electron.ipcRenderer.invoke("system:tcp-ping", host, port),
   flushDnsCache: () => electron.ipcRenderer.invoke("system:flush-dns-cache"),
-  reinstallTunAdapter: (interfaceName) => electron.ipcRenderer.invoke("system:tun-reinstall", interfaceName)
+  reinstallTunAdapter: (interfaceName) => electron.ipcRenderer.invoke("system:tun-reinstall", interfaceName),
+  findAvailablePort: (port, count) => electron.ipcRenderer.invoke("system:find-available-port", port, count),
+  testHttpProxyConnect: (proxyPort, targetHost, targetPort, timeoutMs) => electron.ipcRenderer.invoke("system:test-http-proxy-connect", proxyPort, targetHost, targetPort, timeoutMs)
 });
 electron.contextBridge.exposeInMainWorld("proxyMonitor", {
   start: (gameId, processNames) => electron.ipcRenderer.invoke("proxy-monitor:start", gameId, processNames),

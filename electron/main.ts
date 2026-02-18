@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, NativeIma
 // import { autoUpdater } from 'electron-updater'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
+import nodeNet from 'node:net'
 import { spawn } from 'node:child_process'
 import { inspect } from 'node:util'
 import { randomUUID } from 'node:crypto'
@@ -24,6 +25,7 @@ import { ProxyMonitor } from './proxy/monitor'
 import { NodeManager } from './nodes/manager'
 import { DatabaseManager } from './db'
 import { ping, tcpPing } from './network/ping'
+import { findAvailablePort } from './network/port'
 import pkg from '../package.json'
 
 process.env.APP_ROOT = path.join(__dirname, '..')
@@ -1029,6 +1031,38 @@ async function reinstallTunAdapter(interfaceName: string = 'LagZero'): Promise<S
 ipcMain.handle('system:flush-dns-cache', () => flushDnsCache())
 ipcMain.handle('system:tun-reinstall', async (_, interfaceName?: string) => {
   return reinstallTunAdapter(interfaceName || 'LagZero')
+})
+ipcMain.handle('system:find-available-port', async (_, port: number, count?: number) => {
+  return findAvailablePort(port, count)
+})
+ipcMain.handle('system:test-http-proxy-connect', async (_, proxyPort: number, targetHost: string, targetPort: number = 443, timeoutMs: number = 5000) => {
+  return new Promise<{ ok: boolean, statusLine: string, error?: string }>((resolve) => {
+    const socket = nodeNet.createConnection({ host: '127.0.0.1', port: proxyPort })
+    let settled = false
+    let buf = ''
+
+    const done = (payload: { ok: boolean, statusLine: string, error?: string }) => {
+      if (settled) return
+      settled = true
+      socket.destroy()
+      resolve(payload)
+    }
+
+    socket.setTimeout(Math.max(1000, timeoutMs))
+    socket.on('timeout', () => done({ ok: false, statusLine: '', error: 'timeout' }))
+    socket.on('error', (err: any) => done({ ok: false, statusLine: '', error: String(err?.message || err) }))
+    socket.on('connect', () => {
+      const req = `CONNECT ${targetHost}:${targetPort} HTTP/1.1\r\nHost: ${targetHost}:${targetPort}\r\nProxy-Connection: Keep-Alive\r\n\r\n`
+      socket.write(req)
+    })
+    socket.on('data', (chunk: Buffer) => {
+      buf += chunk.toString('utf8')
+      const lineEnd = buf.indexOf('\r\n')
+      if (lineEnd < 0) return
+      const statusLine = buf.slice(0, lineEnd).trim()
+      done({ ok: /^HTTP\/1\.[01]\s+200\b/i.test(statusLine), statusLine })
+    })
+  })
 })
 
 // Update & Info handlers

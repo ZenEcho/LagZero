@@ -19,6 +19,9 @@
                 <span class="uppercase bg-surface-overlay my-1 px-1 rounded text-[10px]">{{ node.type }}</span>
                 <span class="truncate">{{ node.server }}:{{ node.server_port }}</span>
               </div>
+              <div v-if="isLocalProxyActiveNode(node)" class="text-[10px] text-primary font-mono">
+                HTTP {{ settingsStore.localProxyPort }} / SOCKS5 {{ settingsStore.localProxyPort + 1 }}
+              </div>
             </div>
           </div>
           <div class="flex items-center gap-4">
@@ -71,6 +74,8 @@
 import { ref, reactive } from 'vue'
 import { useMessage, useDialog } from 'naive-ui'
 import { useNodeStore } from '@/stores/nodes'
+import { useSettingsStore } from '@/stores/settings'
+import { useLocalProxyStore } from '@/stores/local-proxy'
 import { generateShareLink } from '@/utils/protocol'
 import type { NodeConfig } from '@/utils/protocol'
 import { useClipboard } from '@vueuse/core'
@@ -79,6 +84,8 @@ import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 const nodeStore = useNodeStore()
+const settingsStore = useSettingsStore()
+const localProxyStore = useLocalProxyStore()
 const message = useMessage()
 const dialog = useDialog()
 const { copy } = useClipboard()
@@ -112,6 +119,12 @@ function getLatencyColor(ms: number) {
   if (ms < 100) return 'text-success'
   if (ms < 200) return 'text-warning'
   return 'text-error'
+}
+
+function isLocalProxyActiveNode(node: NodeConfig) {
+  if (!settingsStore.localProxyEnabled || !localProxyStore.running) return false
+  const key = String(node.id || node.tag || '')
+  return !!key && key === localProxyStore.activeNodeKey
 }
 
 function editNode(node: NodeConfig) {

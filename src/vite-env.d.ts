@@ -72,6 +72,13 @@ interface Window {
     tcpPing: (host: string, port: number) => Promise<number>
     flushDnsCache: () => Promise<{ ok: boolean, code: number, output: string, message: string }>
     reinstallTunAdapter: (interfaceName?: string) => Promise<{ ok: boolean, code: number, output: string, message: string }>
+    findAvailablePort: (port: number, count?: number) => Promise<number>
+    testHttpProxyConnect: (
+      proxyPort: number,
+      targetHost: string,
+      targetPort?: number,
+      timeoutMs?: number
+    ) => Promise<{ ok: boolean; statusLine: string; error?: string }>
   }
   proxyMonitor: {
     start: (gameId: string, processNames: string[]) => Promise<void>

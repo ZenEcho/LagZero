@@ -41,6 +41,12 @@ export interface DnsConfigOptions {
   mode?: 'secure' | 'system'   // DNS 模式：安全模式 (DoH/DoT) 或 系统解析
   primary?: string            // 主 DNS 服务器地址
   secondary?: string          // 备用 DNS 服务器地址
+  tunInterfaceName?: string
+  disableTun?: boolean
+  localProxy?: {
+    enabled: boolean
+    port: number
+  }
 }
 
 /**
@@ -51,7 +57,7 @@ export interface DnsConfigOptions {
  * @param dnsOptions DNS 配置选项
  * @returns 格式化后的 JSON 字符串
  */
-export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?: DnsConfigOptions & { tunInterfaceName?: string }): string {
+export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?: DnsConfigOptions): string {
   const isRoutingMode = game.proxyMode === 'routing'
   const processes = normalizeProcessNames(Array.isArray(game.processName) ? game.processName : [game.processName])
   const dnsMode = dnsOptions?.mode || 'secure'
@@ -59,6 +65,7 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
   const dnsSecondary = String(dnsOptions?.secondary || 'https://1.1.1.1/dns-query').trim()
   const tunInterfaceName = String(dnsOptions?.tunInterfaceName || pkg.productName).trim() || pkg.productName
   const useSecureDns = dnsMode === 'secure'
+  const disableTun = !!dnsOptions?.disableTun
 
   // 基础配置结构
   const config: SingboxConfig = {
@@ -81,7 +88,8 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
       ],
       final: useSecureDns ? 'remote-primary' : 'local'
     },
-    inbounds: [
+    inbounds: [],
+    /*
       {
         type: 'tun', // 虚拟网卡类型
         tag: 'tun-in', // 虚拟网卡标签
@@ -94,6 +102,7 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
         sniff: true
       }
     ],
+    */
     outbounds: [
       {
         type: 'selector',
@@ -121,6 +130,51 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
       auto_detect_interface: true,
       final: isRoutingMode ? 'proxy' : 'direct'
     }
+  }
+
+  if (!disableTun) {
+    config.inbounds.push({
+      type: 'tun',
+      tag: 'tun-in',
+      interface_name: tunInterfaceName,
+      inet4_address: '172.19.0.1/30',
+      mtu: 1280,
+      auto_route: true,
+      strict_route: false,
+      stack: 'system',
+      sniff: true
+    })
+  }
+
+  if (dnsOptions?.localProxy?.enabled) {
+    const httpPort = dnsOptions.localProxy.port
+    const socksPort = httpPort + 1
+
+    // HTTP Proxy
+    config.inbounds.push({
+      type: 'http',
+      tag: 'http-in',
+      listen: '127.0.0.1',
+      listen_port: httpPort,
+      sniff: true,
+      set_system_proxy: false
+    })
+
+    // SOCKS5 Proxy
+    config.inbounds.push({
+      type: 'socks',
+      tag: 'socks-in',
+      listen: '127.0.0.1',
+      listen_port: socksPort,
+      sniff: true
+    })
+
+    // Local mixed proxy inbounds should always tunnel through selected node.
+    // Otherwise process mode falls back to route.final=direct, which may timeout.
+    config.route.rules.push({
+      inbound: ['http-in', 'socks-in'],
+      outbound: 'proxy'
+    })
   }
 
   // 1. 将节点配置转换为 Outbound 格式并添加到配置中

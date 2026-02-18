@@ -1,6 +1,7 @@
-import { app, ipcMain, BrowserWindow, dialog, net as net$1, shell, Tray, Menu, nativeImage } from "electron";
+import { app, ipcMain, BrowserWindow, dialog, net as net$2, shell, Tray, Menu, nativeImage } from "electron";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path$1, { posix, basename, win32, join } from "node:path";
+import net from "node:net";
 import { exec as exec$1, spawn as spawn$1 } from "node:child_process";
 import { inspect } from "node:util";
 import { randomBytes, randomUUID, randomFillSync } from "node:crypto";
@@ -26,8 +27,8 @@ import { pipeline } from "stream/promises";
 import https from "node:https";
 import DatabaseConstructor from "better-sqlite3";
 import { Kysely, SqliteDialect } from "kysely";
-import net from "node:net";
 import os from "node:os";
+import net$1 from "net";
 var commonjsGlobal = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : {};
 function getDefaultExportFromCjs(x) {
   return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
@@ -11862,6 +11863,36 @@ function tcpPing(host, port, timeout = 2e3) {
     }
   });
 }
+async function findAvailablePort(startPort, count = 1) {
+  let port = startPort;
+  while (true) {
+    let allAvailable = true;
+    for (let i = 0; i < count; i++) {
+      const isAvailable = await isPortAvailable(port + i);
+      if (!isAvailable) {
+        allAvailable = false;
+        break;
+      }
+    }
+    if (allAvailable) {
+      return port;
+    }
+    port++;
+    if (port > 65535) {
+      throw new Error("No available ports found");
+    }
+  }
+}
+function isPortAvailable(port) {
+  return new Promise((resolve) => {
+    const server = net$1.createServer();
+    server.once("error", () => resolve(false));
+    server.once("listening", () => {
+      server.close(() => resolve(true));
+    });
+    server.listen(port, "127.0.0.1");
+  });
+}
 const name = "lagzero";
 const productName = "LagZero";
 const pkg = {
@@ -12695,12 +12726,46 @@ ipcMain.handle("system:flush-dns-cache", () => flushDnsCache());
 ipcMain.handle("system:tun-reinstall", async (_, interfaceName) => {
   return reinstallTunAdapter(interfaceName || "LagZero");
 });
+ipcMain.handle("system:find-available-port", async (_, port, count) => {
+  return findAvailablePort(port, count);
+});
+ipcMain.handle("system:test-http-proxy-connect", async (_, proxyPort, targetHost, targetPort = 443, timeoutMs = 5e3) => {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host: "127.0.0.1", port: proxyPort });
+    let settled = false;
+    let buf = "";
+    const done = (payload) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(payload);
+    };
+    socket.setTimeout(Math.max(1e3, timeoutMs));
+    socket.on("timeout", () => done({ ok: false, statusLine: "", error: "timeout" }));
+    socket.on("error", (err) => done({ ok: false, statusLine: "", error: String(err?.message || err) }));
+    socket.on("connect", () => {
+      const req = `CONNECT ${targetHost}:${targetPort} HTTP/1.1\r
+Host: ${targetHost}:${targetPort}\r
+Proxy-Connection: Keep-Alive\r
+\r
+`;
+      socket.write(req);
+    });
+    socket.on("data", (chunk) => {
+      buf += chunk.toString("utf8");
+      const lineEnd = buf.indexOf("\r\n");
+      if (lineEnd < 0) return;
+      const statusLine = buf.slice(0, lineEnd).trim();
+      done({ ok: /^HTTP\/1\.[01]\s+200\b/i.test(statusLine), statusLine });
+    });
+  });
+});
 ipcMain.handle("app:get-version", () => app.getVersion());
 ipcMain.handle("app:check-update", async () => {
   try {
     const fetchGithub = async (url) => {
       return new Promise((resolve, reject) => {
-        const request = net$1.request(url);
+        const request = net$2.request(url);
         request.setHeader("User-Agent", "LagZero-Client");
         request.on("response", (response) => {
           if (response.statusCode !== 200) {

@@ -43,7 +43,9 @@
     "more": "更多",
     "fill_required": "请填写必填项",
     "none": "无",
-    "auto": "自动"
+    "auto": "自动",
+    "enabled": "已开启",
+    "disabled": "已关闭"
   },
   "nodes": {
     "add_node": "添加节点",
@@ -186,7 +188,13 @@
     "logs_category_frontend": "前端",
     "logs_category_backend": "后端",
     "logs_category_core": "核心",
-    "logs_all_levels": "全部级别"
+    "logs_all_levels": "全部级别",
+    "local_proxy": "本地混合代理",
+    "local_proxy_port": "HTTP 端口",
+    "local_proxy_info": "SOCKS5 端口将自动设置为: {socks}",
+    "local_proxy_node_strategy": "节点选择",
+    "local_proxy_node_recursive": "按顺序测试节点（Google + Apple），自动使用第一个可用节点。",
+    "local_proxy_fixed_node_index": "固定节点序号（从 1 开始）"
   },
   "categories": {
     "new_category_placeholder": "输入新分类名称..."

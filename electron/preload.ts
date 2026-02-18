@@ -40,6 +40,9 @@ contextBridge.exposeInMainWorld('system', {
   tcpPing: (host: string, port: number) => ipcRenderer.invoke('system:tcp-ping', host, port),
   flushDnsCache: () => ipcRenderer.invoke('system:flush-dns-cache'),
   reinstallTunAdapter: (interfaceName?: string) => ipcRenderer.invoke('system:tun-reinstall', interfaceName),
+  findAvailablePort: (port: number, count?: number) => ipcRenderer.invoke('system:find-available-port', port, count),
+  testHttpProxyConnect: (proxyPort: number, targetHost: string, targetPort?: number, timeoutMs?: number) =>
+    ipcRenderer.invoke('system:test-http-proxy-connect', proxyPort, targetHost, targetPort, timeoutMs),
 })
 
 contextBridge.exposeInMainWorld('proxyMonitor', {

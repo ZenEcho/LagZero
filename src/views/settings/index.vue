@@ -191,6 +191,54 @@
 
               <div class="w-full h-px bg-border/30"></div>
 
+              <!-- Local Proxy -->
+              <section>
+                <div class="flex items-center justify-between mb-4">
+                  <h2 class="text-xl font-bold flex items-center gap-2">
+                    <div class="i-material-symbols-lan text-primary"></div>
+                    {{ $t('settings.local_proxy') }}
+                  </h2>
+                  <n-switch v-model:value="settingsStore.localProxyEnabled">
+                    <template #checked>{{ $t('common.enabled') }}</template>
+                    <template #unchecked>{{ $t('common.disabled') }}</template>
+                  </n-switch>
+                </div>
+
+                <div
+                  class="bg-surface-panel/50 border border-border/50 rounded-2xl p-6 backdrop-blur-sm transition-opacity duration-300"
+                  :class="{ 'opacity-50 pointer-events-none': !settingsStore.localProxyEnabled }">
+                  <div class="space-y-2">
+                    <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">{{
+                      $t('settings.local_proxy_port') }} (HTTP)</label>
+                    <n-input-number v-model:value="settingsStore.localProxyPort" :min="1024" :max="65535"
+                      class="glass-select" button-placement="both" />
+                    <p class="text-xs text-on-surface-muted mt-1">{{ $t('settings.local_proxy_info', {
+                      socks:
+                        settingsStore.localProxyPort + 1 }) }}</p>
+                  </div>
+                  <div class="space-y-2 pt-2">
+                    <div class="flex items-center justify-between">
+                      <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
+                        {{ $t('settings.local_proxy_node_strategy') }}
+                      </label>
+                      <n-switch v-model:value="settingsStore.localProxyNodeRecursiveTest" size="small" />
+                    </div>
+                    <p class="text-xs text-on-surface-muted">
+                      {{ $t('settings.local_proxy_node_recursive') }}
+                    </p>
+                  </div>
+                  <div class="space-y-2" :class="{ 'opacity-50 pointer-events-none': settingsStore.localProxyNodeRecursiveTest }">
+                    <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
+                      {{ $t('settings.local_proxy_fixed_node_index') }}
+                    </label>
+                    <n-input-number v-model:value="settingsStore.localProxyFixedNodeIndex" :min="1" :max="9999"
+                      class="glass-select" button-placement="both" />
+                  </div>
+                </div>
+              </section>
+
+              <div class="w-full h-px bg-border/30"></div>
+
               <!-- Advanced Network -->
               <section>
                 <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
@@ -329,7 +377,7 @@
                   class="bg-surface-overlay/50 border border-border/50 rounded-xl p-3 flex justify-between items-center mb-4 backdrop-blur-sm">
                   <span class="text-sm font-medium text-on-surface-muted">{{ $t('settings.current_version') }}</span>
                   <span class="font-mono font-bold text-primary bg-primary/10 px-2 py-1 rounded">v{{ appVersion
-                    }}</span>
+                  }}</span>
                 </div>
 
                 <n-button type="primary" block secondary size="large" @click="checkUpdate" :loading="checkingUpdate"
@@ -396,16 +444,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTheme, type ThemeColor } from '@/composables/useTheme'
 import { useSettingsStore } from '@/stores/settings'
-import { NSelect, NInput, NButton } from 'naive-ui'
+import { useLocalProxyStore } from '@/stores/local-proxy'
+import { NSelect, NInput, NButton, NSwitch, NInputNumber } from 'naive-ui'
 import pkg from '../../../package.json'
 
 const { locale, t } = useI18n()
 const { themeColor, setThemeColor } = useTheme()
 const settingsStore = useSettingsStore()
+const localProxyStore = useLocalProxyStore()
 
 const activeTab = ref('general')
 const tabs = computed(() => [
@@ -615,6 +665,18 @@ onMounted(async () => {
   await loadLogs()
   window.logs?.onNew(onLogNew)
 })
+
+watch(
+  () => [
+    settingsStore.localProxyEnabled,
+    settingsStore.localProxyPort,
+    settingsStore.localProxyNodeRecursiveTest,
+    settingsStore.localProxyFixedNodeIndex
+  ],
+  () => {
+    void localProxyStore.applySettingsChange()
+  }
+)
 
 onUnmounted(() => {
   window.logs?.offNew(onLogNew)
