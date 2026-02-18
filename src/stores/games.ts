@@ -5,7 +5,6 @@ import type { Game } from '@/types'
 import { useNodeStore } from './nodes'
 import { generateSingboxConfig } from '@/utils/singbox-config'
 import { useSettingsStore } from './settings'
-import { useLocalProxyStore } from './local-proxy'
 
 export type { Game }
 
@@ -194,7 +193,6 @@ export const useGameStore = defineStore('games', () => {
 
     const nodeStore = useNodeStore()
     const settingsStore = useSettingsStore()
-    const localProxyStore = useLocalProxyStore()
     const selectedNodeId = String(game.nodeId || '')
     const node = nodeStore.nodes.find(n => n.id === selectedNodeId || n.tag === selectedNodeId)
 
@@ -202,15 +200,6 @@ export const useGameStore = defineStore('games', () => {
       const msg = 'Selected node not found. Please reselect a node and try again.'
       console.error(msg, { gameId: id, nodeId: selectedNodeId })
       throw new Error(msg)
-    }
-
-    if (settingsStore.localProxyEnabled) {
-      try {
-        const port = await window.system.findAvailablePort(settingsStore.localProxyPort, 2)
-        settingsStore.localProxyPort = port
-      } catch (e) {
-        console.error('Failed to find available port for local proxy:', e)
-      }
     }
 
     try {
@@ -235,10 +224,6 @@ export const useGameStore = defineStore('games', () => {
       if (shouldEnableChainProxy) await window.proxyMonitor.start(String(rawGame.id), procs)
       else await window.proxyMonitor.stop()
 
-      if (settingsStore.localProxyEnabled) {
-        localProxyStore.setActiveNode(String(rawNode.id || rawNode.tag || ''))
-      }
-
       setGameStatus(id, 'accelerating')
     } catch (e) {
       console.error('Failed to start game acceleration:', e)
@@ -247,13 +232,11 @@ export const useGameStore = defineStore('games', () => {
   }
 
   async function stopGame(_id: string) {
-    const localProxyStore = useLocalProxyStore()
     try {
       // @ts-ignore
       await window.proxyMonitor.stop()
 
       resetAllAccelerationStatus()
-      await localProxyStore.startLocalProxy('game-stop')
     } catch (e) {
       console.error('Failed to stop game acceleration:', e)
       throw e

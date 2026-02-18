@@ -6,14 +6,23 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+
+# Coverage
 coverage
+
+# Dependencies
 node_modules
+
+# Build outputs
 dist
 dist-ssr
 dist-electron
 release
 *.local
+
+# App runtime data
 .lagzero-dev
+
 # Editor directories and files
 .vscode/*
 .idea
@@ -23,4 +32,3 @@ release
 *.njsproj
 *.sln
 *.sw?
-dist-electron/*

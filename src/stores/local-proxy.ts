@@ -5,7 +5,6 @@ import type { NodeConfig } from '@/utils/protocol'
 import { generateSingboxConfig } from '@/utils/singbox-config'
 import { useNodeStore } from './nodes'
 import { useSettingsStore } from './settings'
-import { useGameStore } from './games'
 
 const LOCAL_PROXY_HOSTS = ['www.google.com', 'www.apple.com']
 
@@ -67,21 +66,15 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
     return nodes[idx] || nodes[0] || null
   }
 
-  async function startLocalProxy(reason: 'startup' | 'settings' | 'game-stop' = 'startup'): Promise<boolean> {
+  async function startLocalProxy(reason: 'startup' | 'settings' = 'startup'): Promise<boolean> {
     if (starting.value) return false
 
     const settings = useSettingsStore()
     const nodeStore = useNodeStore()
-    const gameStore = useGameStore()
 
     if (!settings.localProxyEnabled) {
       running.value = false
       activeNodeKey.value = ''
-      return false
-    }
-
-    // Do not interrupt active acceleration unless we're recovering from stop.
-    if (reason !== 'game-stop' && gameStore.getAcceleratingGame()) {
       return false
     }
 
@@ -133,8 +126,6 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
   }
 
   async function stopLocalProxy(): Promise<void> {
-    const gameStore = useGameStore()
-    if (gameStore.getAcceleratingGame()) return
     await window.proxyMonitor.stop()
     await window.singbox.stop()
     running.value = false

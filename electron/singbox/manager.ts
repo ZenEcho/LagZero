@@ -36,7 +36,8 @@ export class SingBoxManager {
     })
     ipcMain.handle('singbox-stop', () => this.stop())
     ipcMain.handle('singbox-restart', async (_, configContent: string) => {
-        this.stop()
+        this.suppressNextStoppedStatus = true
+        await this.stopAndWaitForExit(5000)
         const configPath = path.join(app.getPath('userData'), 'config.json')
         await fs.writeFile(configPath, configContent)
         await this.start(configPath)
