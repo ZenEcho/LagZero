@@ -1,3 +1,9 @@
+/**
+ * Electron 预加载脚本
+ * 
+ * 使用 ContextBridge 将主进程 API 安全地暴露给渲染进程。
+ * 定义了 electron, singbox, system, proxyMonitor, nodes, games, categories, app, logs 等全局对象。
+ */
 import { contextBridge, ipcRenderer } from 'electron'
 
 const ipcListenerMap = new Map<string, Map<(...args: any[]) => void, (...args: any[]) => void>>()

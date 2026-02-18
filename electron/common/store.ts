@@ -1,13 +1,27 @@
 import fs from 'fs-extra'
 import path from 'node:path'
 
+/**
+ * 本地 JSON 存储类配置选项
+ */
 export interface StoreOptions<T> {
+  /** 存储文件名称 (不含后缀) */
   name: string
+  /** 默认数据 */
   defaults: T
+  /** 存储目录路径 */
   cwd: string
+  /** 保留的备份文件数量，默认为 5 */
   backupCount?: number
 }
 
+/**
+ * 简单的本地 JSON 文件存储
+ * 
+ * 提供数据的持久化存储、读取、自动备份功能。
+ * 
+ * @template T - 存储数据的类型接口
+ */
 export class JsonStore<T> {
   private filePath: string
   private backupDir: string

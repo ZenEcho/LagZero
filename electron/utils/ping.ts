@@ -3,13 +3,27 @@ import { exec } from 'node:child_process'
 import net from 'node:net'
 import os from 'node:os'
 
+/**
+ * Ping 测试结果接口
+ */
 interface PingResult {
+    /** 延迟 (毫秒)，-1 表示超时或不可达 */
     latency: number
+    /** 丢包率 (0-100) */
     loss: number
 }
 
 const isWindows = os.platform() === 'win32'
 
+/**
+ * 执行 ICMP Ping 测试
+ * 
+ * 使用系统 ping 命令测试目标主机的连通性和延迟。
+ * 
+ * @param host - 目标主机 (域名或 IP)
+ * @param timeout - 超时时间 (毫秒)，默认 2000ms
+ * @returns Promise<PingResult> - 测试结果
+ */
 export function ping(host: string, timeout = 2000): Promise<PingResult> {
     return new Promise((resolve) => {
         // Windows: -n 1 (count), -w timeout (ms)
@@ -60,6 +74,17 @@ export function ping(host: string, timeout = 2000): Promise<PingResult> {
     })
 }
 
+/**
+ * 执行 TCP Ping 测试
+ * 
+ * 尝试建立 TCP 连接来测试端口连通性和延迟。
+ * 比 ICMP Ping 更能反映实际服务的可用性。
+ * 
+ * @param host - 目标主机
+ * @param port - 目标端口
+ * @param timeout - 超时时间 (毫秒)，默认 2000ms
+ * @returns Promise<PingResult> - 测试结果
+ */
 export function tcpPing(host: string, port: number, timeout = 2000): Promise<PingResult> {
     return new Promise((resolve) => {
         const start = Date.now()

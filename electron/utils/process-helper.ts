@@ -1,0 +1,49 @@
+/**
+ * 标准化进程名称
+ * 
+ * 去除路径前缀，只保留文件名，并去除首尾空格。
+ * 
+ * @param processName - 原始进程名或路径
+ * @returns string - 标准化后的进程文件名 (如 'game.exe')
+ */
+export function normalizeProcessName(processName: string): string {
+  const raw = String(processName || '').trim()
+  if (!raw) return ''
+  const normalized = raw.replace(/\\/g, '/')
+  return (normalized.split('/').pop() || normalized).trim()
+}
+
+/**
+ * 标准化进程名列表
+ * 
+ * 对列表中的每个进程名进行标准化，去重，并同时保留小写版本以支持忽略大小写的匹配。
+ * 
+ * @param processNames - 原始进程名列表
+ * @returns string[] - 处理后的去重进程名列表
+ */
+export function normalizeProcessNames(processNames: string[]): string[] {
+  const set = new Set<string>()
+  for (const item of processNames) {
+    const normalized = normalizeProcessName(item)
+    if (!normalized) continue
+    set.add(normalized)
+    const lower = normalized.toLowerCase()
+    if (lower !== normalized) set.add(lower)
+  }
+  return Array.from(set)
+}
+
+/**
+ * 比较两个字符串数组是否相等 (忽略顺序)
+ * 
+ * @param a - 数组 A
+ * @param b - 数组 B
+ * @returns boolean - 如果包含相同的元素（忽略顺序）则返回 true
+ */
+export function areStringArraysEqual(a: unknown, b: unknown): boolean {
+  if (!Array.isArray(a) || !Array.isArray(b)) return false
+  if (a.length !== b.length) return false
+  const left = [...a].map(v => String(v)).sort()
+  const right = [...b].map(v => String(v)).sort()
+  return left.every((v, i) => v === right[i])
+}

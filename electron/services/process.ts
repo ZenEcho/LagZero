@@ -4,7 +4,24 @@ import { promisify } from 'util'
 
 const execAsync = promisify(exec)
 
-export class ProcessManager {
+/**
+ * 进程节点结构
+ */
+export interface ProcessNode {
+  path: string
+  name: string
+  ppid: number
+  pid: number
+  children: ProcessNode[]
+}
+
+/**
+ * 进程管理服务
+ * 
+ * 提供跨平台的进程扫描和进程树获取功能。
+ * 主要用于识别游戏进程及其父子关系。
+ */
+export class ProcessService {
   constructor() {
     this.setupIPC()
   }
@@ -18,6 +35,11 @@ export class ProcessManager {
     })
   }
 
+  /**
+   * 扫描当前运行的所有进程
+   * 
+   * @returns Promise<string[]> - 返回进程名列表 (如 ['chrome.exe', 'svchost.exe'])
+   */
   async scanProcesses(): Promise<string[]> {
     try {
       let command = ''
@@ -59,7 +81,15 @@ export class ProcessManager {
     }
   }
 
-  async getProcessTree(): Promise<any[]> {
+  /**
+   * 获取系统进程树
+   * 
+   * 仅支持 Windows 平台 (使用 wmic)。
+   * 返回包含 PID, PPID, Name, ExecutablePath 的树状结构或扁平列表。
+   * 
+   * @returns Promise<any[]> - 进程树根节点列表
+   */
+  async getProcessTree(): Promise<ProcessNode[]> {
     try {
       if (process.platform === 'win32') {
         // Use wmic to get process tree info
@@ -78,17 +108,17 @@ export class ProcessManager {
             ppid: parseInt(parts[3], 10),
             pid: parseInt(parts[4], 10),
             children: []
-          }
-        }).filter(p => p && p.pid)
+          } as ProcessNode
+        }).filter((p): p is ProcessNode => !!p && !!p.pid)
 
         // Build tree
-        const processMap = new Map<number, any>()
+        const processMap = new Map<number, ProcessNode>()
         processes.forEach(p => processMap.set(p.pid, p))
         
-        const rootProcesses: any[] = []
+        const rootProcesses: ProcessNode[] = []
         processes.forEach(p => {
           if (p.ppid && processMap.has(p.ppid)) {
-            processMap.get(p.ppid).children.push(p)
+            processMap.get(p.ppid)!.children.push(p)
           } else {
             rootProcesses.push(p)
           }

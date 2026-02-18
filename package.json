@@ -3,7 +3,7 @@
   "productName": "LagZero",
   "private": true,
   "version": "0.1.0",
-  "main": "dist-electron/main.js",
+  "main": "dist-electron/main/index.js",
   "type": "module",
   "author": "LagZero Team",
   "description": "Cross-platform Game Accelerator",

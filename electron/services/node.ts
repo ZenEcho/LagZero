@@ -1,8 +1,13 @@
 import { ipcMain } from 'electron'
-import { DatabaseManager } from '../db'
-import { v4 as uuidv4 } from 'uuid'
+import { DatabaseService } from './database'
 
 // Reuse types from frontend via shared or duplicate for now to avoid complexity
+/**
+ * 代理节点配置接口
+ * 
+ * 定义了节点的所有属性，包括服务器地址、端口、协议类型及各协议特定的配置项。
+ * 尽量复用前端定义的类型结构。
+ */
 interface NodeConfig {
   id: string
   type: string
@@ -40,10 +45,16 @@ interface NodeConfig {
   username?: string
 }
 
-export class NodeManager {
-  private db: DatabaseManager
+/**
+ * 节点管理服务
+ * 
+ * 负责代理节点的增删改查及导入导出。
+ * 实际数据存储委托给 DatabaseService。
+ */
+export class NodeService {
+  private db: DatabaseService
 
-  constructor(db: DatabaseManager) {
+  constructor(db: DatabaseService) {
     this.db = db
     this.registerIPC()
   }

@@ -8,11 +8,22 @@ import { pipeline } from 'stream/promises'
 import { createWriteStream } from 'fs'
 import { Readable } from 'stream'
 import https from 'node:https'
-import { randomUUID } from 'node:crypto'
+import { generateId } from '../utils/id'
+
+import { normalizeProcessNames, areStringArraysEqual } from '../utils/process-helper'
 
 const BIN_DIR = path.join(app.getPath('userData'), 'bin')
 
-export class SingBoxManager {
+/**
+ * Sing-box 核心服务
+ * 
+ * 负责管理 sing-box 内核的生命周期，包括：
+ * 1. 自动下载与安装内核
+ * 2. 启动/停止/重启内核进程
+ * 3. 实时日志捕获与分发
+ * 4. 动态更新路由规则 (Process Rules)
+ */
+export class SingBoxService {
   private process: ChildProcess | null = null
   private mainWindow: BrowserWindow | null = null
   private retryCount = 0
@@ -166,6 +177,9 @@ export class SingBoxManager {
     this.retryCount = 0
   }
 
+  /**
+   * 停止 sing-box
+   */
   stop() {
     if (this.process) {
       this.isStopping = true
@@ -175,14 +189,14 @@ export class SingBoxManager {
       current.kill('SIGINT')
       setTimeout(() => {
         if (!this.process) return
-        if (this.process !== current) return
-        if (process.platform === 'win32' && pid) {
-          spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true })
-        } else {
-          this.process.kill('SIGKILL')
-        }
-      }, 800)
+    if (this.process !== current) return
+    if (process.platform === 'win32' && pid) {
+      spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true })
+    } else {
+      this.process.kill('SIGKILL')
     }
+  }, 800)
+}
   }
 
   private log(message: string, type: 'info' | 'error' = 'info') {
@@ -268,6 +282,14 @@ console.log(text);
     return input.replace(/\x1B\[[0-9;]*m/g, '')
   }
 
+  /**
+   * 动态更新进程匹配规则
+   * 
+   * 修改 config.json 中的 route.rules 和 dns.rules，添加或更新进程名列表，
+   * 然后重启 sing-box 以生效。
+   * 
+   * @param processNames - 最新的需要代理的进程名列表
+   */
   async updateProcessNames(processNames: string[]): Promise<void> {
     this.processRuleUpdateQueue = this.processRuleUpdateQueue
       .then(() => this.applyProcessNameUpdate(processNames))
@@ -283,7 +305,7 @@ console.log(text);
     if (!await fs.pathExists(configPath)) return
     if (!this.process) return
 
-    const normalized = this.normalizeProcessNames(processNames)
+    const normalized = normalizeProcessNames(processNames)
     if (normalized.length === 0) return
 
     let configRaw = ''
@@ -304,7 +326,7 @@ console.log(text);
     const routeRules = Array.isArray(config?.route?.rules) ? config.route.rules : []
     const routeRule = routeRules.find((r: any) => Array.isArray(r?.process_name) && r?.outbound === 'proxy')
     if (routeRule) {
-      if (!this.sameStringArray(routeRule.process_name, normalized)) {
+      if (!areStringArraysEqual(routeRule.process_name, normalized)) {
         routeRule.process_name = normalized
         changed = true
       }
@@ -320,7 +342,7 @@ console.log(text);
     if (hasRemotePrimaryServer) {
       const dnsRule = dnsRules.find((r: any) => Array.isArray(r?.process_name) && r?.server === 'remote-primary')
       if (dnsRule) {
-        if (!this.sameStringArray(dnsRule.process_name, normalized)) {
+        if (!areStringArraysEqual(dnsRule.process_name, normalized)) {
           dnsRule.process_name = normalized
           changed = true
         }
@@ -364,26 +386,6 @@ console.log(text);
     })
   }
 
-  private normalizeProcessNames(processes: string[]): string[] {
-    const set = new Set<string>()
-    for (const item of processes) {
-      const normalized = String(item || '').replace(/\\/g, '/').split('/').pop()?.trim() || ''
-      if (!normalized) continue
-      set.add(normalized)
-      const lower = normalized.toLowerCase()
-      if (lower !== normalized) set.add(lower)
-    }
-    return Array.from(set)
-  }
-
-  private sameStringArray(a: unknown, b: unknown): boolean {
-    if (!Array.isArray(a) || !Array.isArray(b)) return false
-    if (a.length !== b.length) return false
-    const left = [...a].map(v => String(v)).sort()
-    const right = [...b].map(v => String(v)).sort()
-    return left.every((v, i) => v === right[i])
-  }
-
   private async downloadAndInstallBinary(platform: NodeJS.Platform, arch: string): Promise<string> {
     const ext = platform === 'win32' ? '.exe' : ''
     const binPath = path.join(BIN_DIR, `sing-box${ext}`)
@@ -395,7 +397,7 @@ console.log(text);
     const { version, downloadUrl, archiveExt } = await this.resolveLatestReleaseDownload(platform, arch)
 
     const archivePath = path.join(BIN_DIR, `sing-box-${version}${archiveExt}`)
-    const extractDir = path.join(BIN_DIR, `tmp-${randomUUID()}`)
+    const extractDir = path.join(BIN_DIR, `tmp-${generateId()}`)
 
     try {
       await fs.ensureDir(extractDir)

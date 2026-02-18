@@ -1,27 +1,30 @@
 import { BrowserWindow, ipcMain } from 'electron';
-import { ProcessManager } from '../process/manager';
-import { SingBoxManager } from '../singbox/manager';
+import { ProcessService, ProcessNode } from './process';
+import { SingBoxService } from './singbox';
+import { normalizeProcessNames, normalizeProcessName } from '../utils/process-helper';
 
-interface ProcessInfo {
-  pid: number;
-  ppid: number;
-  name: string;
-  children?: ProcessInfo[];
-}
-
-export class ProxyMonitor {
+/**
+ * 代理监控服务
+ * 
+ * 负责监控指定游戏的进程启动情况。
+ * 当检测到游戏进程或其子进程启动时，自动通知 SingBoxService 更新路由规则。
+ * 实现了"链式代理"检测逻辑，即自动代理游戏启动的所有子进程。
+ */
+export class ProxyMonitorService {
   private mainWindow: BrowserWindow;
-  private processManager: ProcessManager;
-  private singboxManager: SingBoxManager;
+  private processService: ProcessService;
+  private singboxService: SingBoxService;
   private interval: NodeJS.Timeout | null = null;
+  /** 当前正在监控的目标进程名集合 */
   private monitoredProcessNames: Set<string> = new Set();
   private activeGameId: string | null = null;
+  /** 已检测到的并加入监控的子进程集合 */
   private detectedChildProcesses: Set<string> = new Set();
 
-  constructor(window: BrowserWindow, processManager: ProcessManager, singboxManager: SingBoxManager) {
+  constructor(window: BrowserWindow, processService: ProcessService, singboxService: SingBoxService) {
     this.mainWindow = window;
-    this.processManager = processManager;
-    this.singboxManager = singboxManager;
+    this.processService = processService;
+    this.singboxService = singboxService;
     this.setupIPC();
   }
 
@@ -35,10 +38,16 @@ export class ProxyMonitor {
     });
   }
 
+  /**
+   * 开始监控指定游戏
+   * 
+   * @param gameId - 游戏 ID
+   * @param processNames - 游戏的初始进程名列表
+   */
   startMonitoring(gameId: string, processNames: string[]) {
     this.stopMonitoring();
     this.activeGameId = gameId;
-    this.monitoredProcessNames = new Set(this.normalizeProcessNames(processNames));
+    this.monitoredProcessNames = new Set(normalizeProcessNames(processNames));
     this.detectedChildProcesses.clear();
 
     console.log(`[ProxyMonitor] Started monitoring for game ${gameId} with processes:`, [...this.monitoredProcessNames]);
@@ -47,9 +56,12 @@ export class ProxyMonitor {
     this.interval = setInterval(() => this.checkChainProxy(), 3000);
     this.mainWindow.webContents.send('proxy-monitor:status', { status: 'active', gameId });
 
-    void this.singboxManager.updateProcessNames([...this.monitoredProcessNames]);
+    void this.singboxService.updateProcessNames([...this.monitoredProcessNames]);
   }
 
+  /**
+   * 停止监控
+   */
   stopMonitoring() {
     if (this.interval) {
       clearInterval(this.interval);
@@ -62,12 +74,15 @@ export class ProxyMonitor {
     console.log('[ProxyMonitor] Stopped monitoring');
   }
 
+  /**
+   * 周期性检查进程树，发现新启动的子进程
+   */
   private async checkChainProxy() {
     if (!this.activeGameId) return;
 
     try {
-      const tree = await this.processManager.getProcessTree();
-      const newChildren = this.normalizeProcessNames(this.findNewChildren(tree))
+      const tree = await this.processService.getProcessTree();
+      const newChildren = normalizeProcessNames(this.findNewChildren(tree))
         .filter(name => !this.monitoredProcessNames.has(name));
 
       if (newChildren.length > 0) {
@@ -81,19 +96,19 @@ export class ProxyMonitor {
         // Notify frontend
         this.mainWindow.webContents.send('proxy-monitor:detected', newChildren);
 
-        await this.singboxManager.updateProcessNames([...this.monitoredProcessNames]);
+        await this.singboxService.updateProcessNames([...this.monitoredProcessNames]);
       }
     } catch (error) {
       console.error('Proxy monitor error:', error);
     }
   }
 
-  private findNewChildren(nodes: ProcessInfo[]): string[] {
+  private findNewChildren(nodes: ProcessNode[]): string[] {
     const found: string[] = [];
     
     // Recursive traversal to find children of monitored processes
-    const traverse = (node: ProcessInfo, isProxiedParent: boolean) => {
-      const normalizedName = this.normalizeProcessName(node.name);
+    const traverse = (node: ProcessNode, isProxiedParent: boolean) => {
+      const normalizedName = normalizeProcessName(node.name);
       if (!normalizedName) return;
 
       const isMonitored = this.monitoredProcessNames.has(normalizedName);
@@ -111,24 +126,5 @@ export class ProxyMonitor {
 
     nodes.forEach(node => traverse(node, false));
     return found;
-  }
-
-  private normalizeProcessNames(processNames: string[]): string[] {
-    const set = new Set<string>();
-    processNames.forEach(name => {
-      const normalized = this.normalizeProcessName(name);
-      if (!normalized) return;
-      set.add(normalized);
-      const lower = normalized.toLowerCase();
-      if (lower !== normalized) set.add(lower);
-    });
-    return Array.from(set);
-  }
-
-  private normalizeProcessName(processName: string): string {
-    const raw = String(processName || '').trim();
-    if (!raw) return '';
-    const normalized = raw.replace(/\\/g, '/');
-    return (normalized.split('/').pop() || normalized).trim();
   }
 }
