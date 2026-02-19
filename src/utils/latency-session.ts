@@ -1,16 +1,4 @@
-export interface LatencyRecord {
-  id?: number
-  nodeKey: string
-  server: string
-  port: number
-  method: 'ping' | 'tcp' | 'http'
-  latency: number
-  loss: number
-  timestamp: number
-  gameId?: string
-  accelerationSeconds?: number
-  sessionLossRate?: number
-}
+import type { LatencyRecord } from '@/types'
 
 const DB_NAME = 'lagzero-latency-session'
 const DB_VERSION = 2

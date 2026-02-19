@@ -28,35 +28,8 @@
 
       <template v-if="form.proxyMode === 'process'">
         <n-form-item :label="$t('games.process_name')">
-          <div class="w-full max-h-[200px] overflow-y-auto">
-            <div class="flex flex-col w-full gap-2">
-              <div v-for="(_, index) in processList" :key="index" class="flex gap-2">
-                <n-input v-model:value="processList[index]" placeholder="例如：League of Legends.exe" />
-                <n-button v-if="processList.length > 1" @click="removeProcess(index)" type="error" quaternary circle>
-                  <template #icon>
-                    <div class="i-material-symbols-delete"></div>
-                  </template>
-                </n-button>
-              </div>
-              <div class="flex gap-2 self-start">
-                <n-button @click="addProcess" dashed size="small">
-                  <template #icon>
-                    <div class="i-material-symbols-add"></div>
-                  </template>
-                  {{ $t('games.add_process') }}
-                </n-button>
-                <n-button @click="pickProcess" dashed size="small">
-                  选择文件
-                </n-button>
-                <n-button @click="pickProcessFolder" dashed size="small">
-                  选择目录
-                </n-button>
-              </div>
-            </div>
-          </div>
+          <ProcessSelector v-model="processList" mode="multi" />
         </n-form-item>
-
-
       </template>
 
       <template v-if="form.proxyMode === 'routing'">
@@ -69,47 +42,13 @@
         </n-form-item>
 
         <n-form-item :label="`${$t('games.process_name')} (${$t('common.optional')})`">
-          <div class="w-full max-h-[200px] overflow-y-auto">
-            <div class="flex flex-col w-full gap-2">
-              <div v-for="(_, index) in processList" :key="index" class="flex gap-2">
-                <n-input v-model:value="processList[index]" placeholder="例如：Game.exe（用于启动检测）" />
-                <n-button v-if="processList.length > 1" @click="removeProcess(index)" type="error" quaternary circle>
-                  <template #icon>
-                    <div class="i-material-symbols-delete"></div>
-                  </template>
-                </n-button>
-              </div>
-              <div class="flex gap-2 self-start">
-                <n-button @click="addProcess" dashed size="small">
-                  <template #icon>
-                    <div class="i-material-symbols-add"></div>
-                  </template>
-                  {{ $t('games.add_process') }}
-                </n-button>
-                <n-button @click="pickProcess" dashed size="small">
-                  选择文件
-                </n-button>
-                <n-button @click="pickProcessFolder" dashed size="small">
-                  选择目录
-                </n-button>
-              </div>
-            </div>
-          </div>
+          <ProcessSelector v-model="processList" mode="multi" placeholder="例如：Game.exe（用于启动检测）" />
         </n-form-item>
       </template>
 
       <n-form-item :label="$t('games.icon')">
-        <div class="flex items-center gap-2 w-full">
-          <div
-            class="w-10 h-10 bg-surface rounded border border-border overflow-hidden flex items-center justify-center">
-            <img v-if="form.iconUrl" :src="form.iconUrl" class="w-full h-full object-cover" />
-            <div v-else class="i-material-symbols-image text-xl text-on-surface-muted"></div>
-          </div>
-          <n-input v-model:value="form.iconUrl" placeholder="支持 URL 或 file://..." />
-          <n-button @click="pickImage">选择文件</n-button>
-          <n-button quaternary @click="form.iconUrl = ''">清空</n-button>
-        </div>
-      </n-form-item>
+          <IconSelector v-model="form.iconUrl" />
+        </n-form-item>
 
     </n-form>
     <template #footer>
@@ -124,10 +63,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, h } from 'vue'
-import { useMessage, useDialog, NInputNumber } from 'naive-ui'
+import { ref, watch, computed } from 'vue'
 import type { Game } from '@/types'
 import { useCategoryStore } from '@/stores/categories'
+import { useMessage } from 'naive-ui'
+import IconSelector from '@/components/common/IconSelector.vue'
+import ProcessSelector from '@/components/common/ProcessSelector.vue'
 
 const props = defineProps<{
   modelValue: boolean
@@ -141,7 +82,6 @@ const emit = defineEmits<{
 
 const categoryStore = useCategoryStore()
 const message = useMessage()
-const dialog = useDialog()
 const isEdit = computed(() => !!props.editingGame)
 
 const form = ref<Partial<Game>>({
@@ -189,92 +129,30 @@ watch(() => props.modelValue, (val) => {
   }
 })
 
-function addProcess() {
-  processList.value.push('')
-}
-
-function removeProcess(index: number) {
-  processList.value.splice(index, 1)
-}
-
 function close() {
   emit('update:modelValue', false)
-}
-
-async function pickImage() {
-  // @ts-ignore
-  const picker = window.electron?.pickImage
-  if (!picker) {
-    message.error('当前环境不支持选择文件')
-    return
-  }
-  const url = await picker()
-  if (url) {
-    form.value.iconUrl = url
-  }
-}
-
-async function pickProcess() {
-  const picker = window.electron?.pickProcess
-  if (!picker) {
-    message.error('当前环境不支持选择文件')
-    return
-  }
-  const files = await picker()
-  if (files && files.length > 0) {
-    // If we have existing empty slots, fill them first
-    // Or just append unique ones
-    const current = new Set(processList.value.filter(Boolean))
-    files.forEach((f: string) => current.add(f))
-    processList.value = Array.from(current)
-    if (processList.value.length === 0) processList.value.push('')
-  }
-}
-
-async function pickProcessFolder() {
-  const picker = window.electron?.pickProcessFolder
-  if (!picker) {
-    message.error('当前环境不支持选择文件')
-    return
-  }
-
-  const depth = ref(1)
-  dialog.create({
-    title: '选择目录扫描深度',
-    content: () => h('div', { class: 'flex flex-col gap-2' }, [
-      h('span', '请输入扫描深度（1 表示仅当前目录，-1 表示无限递归）：'),
-      h(NInputNumber, {
-        value: depth.value,
-        onUpdateValue: (v: number | null) => { if (v !== null) depth.value = v },
-        min: -1
-      })
-    ]),
-    positiveText: '确定选择目录',
-    negativeText: '取消',
-    onPositiveClick: async () => {
-      const files = await picker(depth.value)
-      if (files && files.length > 0) {
-        const current = new Set(processList.value.filter(Boolean))
-        files.forEach((f: string) => current.add(f))
-        processList.value = Array.from(current)
-        if (processList.value.length === 0) processList.value.push('')
-        message.success(`已添加 ${files.length} 个可执行文件`)
-      } else if (files) {
-        message.info('该目录下未找到 exe 文件')
-      }
-    }
-  })
 }
 
 function save() {
   if (!form.value.name) return
 
+  const mode = form.value.proxyMode === 'routing' ? 'routing' : 'process'
   const cleanProcesses = processList.value.map(p => p.trim()).filter(Boolean)
-
   const cleanRules = routingRulesText.value.split('\n').map(r => r.trim()).filter(Boolean)
+
+  if (mode === 'process' && cleanProcesses.length === 0) {
+    message.warning('进程模式需要至少填写一个进程名')
+    return
+  }
+
+  if (mode === 'routing' && cleanRules.length === 0) {
+    message.warning('路由模式需要至少填写一条 IP/CIDR 规则')
+    return
+  }
 
   const gameData: Game = {
     ...form.value,
+    proxyMode: mode,
     iconUrl: form.value.iconUrl ? String(form.value.iconUrl).trim() : undefined,
     processName: cleanProcesses,
     routingRules: cleanRules

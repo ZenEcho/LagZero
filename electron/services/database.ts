@@ -244,7 +244,7 @@ export class DatabaseService {
             process_name: '[]',
             category_id: otherCategoryId,
             proxy_mode: 'routing',
-            routing_rules: JSON.stringify([]),
+            routing_rules: JSON.stringify(['global']),
             status: 'idle',
             latency: 0
           }

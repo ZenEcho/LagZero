@@ -85,14 +85,14 @@
                            <span class="text-[10px] uppercase font-bold text-on-surface-muted tracking-widest mb-1">{{
                               $t('games.packet_loss') }}</span>
                            <span class="text-2xl font-mono font-bold text-on-surface tabular-nums">{{ currentLoss
-                              }}%</span>
+                           }}%</span>
                         </div>
                         <div class="w-px h-8 bg-border"></div>
                         <div class="flex flex-col items-center">
                            <span class="text-[10px] uppercase font-bold text-on-surface-muted tracking-widest mb-1">{{
                               $t('games.duration') }}</span>
                            <span class="text-2xl font-mono font-bold text-on-surface tabular-nums">{{ durationFormatted
-                              }}</span>
+                           }}</span>
                         </div>
                      </div>
                   </div>
@@ -125,9 +125,12 @@
                            class="absolute inset-0 rounded-full bg-primary/20 animate-ping opacity-20 duration-[3s]">
                         </div>
 
-                        <button @click="toggleAccelerator"
+                        <button @click="toggleAccelerator" :disabled="isActionPending"
                            class="relative w-40 h-40 md:w-48 md:h-48 rounded-full flex items-center justify-center group outline-none transition-all duration-500 ease-out hover:scale-105 active:scale-95 z-10"
-                           :class="isRunning ? 'shadow-[0_0_60px_-10px_rgba(var(--rgb-error),0.3)]' : 'shadow-[0_0_60px_-10px_rgba(var(--rgb-primary),0.3)]'">
+                           :class="[
+                              isRunning ? 'shadow-[0_0_60px_-10px_rgba(var(--rgb-error),0.3)]' : 'shadow-[0_0_60px_-10px_rgba(var(--rgb-primary),0.3)]',
+                              isActionPending ? 'opacity-80 cursor-not-allowed pointer-events-none' : ''
+                           ]">
 
                            <!-- Button Background -->
                            <div
@@ -145,11 +148,13 @@
                            <div class="flex flex-col items-center gap-3 relative z-20">
                               <div
                                  class="text-5xl md:text-6xl transition-all duration-300 transform group-hover:scale-110"
-                                 :class="isRunning ? 'i-carbon-stop-filled text-error drop-shadow-[0_2px_10px_rgba(var(--rgb-error),0.4)]' : 'i-carbon-play-filled-alt text-primary drop-shadow-[0_2px_10px_rgba(var(--rgb-primary),0.4)]'">
+                                 :class="isActionPending
+                                    ? 'i-carbon-circle-dash animate-spin text-primary'
+                                    : (isRunning ? 'i-carbon-stop-filled text-error drop-shadow-[0_2px_10px_rgba(var(--rgb-error),0.4)]' : 'i-carbon-play-filled-alt text-primary drop-shadow-[0_2px_10px_rgba(var(--rgb-primary),0.4)]')">
                               </div>
                               <span class="text-xs font-black uppercase tracking-[0.25em] transition-colors"
                                  :class="isRunning ? 'text-error' : 'text-primary'">
-                                 {{ isRunning ? $t('common.stop') : $t('common.start') }}
+                                 {{ actionLabel }}
                               </span>
                            </div>
                         </button>
@@ -211,25 +216,19 @@
                   </div>
                </div>
 
-               <!-- 2. Proxy Mode (Bottom of Sidebar) -->
+               <!-- 2. Proxy Mode (Bottom of Sidebar, read-only) -->
                <div class="p-5 border-t border-border/50 bg-surface/30">
                   <label class="text-[10px] font-black uppercase tracking-widest text-on-surface-muted mb-3 block">
-                     {{ $t('games.mode_routing') }}
+                     {{ $t('games.mode') }}
                   </label>
-                  <div class="flex bg-surface-overlay p-1 rounded-xl border border-border">
-                     <button v-for="mode in ['process', 'routing']" :key="mode"
-                        @click="proxyMode = (mode as 'process' | 'routing')"
-                        class="flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-all relative overflow-hidden"
-                        :class="proxyMode === mode ? 'bg-primary text-on-primary shadow-md' : 'text-on-surface-muted hover:text-on-surface'"
-                        :disabled="mode === 'process' && !canSelectProcessMode">
-
-                        <div :class="mode === 'process' ? 'i-carbon-application-web' : 'i-carbon-network-overlay'">
-                        </div>
-                        {{ mode === 'process' ? $t('games.mode_process') : $t('games.mode_routing') }}
-                     </button>
+                  <div class="rounded-xl border border-border bg-surface-overlay px-3 py-2 text-xs font-bold flex items-center gap-2">
+                     <div :class="activeProxyMode === 'process' ? 'i-carbon-application-web' : 'i-carbon-network-overlay'"></div>
+                     <span>
+                        {{ activeProxyMode === 'process' ? $t('games.mode_process') : $t('games.mode_routing') }}
+                     </span>
                   </div>
                   <p class="text-[10px] text-on-surface-muted/60 mt-3 text-center">
-                     {{ proxyMode === 'process' ? $t('games.mode_process_desc') : $t('games.mode_routing_desc') }}
+                     {{ activeProxyMode === 'process' ? $t('games.mode_process_desc') : $t('games.mode_routing_desc') }}
                   </p>
                </div>
             </aside>
@@ -240,7 +239,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onUnmounted, onMounted, onActivated, watch } from 'vue'
-import { useGameStore, isRoutingOnlyPresetGame } from '@/stores/games'
+import { useGameStore } from '@/stores/games'
 import { useCategoryStore } from '@/stores/categories'
 import { useNodeStore } from '@/stores/nodes'
 import { useSettingsStore } from '@/stores/settings'
@@ -250,6 +249,7 @@ import { useIntervalFn } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import i18n from '@/i18n'
+import { electronApi } from '@/api'
 
 // Stores
 const gameStore = useGameStore()
@@ -262,12 +262,18 @@ const message = useMessage()
 // State
 const game = computed(() => gameStore.currentGame)
 const isRunning = computed(() => game.value?.status === 'accelerating')
+const isSwitchingNode = ref(false)
+const isActionPending = computed(() => isSwitchingNode.value || gameStore.operationState !== 'idle')
+const actionLabel = computed(() => {
+   if (gameStore.operationState === 'starting') return '启动中'
+   if (gameStore.operationState === 'stopping') return '暂停中'
+   return isRunning.value ? String(i18n.global.t('common.stop')) : String(i18n.global.t('common.start'))
+})
 const currentLatency = ref(0)
 const currentLoss = ref(0)
 const startTime = ref(0)
 const durationSeconds = ref(0)
 const lastConnection = ref('')
-const isSwitchingNode = ref(false)
 const pendingNodeRestart = ref(false)
 const totalSamples = ref(0)
 const lostSamples = ref(0)
@@ -281,17 +287,7 @@ const categoryLabel = computed(() => {
 
 const selectedNode = computed(() => game.value?.nodeId || null)
 
-const proxyMode = computed({
-   get: () => game.value?.proxyMode || 'process',
-   set: (val) => {
-      if (game.value && val) {
-         if (val === 'process' && !canSelectProcessMode.value) return
-         gameStore.updateGame({ ...game.value, proxyMode: val })
-      }
-   }
-})
-
-const canSelectProcessMode = computed(() => !isRoutingOnlyPresetGame(game.value))
+const activeProxyMode = computed<'process' | 'routing'>(() => game.value?.proxyMode === 'routing' ? 'routing' : 'process')
 
 const durationFormatted = computed(() => {
    const s = durationSeconds.value
@@ -404,7 +400,7 @@ const { pause: pauseDuration, resume: resumeDuration } = useIntervalFn(() => {
 
 async function toggleAccelerator() {
    if (!game.value) return
-   if (isSwitchingNode.value) return
+   if (isActionPending.value) return
 
    if (isRunning.value) {
       try {
@@ -472,10 +468,12 @@ onMounted(() => {
       resumeSampling()
       resumeDuration()
    }
-   if (window.electron?.on) {
-      window.electron.on('singbox-log', (d: any) => onSingboxEvent('singbox-log', d))
-      window.electron.on('singbox-error', (d: any) => onSingboxEvent('singbox-error', d))
-      window.electron.on('singbox-status', (d: any) => onSingboxEvent('singbox-status', d))
+   try {
+      electronApi.on('singbox-log', (d: any) => onSingboxEvent('singbox-log', d))
+      electronApi.on('singbox-error', (d: any) => onSingboxEvent('singbox-error', d))
+      electronApi.on('singbox-status', (d: any) => onSingboxEvent('singbox-status', d))
+   } catch (e) {
+      console.warn('Electron API events not available', e)
    }
 })
 
@@ -505,10 +503,14 @@ watch(isRunning, (running) => {
 onUnmounted(() => {
    pauseSampling()
    pauseDuration()
-   // @ts-ignore
-   if (window.electron?.off) {
+   try {
       // Logic for cleanup if necessary
-   }
+      // electronApi.off is defined as function in types, so no need to check existence if we trust types.
+      // However, if we want to be safe at runtime:
+      if (typeof electronApi.off === 'function') {
+         // ...
+      }
+   } catch (e) { }
 })
 </script>
 

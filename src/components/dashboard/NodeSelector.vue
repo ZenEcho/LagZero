@@ -21,9 +21,8 @@
                 <button @click="cycleSort"
                     class="px-2 py-1.5 rounded-lg border border-transparent hover:border-border hover:bg-surface-overlay text-on-surface-muted hover:text-primary transition-colors flex items-center gap-1.5"
                     :title="$t('common.sort_by')">
-                    <div class="i-material-symbols-sort text-lg"></div>
-                    <span class="text-[10px] font-bold uppercase tracking-wider">{{ $t(`common.${sortBy === 'latency' ?
-                        'latency_short' : sortBy}`) }}</span>
+                    <div :class="getSortIcon(sortBy)" class="text-lg"></div>
+                    <span class="text-[10px] font-bold uppercase tracking-wider">{{ getSortLabel(sortBy) }}</span>
                 </button>
             </div>
 
@@ -108,6 +107,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { NodeConfig } from '@/utils/protocol'
 import { useNodeStore } from '@/stores/nodes'
 
@@ -128,10 +128,12 @@ const emit = defineEmits<{
     (e: 'update:modelValue', value: string): void
 }>()
 
+const { t } = useI18n()
+
 // 响应式状态
 const searchQuery = ref('')
 const selectedTypes = ref<string[]>([])
-const sortBy = ref<'latency' | 'load' | 'bandwidth'>('latency')
+const sortBy = ref<'creation' | 'latency' | 'alphabetical'>('creation')
 
 const nodeStore = useNodeStore()
 
@@ -177,16 +179,20 @@ const sortedNodes = computed(() => {
     }
 
     // 排序
-    result.sort((a, b) => {
-        if (sortBy.value === 'latency') {
+    if (sortBy.value === 'latency') {
+        result.sort((a, b) => {
             const latA = a.latency <= 0 ? 999999 : a.latency
             const latB = b.latency <= 0 ? 999999 : b.latency
             return latA - latB
-        }
-        if (sortBy.value === 'load') return a.load - b.load
-        if (sortBy.value === 'bandwidth') return b.bandwidth - a.bandwidth
-        return 0
-    })
+        })
+    } else if (sortBy.value === 'alphabetical') {
+        result.sort((a, b) => {
+            const nameA = a.tag || a.server || ''
+            const nameB = b.tag || b.server || ''
+            return nameA.localeCompare(nameB)
+        })
+    }
+    // 'creation' 默认为列表顺序，不做额外排序
 
     return result
 })
@@ -203,10 +209,28 @@ function toggleTypeFilter(type: string) {
 
 // 切换排序模式
 function cycleSort() {
-    const modes: ('latency' | 'load' | 'bandwidth')[] = ['latency', 'load', 'bandwidth']
+    const modes: ('creation' | 'latency' | 'alphabetical')[] = ['creation', 'latency', 'alphabetical']
     const currentIndex = modes.indexOf(sortBy.value)
     const nextIndex = (currentIndex + 1) % modes.length
     sortBy.value = modes[nextIndex]!
+}
+
+function getSortIcon(mode: string) {
+    switch (mode) {
+        case 'creation': return 'i-material-symbols-access-time'
+        case 'latency': return 'i-material-symbols-network-check'
+        case 'alphabetical': return 'i-material-symbols-sort-by-alpha'
+        default: return 'i-material-symbols-sort'
+    }
+}
+
+function getSortLabel(mode: string) {
+    switch (mode) {
+        case 'creation': return t('common.creation')
+        case 'latency': return t('common.latency_short')
+        case 'alphabetical': return t('common.alphabetical')
+        default: return mode
+    }
 }
 
 // 选择节点触发事件

@@ -1,41 +1,7 @@
 import { Base64 } from 'js-base64'
+import type { NodeConfig } from '../types'
 
-export interface NodeConfig {
-  id?: string // Added ID for management
-  type: string
-  tag: string
-  server: string
-  server_port: number
-  uuid?: string
-  password?: string
-  method?: string
-  plugin?: string
-  plugin_opts?: string
-  network?: string
-  security?: string
-  path?: string
-  host?: string
-  service_name?: string
-  alpn?: string
-  fingerprint?: string
-  tls?: {
-    enabled: boolean
-    server_name?: string
-    insecure?: boolean
-    utls?: {
-      enabled: boolean
-      fingerprint: string
-    }
-    reality?: {
-      enabled: boolean
-      public_key?: string
-      short_id?: string
-    }
-  }
-  flow?: string
-  packet_encoding?: string
-  username?: string
-}
+export type { NodeConfig }
 
 export function normalizeNodeType(type: string | null | undefined): string {
   const t = String(type ?? '').trim().toLowerCase()
@@ -46,7 +12,9 @@ export function normalizeNodeType(type: string | null | undefined): string {
 }
 
 export function parseShareLink(link: string): NodeConfig | null {
-  link = link.trim()
+  link = link.trim().replace(/[\u200B-\u200D\uFEFF]/g, '')
+  if (!link) return null
+  link = extractFirstLinkToken(link)
   if (!link) return null
 
   // Try to decode if it looks like a base64 string (no protocol prefix, no spaces)
@@ -69,17 +37,18 @@ export function parseShareLink(link: string): NodeConfig | null {
     }
   }
 
-  if (link.startsWith('vmess://')) {
+  const lower = link.toLowerCase()
+  if (lower.startsWith('vmess://')) {
     return parseVMess(link)
-  } else if (link.startsWith('vless://')) {
+  } else if (lower.startsWith('vless://')) {
     return parseVLESS(link)
-  } else if (link.startsWith('ss://')) {
+  } else if (lower.startsWith('ss://')) {
     return parseShadowsocks(link)
-  } else if (link.startsWith('trojan://')) {
+  } else if (lower.startsWith('trojan://')) {
     return parseTrojan(link)
-  } else if (link.startsWith('socks://') || link.startsWith('socks5://')) {
+  } else if (lower.startsWith('socks://') || lower.startsWith('socks5://') || lower.startsWith('socks5h://')) {
     return parseSocks(link)
-  } else if (link.startsWith('http://') || link.startsWith('https://')) {
+  } else if (lower.startsWith('http://') || lower.startsWith('https://')) {
     return parseHttp(link)
   }
   return null
@@ -117,9 +86,13 @@ export function parseBatchLinks(content: string): NodeConfig[] {
 
 function parseVMess(link: string): NodeConfig | null {
   try {
-    const base64 = link.replace('vmess://', '')
-    const jsonStr = Base64.decode(base64)
+    const base64 = link.replace(/^vmess:\/\//i, '')
+    const jsonStr = decodeBase64MaybeUrl(base64)
     const config = JSON.parse(jsonStr)
+    const tlsType = String(config.tls || '').toLowerCase()
+    const isTlsEnabled = tlsType === 'tls' || tlsType === 'reality' || tlsType === '1'
+    const fingerprint = config.fp || config.fingerprint || undefined
+    const sni = config.sni || config.serverName || config.server_name || config.host
     return {
       type: 'vmess',
       tag: config.ps || 'VMess Node',
@@ -132,14 +105,14 @@ function parseVMess(link: string): NodeConfig | null {
       host: config.host,
       service_name: config.net === 'grpc' ? (config.path || config.serviceName || '') : (config.serviceName || ''),
       alpn: config.alpn || undefined,
-      fingerprint: config.fp || undefined,
+      fingerprint,
       tls: {
-        enabled: config.tls === 'tls',
-        server_name: config.sni || config.host,
-        insecure: String(config.allowInsecure || '0') === '1',
+        enabled: isTlsEnabled,
+        server_name: sni || undefined,
+        insecure: isTruthy(config.allowInsecure ?? config.insecure),
         utls: {
-          enabled: !!config.fp,
-          fingerprint: config.fp || 'chrome'
+          enabled: !!fingerprint,
+          fingerprint: fingerprint || 'chrome'
         }
       }
     }
@@ -153,33 +126,41 @@ function parseVLESS(link: string): NodeConfig | null {
   try {
     const url = new URL(link)
     const params = url.searchParams
+    const security = String(pickParam(params, ['security', 'tls']) || 'none').toLowerCase()
+    const fp = pickParam(params, ['fp', 'fingerprint', 'client-fingerprint']) || undefined
+    const network = pickParam(params, ['type', 'network']) || 'tcp'
+    const packetEncoding = pickParam(params, ['packetEncoding', 'packet_encoding']) || undefined
+    const realityPublicKey = pickParam(params, ['pbk', 'publicKey', 'public_key']) || undefined
+    const realityShortId = pickParam(params, ['sid', 'shortId', 'short_id']) || undefined
+    const tlsEnabled = security === 'tls' || security === 'reality' || !!realityPublicKey
+    const realityEnabled = security === 'reality' || !!realityPublicKey
     return {
       type: 'vless',
       tag: decodeURIComponent(url.hash.slice(1)) || 'VLESS Node',
       server: url.hostname,
       server_port: Number(url.port),
       uuid: url.username,
-      network: params.get('type') || 'tcp',
-      security: params.get('security') || 'none',
+      network,
+      security: realityEnabled ? 'reality' : security,
       path: params.get('path') || undefined,
       host: params.get('host') || undefined,
-      service_name: params.get('serviceName') || undefined,
+      service_name: pickParam(params, ['serviceName', 'service_name']) || undefined,
       flow: params.get('flow') || undefined,
-      packet_encoding: params.get('packetEncoding') || undefined,
+      packet_encoding: packetEncoding,
       alpn: params.get('alpn') || undefined,
-      fingerprint: params.get('fp') || undefined,
+      fingerprint: fp,
       tls: {
-        enabled: params.get('security') === 'tls' || params.get('security') === 'reality',
-        server_name: params.get('sni') || undefined,
-        insecure: params.get('allowInsecure') === '1',
+        enabled: tlsEnabled,
+        server_name: pickParam(params, ['sni', 'serverName', 'server_name']) || undefined,
+        insecure: isTruthy(pickParam(params, ['allowInsecure', 'insecure'])),
         utls: {
-          enabled: !!params.get('fp'),
-          fingerprint: params.get('fp') || 'chrome'
+          enabled: !!fp,
+          fingerprint: fp || 'chrome'
         },
         reality: {
-          enabled: params.get('security') === 'reality',
-          public_key: params.get('pbk') || undefined,
-          short_id: params.get('sid') || undefined
+          enabled: realityEnabled,
+          public_key: realityPublicKey,
+          short_id: realityShortId
         }
       }
     }
@@ -215,7 +196,7 @@ function parseShadowsocks(link: string): NodeConfig | null {
     const at = decodedMain.lastIndexOf('@')
     if (at <= 0) return null
     const userPart = decodedMain.slice(0, at)
-    const serverPart = decodedMain.slice(at + 1)
+    const serverPart = decodedMain.slice(at + 1).replace(/\/+$/, '')
 
     const colon = userPart.indexOf(':')
     if (colon <= 0) return null
@@ -258,30 +239,40 @@ function decodeBase64Url(input: string): string {
   return Base64.decode(padded)
 }
 
+function decodeBase64MaybeUrl(input: string): string {
+  try {
+    return Base64.decode(input)
+  } catch {
+    return decodeBase64Url(input)
+  }
+}
+
 function parseTrojan(link: string): NodeConfig | null {
   try {
     const url = new URL(link)
     const params = url.searchParams
+    const security = String(pickParam(params, ['security', 'tls']) || 'tls').toLowerCase()
+    const fp = pickParam(params, ['fp', 'fingerprint', 'client-fingerprint']) || undefined
     return {
       type: 'trojan',
       tag: decodeURIComponent(url.hash.slice(1)) || 'Trojan Node',
       server: url.hostname,
       server_port: Number(url.port),
       password: url.username,
-      network: params.get('type') || 'tcp',
+      network: pickParam(params, ['type', 'network']) || 'tcp',
       path: params.get('path') || undefined,
       host: params.get('host') || undefined,
-      service_name: params.get('serviceName') || undefined,
-      security: params.get('security') || 'tls',
+      service_name: pickParam(params, ['serviceName', 'service_name']) || undefined,
+      security,
       alpn: params.get('alpn') || undefined,
-      fingerprint: params.get('fp') || undefined,
+      fingerprint: fp,
       tls: {
-        enabled: params.get('security') !== 'none',
-        server_name: params.get('sni') || undefined,
-        insecure: params.get('allowInsecure') === '1',
+        enabled: security !== 'none',
+        server_name: pickParam(params, ['sni', 'serverName', 'server_name']) || undefined,
+        insecure: isTruthy(pickParam(params, ['allowInsecure', 'insecure'])),
         utls: {
-          enabled: !!params.get('fp'),
-          fingerprint: params.get('fp') || 'chrome'
+          enabled: !!fp,
+          fingerprint: fp || 'chrome'
         }
       }
     }
@@ -293,7 +284,8 @@ function parseTrojan(link: string): NodeConfig | null {
 function parseSocks(link: string): NodeConfig | null {
   try {
     const url = new URL(link)
-    const type = normalizeNodeType(url.protocol.replace(':', ''))
+    const proto = url.protocol.replace(':', '').toLowerCase()
+    const type = proto === 'socks5h' ? 'socks' : normalizeNodeType(proto)
     const port = Number(url.port)
     if (!Number.isFinite(port) || port <= 0) return null
     return {
@@ -373,6 +365,7 @@ function generateVLESS(node: NodeConfig): string {
   const params = new URLSearchParams()
 
   if (node.network) params.set('type', node.network)
+  params.set('encryption', 'none')
   if (node.security) params.set('security', node.security)
   if (node.flow) params.set('flow', node.flow)
   if (node.path) params.set('path', node.path)
@@ -433,6 +426,7 @@ function generateTrojan(node: NodeConfig): string {
   if (node.host) params.set('host', node.host)
   if (node.service_name) params.set('serviceName', node.service_name)
   if (node.security) params.set('security', node.security)
+  else if (node.tls?.enabled) params.set('security', 'tls')
   if (node.alpn) params.set('alpn', node.alpn)
   if (node.tls?.server_name) params.set('sni', node.tls.server_name)
   if (node.tls?.insecure) params.set('allowInsecure', '1')
@@ -442,6 +436,27 @@ function generateTrojan(node: NodeConfig): string {
 
   const hash = '#' + encodeURIComponent(node.tag)
   return `trojan://${password}@${node.server}:${node.server_port}?${params.toString()}${hash}`
+}
+
+function pickParam(params: URLSearchParams, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = params.get(key)
+    if (value != null && String(value).trim() !== '') return value
+  }
+  return null
+}
+
+function extractFirstLinkToken(input: string): string {
+  const value = String(input || '').trim()
+  if (!value) return ''
+  const protocolMatch = value.match(/^([a-z][a-z0-9+.-]*):\/\//i)
+  if (!protocolMatch) return value
+  return value.split(/\s+/)[0] || value
+}
+
+function isTruthy(value: unknown): boolean {
+  const normalized = String(value ?? '').trim().toLowerCase()
+  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on'
 }
 
 function generateSocks(node: NodeConfig): string {

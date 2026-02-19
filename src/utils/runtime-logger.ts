@@ -1,11 +1,5 @@
-type FrontendLogLevel = 'debug' | 'info' | 'warn' | 'error'
-
-type FrontendLogPayload = {
-  level: FrontendLogLevel
-  source: string
-  message: string
-  detail?: string
-}
+import { logsApi } from '@/api'
+import type { FrontendLogLevel, FrontendLogPayload } from '@/types'
 
 const MAX_TEXT_LENGTH = 2000
 
@@ -38,7 +32,7 @@ function makePayload(level: FrontendLogLevel, args: unknown[]): FrontendLogPaylo
 
 function push(payload: FrontendLogPayload) {
   try {
-    window.logs?.pushFrontend(payload)
+    logsApi.pushFrontend(payload)
   } catch {
     // ignore logging channel errors
   }

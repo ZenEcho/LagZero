@@ -1,7 +1,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import type { Theme, ThemeColor } from '@/types'
 
-export type Theme = 'light' | 'dark' | 'auto'
-export type ThemeColor = 'green' | 'blue' | 'purple' | 'orange' | 'red'
+export type { Theme, ThemeColor }
 
 const theme = ref<Theme>('auto')
 const resolvedTheme = ref<'light' | 'dark'>('dark') // Default to dark

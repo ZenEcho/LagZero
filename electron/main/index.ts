@@ -25,7 +25,7 @@ global.__filename = __filename
 // @ts-ignore
 global.__dirname = __dirname
 
-process.env.APP_ROOT = path.join(__dirname, '../..')
+process.env.APP_ROOT = path.join(__dirname, '../')
 const APP_ID = 'com.' + pkg.name + '.client'
 
 export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
@@ -147,6 +147,12 @@ function createTray(icon: NativeImage | null) {
 
 function createWindow() {
   const appIcon = loadAppIcon()
+  const preloadCandidates = [
+    path.join(__dirname, '../preload/index.mjs'),
+    path.join(__dirname, 'preload.mjs'),
+    path.join(__dirname, 'index.mjs'),
+  ]
+  const preloadPath = preloadCandidates.find(p => fs.existsSync(p)) || preloadCandidates[0]
 
   win = new BrowserWindow({
     width: 1200,
@@ -155,7 +161,8 @@ function createWindow() {
     minHeight: 620,
     frame: false,
     webPreferences: {
-      preload: path.join(__dirname, '../preload/index.mjs'), // Adjusted path
+      // Compatible with both nested and flat dist-electron outputs.
+      preload: preloadPath,
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: false,

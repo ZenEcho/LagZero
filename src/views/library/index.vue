@@ -50,86 +50,177 @@
     </div>
 
     <!-- Filters -->
-    <div class="flex gap-2 mb-6 overflow-x-auto pb-2">
+    <div class="flex gap-2 mb-6 overflow-x-auto pb-2 no-scrollbar">
       <button v-for="cat in categories" :key="cat.value" @click="activeCategory = cat.value"
-        class="px-4 py-1 rounded-full text-sm border transition whitespace-nowrap"
-        :class="activeCategory === cat.value ? 'bg-primary border-primary text-on-primary' : 'border-border text-on-surface-muted hover:border-border-hover hover:text-on-surface'">
+        class="px-4 py-1.5 rounded-full text-sm border transition whitespace-nowrap font-medium"
+        :class="activeCategory === cat.value ? 'bg-primary border-primary text-on-primary shadow-md shadow-primary/20' : 'bg-surface border-border text-on-surface-muted hover:border-primary/50 hover:text-on-surface'">
         {{ cat.label }}
       </button>
     </div>
 
     <div v-if="acceleratingGame"
-      class="mb-4 px-4 py-3 rounded-xl border border-success/30 bg-success/10 text-success flex items-center gap-2">
-      <div class="w-2 h-2 rounded-full bg-success animate-pulse"></div>
-      <span class="text-sm font-semibold">正在加速：{{ acceleratingGame.name }}</span>
-      <span class="text-xs text-success/80">加速期间不可切换其它游戏</span>
+      class="mb-6 rounded-xl border border-success/20 bg-gradient-to-r from-success/10 to-transparent p-4 flex items-center justify-between shadow-sm backdrop-blur-sm relative overflow-hidden group">
+      <div class="absolute inset-0 bg-success/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+      <div class="flex items-center gap-4 relative z-10">
+        <div class="w-10 h-10 rounded-full bg-success/20 flex items-center justify-center text-success">
+          <div class="i-carbon-rocket text-xl animate-pulse"></div>
+        </div>
+        <div>
+          <div class="text-xs text-success/80 font-bold uppercase tracking-wider mb-0.5">当前正在加速</div>
+          <div class="text-lg font-bold text-on-surface flex items-center gap-2">
+            {{ acceleratingGame.name }}
+            <n-tag size="small" type="success" :bordered="false" class="text-xs">
+              {{ acceleratingGame.latency ? acceleratingGame.latency + ' ms' : '已连接' }}
+            </n-tag>
+          </div>
+        </div>
+      </div>
+      <n-button type="error" size="small" secondary round @click="stopAcceleration(acceleratingGame.id!)"
+        :loading="gameStore.operationState === 'stopping'" :disabled="isActionPending">
+        停止加速
+      </n-button>
     </div>
 
     <!-- Game Grid/List -->
-    <div class="flex-1 overflow-y-auto min-h-0 pr-2">
+    <div class="flex-1 overflow-y-auto min-h-0 pr-2 custom-scrollbar">
       <div v-if="filteredGames.length === 0"
         class="h-full flex flex-col items-center justify-center text-on-surface-muted">
-        <div class="i-carbon-game-console text-4xl mb-2"></div>
-        <p>{{ $t('games.no_games_found') }}</p>
+        <div class="i-carbon-game-console text-6xl mb-4 opacity-50"></div>
+        <p class="text-lg">{{ $t('games.no_games_found') }}</p>
       </div>
 
-      <div v-else
-        :class="viewMode === 'grid' ? 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4' : 'flex flex-col gap-2'">
-        <div v-for="game in filteredGames" :key="game.id" @click="game.id && selectGame(game.id!)"
-          class="bg-surface-panel border rounded-lg transition group relative"
-          :class="[
-            isAccelerationLockedFor(game) ? 'border-border cursor-not-allowed opacity-60' : 'cursor-pointer hover:border-primary',
-            game.status === 'accelerating' ? 'ring-2 ring-success/40 border-success/50 shadow-[0_0_0_1px_rgba(var(--rgb-success),0.2)]' : 'border-transparent',
-            viewMode === 'grid' ? 'p-4 flex flex-col items-center text-center' : 'p-3 pr-24 flex items-center gap-4'
+      <div v-else class="mt-1"
+        :class="viewMode === 'grid' ? 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4' : 'flex flex-col gap-2'">
+        <div v-for="game in filteredGames" :key="game.id" @click="game.id && handleGameClick(game)"
+          class="group relative bg-surface border rounded-xl transition-all duration-300 overflow-hidden" :class="[
+            isAccelerationLockedFor(game) ? 'opacity-50 grayscale cursor-not-allowed border-border' : 'cursor-pointer hover:-translate-y-1 hover:shadow-xl hover:border-primary/50',
+            game.status === 'accelerating' ? 'border-success shadow-[0_0_15px_rgba(var(--rgb-success),0.2)] ring-1 ring-success/30' : 'border-border/50',
+            viewMode === 'grid' ? 'flex flex-col' : 'flex items-center p-3 gap-4'
           ]">
-          <!-- Action Buttons (Hover) -->
-          <div class="absolute flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
-            :class="viewMode === 'grid' ? 'top-2 right-2' : 'right-3 top-1/2 -translate-y-1/2'">
-            <n-button quaternary circle size="small" @click.stop="editGame(game)" :title="$t('common.edit')">
-              <template #icon>
-                <div class="i-carbon-edit text-xs"></div>
-              </template>
-            </n-button>
-            <n-button quaternary circle size="small" type="error" @click.stop="deleteGame(game)"
-              :title="$t('common.delete')">
-              <template #icon>
-                <div class="i-carbon-trash-can text-xs"></div>
-              </template>
-            </n-button>
-          </div>
 
-          <div
-            class="bg-surface rounded-full flex items-center justify-center text-on-surface-muted group-hover:text-primary transition"
-            :class="viewMode === 'grid' ? 'w-16 h-16 text-3xl mb-3' : 'w-10 h-10 text-xl'">
-            <img v-if="game.iconUrl" :src="game.iconUrl" class="w-full h-full object-cover rounded-full" />
-            <div v-else class="i-carbon-game-console"></div>
-          </div>
+          <!-- Grid View Image Area -->
+          <div v-if="viewMode === 'grid'" class="aspect-[16/9] relative bg-surface-variant/50 overflow-hidden">
+            <!-- Background Image/Icon -->
+            <div class="absolute inset-0 flex items-center justify-center">
+              <img v-if="game.iconUrl" :src="game.iconUrl"
+                class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+              <div v-else class="i-carbon-game-console text-5xl text-on-surface-muted/30"></div>
+            </div>
 
-          <div class="flex-1 min-w-0">
-            <h3 class="font-bold truncate text-on-surface" :class="viewMode === 'grid' ? 'text-base' : 'text-sm'">{{
-              game.name }}</h3>
-            <div class="text-xs text-on-surface-muted mt-1 flex items-center justify-center gap-2"
-              :class="viewMode === 'list' && '!justify-start'">
-              <span class="bg-surface px-2 rounded">{{ getCategoryLabel(game.category) }}</span>
-              <span v-if="game.lastPlayed" class="text-on-surface-variant">{{ formatTime(game.lastPlayed) }}</span>
+            <!-- Gradient Overlay -->
+            <div class="absolute inset-0 bg-gradient-to-t from-surface via-transparent to-transparent opacity-80"></div>
+
+            <!-- Hover Overlay with Actions -->
+            <div
+              class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center gap-3 backdrop-blur-[2px]"
+              v-if="!isAccelerationLockedFor(game)">
+              <template v-if="game.status !== 'accelerating'">
+                <button
+                  class="w-10 h-10 rounded-full bg-primary text-on-primary flex items-center justify-center hover:scale-110 transition shadow-lg shadow-primary/40"
+                  @click.stop="tryStartGame(game)" title="开始加速" :disabled="isActionPending">
+                  <div class="i-carbon-play-filled text-xl"></div>
+                </button>
+                <button
+                  class="w-8 h-8 rounded-full bg-surface text-on-surface hover:text-primary flex items-center justify-center hover:scale-110 transition"
+                  @click.stop="editGame(game)" title="设置">
+                  <div class="i-carbon-settings"></div>
+                </button>
+                <button
+                  class="w-8 h-8 rounded-full bg-surface text-on-surface hover:text-error flex items-center justify-center hover:scale-110 transition"
+                  @click.stop="deleteGame(game)" title="删除">
+                  <div class="i-carbon-trash-can"></div>
+                </button>
+              </template>
+              <template v-else>
+                <button
+                  class="px-4 py-1.5 rounded-full bg-error text-on-error font-bold text-sm hover:bg-error-hover transition shadow-lg"
+                  @click.stop="stopAcceleration(game.id!)" :disabled="isActionPending">
+                  停止加速
+                </button>
+              </template>
+            </div>
+
+            <!-- Status Badge (Top Right) -->
+            <div class="absolute top-2 right-2 flex gap-1">
+              <div v-if="game.status === 'accelerating'"
+                class="px-2 py-0.5 rounded text-[10px] font-bold bg-success text-on-success shadow-sm flex items-center gap-1">
+                <div class="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
+                加速中
+              </div>
+              <div class="px-2 py-0.5 rounded text-[10px] font-bold shadow-sm uppercase backdrop-blur-md"
+                :class="game.proxyMode === 'routing' ? 'bg-info/20 text-info border border-info/30' : 'bg-warning/20 text-warning border border-warning/30'">
+                {{ game.proxyMode === 'routing' ? '路由模式' : '进程模式' }}
+              </div>
             </div>
           </div>
 
-          <div v-if="game.status === 'accelerating'"
-            class="text-success text-xs font-extrabold flex items-center gap-1">
-            <div class="w-2 h-2 rounded-full bg-success animate-pulse"></div>
-            正在加速
+          <!-- List View Image -->
+          <div v-else
+            class="w-12 h-12 rounded-lg bg-surface-variant/50 flex-shrink-0 overflow-hidden relative group-hover:ring-2 ring-primary/20">
+            <img v-if="game.iconUrl" :src="game.iconUrl" class="w-full h-full object-cover" />
+            <div v-else class="w-full h-full flex items-center justify-center">
+              <div class="i-carbon-game-console text-xl text-on-surface-muted"></div>
+            </div>
           </div>
-          <div v-else-if="game.id === gameStore.currentGameId"
-            class="text-primary text-xs font-bold flex items-center gap-1">
-            <div class="w-2 h-2 rounded-full bg-primary"></div>
-            {{ $t('games.selected') }}
+
+          <!-- Content -->
+          <div class="flex-1 min-w-0" :class="viewMode === 'grid' ? 'p-3' : ''">
+            <div class="flex items-center justify-between mb-1">
+              <h3 class="font-bold text-on-surface truncate" :class="viewMode === 'grid' ? 'text-base' : 'text-sm'">
+                {{ game.name }}
+              </h3>
+              <!-- List View Badges -->
+              <div v-if="viewMode === 'list'" class="flex gap-2">
+                <n-tag size="small" :type="game.proxyMode === 'routing' ? 'info' : 'warning'" :bordered="false"
+                  class="text-[10px] h-5">
+                  {{ game.proxyMode === 'routing' ? '路由模式' : '进程模式' }}
+                </n-tag>
+                <n-tag v-if="game.status === 'accelerating'" type="success" size="small" :bordered="false" class="h-5">
+                  加速中
+                </n-tag>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between text-xs text-on-surface-muted">
+              <div class="flex items-center gap-2">
+                <span class="bg-surface-variant px-1.5 py-0.5 rounded text-[10px]">{{ getCategoryLabel(game.category)
+                  }}</span>
+                <span v-if="game.lastPlayed">{{ formatTime(game.lastPlayed) }}</span>
+              </div>
+
+              <div v-if="game.status === 'accelerating' && game.latency !== undefined"
+                class="font-mono text-success font-bold">
+                {{ game.latency }} ms
+              </div>
+            </div>
           </div>
-          <div v-else-if="game.id && runningGames.includes(game.id)"
-            class="text-success text-xs font-bold flex items-center gap-1">
-            <div class="w-2 h-2 rounded-full bg-success animate-pulse"></div>
-            {{ $t('games.running') }}
+
+          <!-- List View Actions -->
+          <div v-if="viewMode === 'list'"
+            class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity px-2">
+            <template v-if="game.status !== 'accelerating'">
+              <n-button circle type="primary" size="small" @click.stop="tryStartGame(game)" :disabled="isActionPending">
+                <template #icon>
+                  <div class="i-carbon-play-filled"></div>
+                </template>
+              </n-button>
+              <n-button circle quaternary size="small" @click.stop="editGame(game)" title="设置">
+                <template #icon>
+                  <div class="i-carbon-settings"></div>
+                </template>
+              </n-button>
+              <n-button circle quaternary size="small" @click.stop="deleteGame(game)" title="删除">
+                <template #icon>
+                  <div class="i-carbon-trash-can"></div>
+                </template>
+              </n-button>
+            </template>
+            <n-button v-else type="error" size="small" round @click.stop="stopAcceleration(game.id!)"
+              :loading="gameStore.operationState === 'stopping'" :disabled="isActionPending">
+              停止加速
+            </n-button>
           </div>
+
         </div>
       </div>
     </div>
@@ -150,6 +241,7 @@ import { useTimeAgo } from '@vueuse/core'
 import { useMessage, useDialog } from 'naive-ui'
 import AdvancedConfigEditor from '@/components/library/AdvancedConfigEditor.vue'
 import CategoryManager from '@/components/library/CategoryManager.vue'
+import { useGameScanner } from '@/composables/useGameScanner'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -161,15 +253,10 @@ const categoryStore = useCategoryStore()
 const viewMode = ref<'grid' | 'list'>('grid')
 const searchQuery = ref('')
 const activeCategory = ref('all')
-const isScanning = ref(false)
+const { isScanning, scanGames } = useGameScanner()
 const runningGames = computed(() => gameStore.runningGames)
 const acceleratingGame = computed(() => gameStore.getAcceleratingGame())
-type LocalScanGame = {
-  name: string
-  processName: string
-  source: 'steam' | 'microsoft' | 'epic' | 'ea'
-  installDir: string
-}
+const isActionPending = computed(() => gameStore.operationState !== 'idle')
 
 const showEditModal = ref(false)
 const showCategoryManager = ref(false)
@@ -212,70 +299,6 @@ const filteredGames = computed(() => {
   })
 })
 
-async function scanGames() {
-  isScanning.value = true
-  try {
-    const localGames = await window.system.scanLocalGames()
-    const added = await autoAddGamesFromLibraryScan(localGames)
-    const processes = await window.system.scanProcesses()
-    const matched = gameStore.matchRunningGames(processes)
-
-    if (added > 0) {
-      message.success(`扫描完成：新增 ${added} 个游戏，当前运行匹配 ${matched.length} 个。`)
-    } else if (matched.length > 0) {
-      message.info(`扫描完成：未新增游戏，当前运行匹配 ${matched.length} 个。`)
-    } else {
-      message.info('扫描完成：未发现可新增的本地游戏。')
-    }
-  } catch (error) {
-    console.error('Failed to scan games:', error)
-    message.error('扫描失败，请重试。')
-  } finally {
-    setTimeout(() => { isScanning.value = false }, 500)
-  }
-}
-
-function getFallbackCategoryId() {
-  return categoryStore.categories[0]?.id || 'other'
-}
-
-async function autoAddGamesFromLibraryScan(localGames: LocalScanGame[]) {
-  const existingGameKeys = new Set(
-    gameStore.gameLibrary.flatMap((game: Game) => {
-      const targets = Array.isArray(game.processName) ? game.processName : [game.processName]
-      return targets.map(name => `${String(game.name).toLowerCase()}|${String(name).toLowerCase()}`)
-    })
-  )
-
-  const seen = new Set<string>()
-  const candidates = localGames
-    .filter(g => !!g.name && !!g.processName)
-    .filter(g => {
-      const key = `${g.name.toLowerCase()}|${g.processName.toLowerCase()}`
-      if (seen.has(key)) return false
-      seen.add(key)
-      return !existingGameKeys.has(key)
-    })
-
-  const categoryId = getFallbackCategoryId()
-  let added = 0
-
-  for (const item of candidates) {
-    await gameStore.addGame({
-      name: item.name,
-      processName: [item.processName],
-      category: categoryId,
-      status: 'idle',
-      latency: 0,
-      proxyMode: 'process',
-      chainProxy: true
-    })
-    added += 1
-  }
-
-  return added
-}
-
 function selectGame(id: string) {
   const ok = gameStore.setCurrentGame(id)
   if (!ok) {
@@ -284,6 +307,29 @@ function selectGame(id: string) {
     return
   }
   router.push('/dashboard')
+}
+
+function tryStartGame(game: Game) {
+  if (isActionPending.value) return
+  if (game.id) selectGame(game.id)
+}
+
+function handleGameClick(game: Game) {
+  if (game.status === 'accelerating') {
+    router.push('/dashboard')
+  } else {
+    tryStartGame(game)
+  }
+}
+
+async function stopAcceleration(id: string) {
+  if (isActionPending.value) return
+  try {
+    await gameStore.stopGame(id)
+    message.success('已停止加速')
+  } catch (e) {
+    message.error('停止失败')
+  }
 }
 
 function isAccelerationLockedFor(game: Game) {

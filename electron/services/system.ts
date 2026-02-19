@@ -3,6 +3,7 @@ import { runCommand } from '../utils/command'
 import { findAvailablePort } from '../utils/port'
 import { ping, tcpPing } from '../utils/ping'
 import nodeNet from 'node:net'
+import nodeTls from 'node:tls'
 
 type SystemCommandResult = {
   ok: boolean
@@ -76,12 +77,16 @@ export class SystemService {
   async testHttpProxyConnect(proxyPort: number, targetHost: string, targetPort: number = 443, timeoutMs: number = 5000) {
     return new Promise<{ ok: boolean, statusLine: string, error?: string }>((resolve) => {
       const socket = nodeNet.createConnection({ host: '127.0.0.1', port: proxyPort })
+      let tlsSocket: nodeTls.TLSSocket | null = null
       let settled = false
-      let buf = ''
+      let connectBuf = ''
+      let responseBuf = ''
+      const requestPath = targetHost.includes('google') ? '/generate_204' : '/'
 
       const done = (payload: { ok: boolean, statusLine: string, error?: string }) => {
         if (settled) return
         settled = true
+        try { tlsSocket?.destroy() } catch { }
         socket.destroy()
         resolve(payload)
       }
@@ -94,11 +99,54 @@ export class SystemService {
         socket.write(req)
       })
       socket.on('data', (chunk: Buffer) => {
-        buf += chunk.toString('utf8')
-        const lineEnd = buf.indexOf('\r\n')
-        if (lineEnd < 0) return
-        const statusLine = buf.slice(0, lineEnd).trim()
-        done({ ok: /^HTTP\/1\.[01]\s+200\b/i.test(statusLine), statusLine })
+        connectBuf += chunk.toString('utf8')
+        const headerEnd = connectBuf.indexOf('\r\n\r\n')
+        if (headerEnd < 0) return
+
+        const lineEnd = connectBuf.indexOf('\r\n')
+        const connectStatusLine = (lineEnd >= 0 ? connectBuf.slice(0, lineEnd) : '').trim()
+        if (!/^HTTP\/1\.[01]\s+200\b/i.test(connectStatusLine)) {
+          done({ ok: false, statusLine: connectStatusLine, error: 'connect-not-200' })
+          return
+        }
+
+        socket.removeAllListeners('data')
+        socket.setTimeout(0)
+
+        tlsSocket = nodeTls.connect({
+          socket,
+          servername: targetHost,
+          rejectUnauthorized: false
+        }, () => {
+          const getReq = [
+            `GET ${requestPath} HTTP/1.1`,
+            `Host: ${targetHost}`,
+            'User-Agent: LagZero/1.0',
+            'Accept: */*',
+            'Connection: close',
+            '',
+            ''
+          ].join('\r\n')
+          tlsSocket?.write(getReq)
+        })
+
+        tlsSocket.setTimeout(Math.max(1000, timeoutMs))
+        tlsSocket.on('timeout', () => done({ ok: false, statusLine: '', error: 'https-timeout' }))
+        tlsSocket.on('error', (err: any) => done({ ok: false, statusLine: '', error: `https:${String(err?.message || err)}` }))
+        tlsSocket.on('data', (data: Buffer) => {
+          responseBuf += data.toString('utf8')
+          const responseHeaderEnd = responseBuf.indexOf('\r\n\r\n')
+          if (responseHeaderEnd < 0) return
+
+          const responseLineEnd = responseBuf.indexOf('\r\n')
+          const responseStatusLine = (responseLineEnd >= 0 ? responseBuf.slice(0, responseLineEnd) : '').trim()
+          const ok = /^HTTP\/1\.[01]\s+(2\d\d|3\d\d)\b/i.test(responseStatusLine)
+          done({
+            ok,
+            statusLine: responseStatusLine,
+            ...(ok ? {} : { error: 'http-not-2xx-3xx' })
+          })
+        })
       })
     })
   }
@@ -114,12 +162,22 @@ export class SystemService {
     ipcMain.handle('system:test-http-proxy-connect', async (_, proxyPort: number, targetHost: string, targetPort: number = 443, timeoutMs: number = 5000) => {
       return this.testHttpProxyConnect(proxyPort, targetHost, targetPort, timeoutMs)
     })
-    ipcMain.handle('system:ping', async (_, host: string) => ping(host))
+    ipcMain.handle('system:ping', async (_, host: string) => {
+      try {
+        const result = await ping(host)
+        return typeof result?.latency === 'number' ? result.latency : -1
+      } catch (e: any) {
+        console.warn('[SystemService] system:ping failed', host, e)
+        return -1
+      }
+    })
     ipcMain.handle('system:tcp-ping', async (_, host: string, port: number) => {
       try {
-        return await tcpPing(host, port)
+        const result = await tcpPing(host, port)
+        return typeof result?.latency === 'number' ? result.latency : -1
       } catch (e: any) {
-        return { latency: -1, loss: 100 }
+        console.warn('[SystemService] system:tcp-ping failed', host, port, e)
+        return -1
       }
     })
   }

@@ -6,7 +6,7 @@
       <div class="text-xs font-bold text-on-surface-variant flex items-center gap-2">
         <img src="/logo.svg" alt="log" class="h-6">
         <span class="text-lg font-bold text-on-surface">{{ pkg.name }}</span>
-        <div @click="checkUpdate"
+        <div @click="() => checkUpdate()"
           class="no-drag cursor-pointer flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-surface-overlay border border-border/50 hover:border-primary/50 transition-colors translate-y-[1px]"
           :title="$t('settings.check_update')">
           <span class="text-[10px] font-mono text-on-surface-muted leading-none">v{{ appVersion }}</span>
@@ -116,65 +116,67 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watchEffect, onMounted, h } from 'vue'
+import { ref, watchEffect, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useWindowSize } from '@vueuse/core'
-import { useNotification, NButton } from 'naive-ui'
-import { useI18n } from 'vue-i18n'
+import { useIntervalFn, useWindowSize } from '@vueuse/core'
 import ThemeToggle from '@/components/common/ThemeToggle.vue'
 import pkg from '../../package.json'
+import { electronApi } from '@/api'
+import { useAppUpdater } from '@/composables/useAppUpdater'
+import { useGameStore } from '@/stores/games'
+import { useNodeStore } from '@/stores/nodes'
+import { useSettingsStore } from '@/stores/settings'
+import { storeToRefs } from 'pinia'
+
 const { width } = useWindowSize()
 const isCollapsed = ref(true)
 const $route = useRoute()
 const router = useRouter()
-const notification = useNotification()
-const { t } = useI18n()
+const gameStore = useGameStore()
+const nodeStore = useNodeStore()
+const settingsStore = useSettingsStore()
+const { checkInterval } = storeToRefs(settingsStore)
 
-const appVersion = ref('0.0.0')
-const latestVersion = ref('')
-const hasUpdate = ref(false)
-
-async function checkUpdate() {
-  if (!window.app) return
-  try {
-    const res = await window.app.checkUpdate()
-    if (res && !res.error) {
-      latestVersion.value = res.version || ''
-      hasUpdate.value = res.updateAvailable
-
-      if (hasUpdate.value) {
-        const n = notification.info({
-          title: t('settings.update_available', { version: latestVersion.value }),
-          content: res.releaseNotes || t('settings.tagline'),
-          meta: res.releaseDate,
-          action: () =>
-            h(
-              NButton,
-              {
-                secondary: true,
-                type: 'primary',
-                size: 'small',
-                onClick: () => {
-                  window.app.openUrl('https://github.com/ZenEcho/LagZero/releases')
-                  n.destroy()
-                }
-              },
-              { default: () => t('settings.download_update') }
-            )
-        })
-      }
-    }
-  } catch (e) {
-    console.error('Failed to check version:', e)
-  }
-}
+const { appVersion, updateInfo, checkUpdate, getVersion } = useAppUpdater()
+const hasUpdate = computed(() => !!updateInfo.value?.available)
 
 onMounted(async () => {
-  if (window.app) {
-    appVersion.value = await window.app.getVersion()
-    void checkUpdate()
-  }
+  await getVersion()
+  void checkUpdate()
+  void sampleLatencyForBackgroundPages()
+  resumeGlobalSampling()
 })
+
+async function sampleLatencyForBackgroundPages() {
+  // Dashboard already has its own live sampler.
+  if ($route.path === '/dashboard') return
+
+  const game = gameStore.getAcceleratingGame()
+  if (!game?.id || !game.nodeId) return
+
+  const node = nodeStore.nodes.find(n => n.id === game.nodeId || n.tag === game.nodeId)
+  if (!node) return
+
+  const startedAt = gameStore.getAccelerationStartedAt(game.id)
+  const accelerationSeconds = startedAt > 0 ? Math.floor((Date.now() - startedAt) / 1000) : 0
+  const sessionStats = await nodeStore.getGameLatencyStatsForSession(game.id)
+  const sessionLossRate = sessionStats.total > 0
+    ? Math.round((sessionStats.lost / sessionStats.total) * 100)
+    : 0
+
+  const stats = await nodeStore.checkNode(node, undefined, {
+    recordLatency: true,
+    gameId: game.id,
+    accelerationSeconds,
+    sessionLossRate
+  })
+  if (!stats) return
+  gameStore.updateLatency(game.id, stats.latency)
+}
+
+const { resume: resumeGlobalSampling } = useIntervalFn(() => {
+  void sampleLatencyForBackgroundPages()
+}, checkInterval, { immediate: false })
 
 // 屏幕宽度小于 1024px 时自动收起侧边栏
 watchEffect(() => {
@@ -208,12 +210,9 @@ function handleSidebarWheel(e: WheelEvent) {
   }
 }
 
-// @ts-ignore
-const minimize = () => window.electron.minimize()
-// @ts-ignore
-const maximize = () => window.electron.maximize()
-// @ts-ignore
-const close = () => window.electron.close()
+const minimize = () => electronApi.minimize()
+const maximize = () => electronApi.maximize()
+const close = () => electronApi.close()
 </script>
 
 <style>

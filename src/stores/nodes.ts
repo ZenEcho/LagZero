@@ -1,22 +1,16 @@
 import { defineStore } from 'pinia'
 import { ref, reactive } from 'vue'
 import { parseShareLink, parseBatchLinks, normalizeNodeType } from '@/utils/protocol'
-import type { NodeConfig } from '@/utils/protocol'
+import type { NodeConfig, CheckMethod, CheckRecordContext } from '@/types'
 import { useSettingsStore } from './settings'
+import { useGameStore } from './games'
+import { nodeApi, systemApi } from '@/api'
 import {
   appendLatencyRecord,
   getGameLatencyStats,
   getRecentLatencyRecords,
   initLatencySessionStore
 } from '@/utils/latency-session'
-
-type CheckMethod = 'ping' | 'tcp' | 'http'
-interface CheckRecordContext {
-  recordLatency?: boolean
-  gameId?: string
-  accelerationSeconds?: number
-  sessionLossRate?: number
-}
 
 export const useNodeStore = defineStore('nodes', () => {
   const nodes = ref<NodeConfig[]>([])
@@ -35,6 +29,16 @@ export const useNodeStore = defineStore('nodes', () => {
     }
   }
 
+  function resolveLatency(value: unknown, source: 'ping' | 'tcpPing'): number {
+    if (typeof value === 'number') return value
+    if (value && typeof value === 'object' && 'latency' in (value as Record<string, unknown>)) {
+      const latency = (value as { latency?: unknown }).latency
+      if (typeof latency === 'number') return latency
+    }
+    console.warn(`[NodeStore] Unexpected ${source} result payload:`, value)
+    return -1
+  }
+
   async function checkNode(node: NodeConfig, methodOverride?: CheckMethod, context?: CheckRecordContext) {
     if (!node.server) return
 
@@ -43,20 +47,20 @@ export const useNodeStore = defineStore('nodes', () => {
 
     try {
       if (method === 'tcp') {
-        // @ts-ignore
-        if (window.system?.tcpPing) {
-          // @ts-ignore
-          result = await window.system.tcpPing(node.server, node.server_port)
+        if (window.system) {
+          const response = await systemApi.tcpPing(node.server, node.server_port)
+          const latency = resolveLatency(response, 'tcpPing')
+          result = { latency, loss: latency === -1 ? 100 : 0 }
         } else {
           // Mock if not available
           result = await mockPing()
         }
       } else {
         // Ping
-        // @ts-ignore
-        if (window.system?.ping) {
-          // @ts-ignore
-          result = await window.system.ping(node.server)
+        if (window.system) {
+          const response = await systemApi.ping(node.server)
+          const latency = resolveLatency(response, 'ping')
+          result = { latency, loss: latency === -1 ? 100 : 0 }
         } else {
           // Mock
           result = await mockPing()
@@ -131,8 +135,7 @@ export const useNodeStore = defineStore('nodes', () => {
 
   async function loadNodes() {
     try {
-      // @ts-ignore
-      const loaded = await window.nodes.getAll()
+      const loaded = await nodeApi.getAll()
       nodes.value = (loaded as NodeConfig[]).map(normalizeNode)
     } catch (e) {
       console.error('Failed to load nodes:', e)
@@ -144,8 +147,7 @@ export const useNodeStore = defineStore('nodes', () => {
     if (node) {
       try {
         const normalized = normalizeNode(node)
-        // @ts-ignore
-        const saved = await window.nodes.save(normalized)
+        const saved = await nodeApi.save(normalized)
         nodes.value = (saved as NodeConfig[]).map(normalizeNode)
         return true
       } catch (e) {
@@ -159,8 +161,7 @@ export const useNodeStore = defineStore('nodes', () => {
   async function saveNode(node: NodeConfig) {
     try {
       const normalized = normalizeNode(node)
-      // @ts-ignore
-      const saved = await window.nodes.save(normalized)
+      const saved = await nodeApi.save(normalized)
       nodes.value = (saved as NodeConfig[]).map(normalizeNode)
       return true
     } catch (e) {
@@ -174,8 +175,7 @@ export const useNodeStore = defineStore('nodes', () => {
     if (newNodes.length === 0) return 0
 
     try {
-      // @ts-ignore
-      const imported = await window.nodes.import(newNodes)
+      const imported = await nodeApi.import(newNodes)
       nodes.value = (imported as NodeConfig[]).map(normalizeNode)
       // The import method on backend handles duplicates and returns all nodes
       // We can't easily count how many were added unless backend returns that info
@@ -189,9 +189,28 @@ export const useNodeStore = defineStore('nodes', () => {
 
   async function removeNode(id: string) {
     try {
-      // @ts-ignore
-      const remain = await window.nodes.delete(id)
+      const removed = nodes.value.find((n) => n.id === id)
+      const remain = await nodeApi.delete(id)
       nodes.value = (remain as NodeConfig[]).map(normalizeNode)
+
+      // If the accelerating game is bound to the removed node, stop acceleration immediately.
+      const removedKeys = new Set<string>([
+        String(id || '').trim(),
+        String(removed?.tag || '').trim()
+      ].filter(Boolean))
+      if (removedKeys.size === 0) return
+
+      const gameStore = useGameStore()
+      const accelerating = gameStore.getAcceleratingGame()
+      if (!accelerating?.id) return
+
+      const selectedNodeId = String(accelerating.nodeId || '').trim()
+      if (!selectedNodeId || !removedKeys.has(selectedNodeId)) return
+
+      const stillExists = nodes.value.some((n) => n.id === selectedNodeId || n.tag === selectedNodeId)
+      if (stillExists) return
+
+      await gameStore.stopGame(accelerating.id)
     } catch (e) {
       console.error('Failed to delete node:', e)
     }

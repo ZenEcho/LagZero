@@ -3,51 +3,14 @@
  * 用于将游戏规则和节点配置转换为 Sing-box 可识别的 JSON 格式
  */
 
-import type { Game } from '@/types'
+import type { Game, DnsConfigOptions, SingboxConfig } from '@/types'
 import type { NodeConfig } from '@/utils/protocol'
 import pkg from '../../package.json'
 
-/**
- * Singbox 核心配置结构接口
- */
-interface SingboxConfig {
-  log: {
-    level: string
-    timestamp: boolean
-  }
-  dns: {
-    servers: any[]
-    rules: any[]
-    final?: string
-  }
-  inbounds: any[]
-  outbounds: any[]
-  route: {
-    rules: any[]
-    auto_detect_interface: boolean
-    final?: string
-  }
-  experimental?: {
-    cache_file?: {
-      enabled: boolean
-    }
-  }
-}
-
-/**
- * DNS 配置选项
- */
-export interface DnsConfigOptions {
-  mode?: 'secure' | 'system'   // DNS 模式：安全模式 (DoH/DoT) 或 系统解析
-  primary?: string            // 主 DNS 服务器地址
-  secondary?: string          // 备用 DNS 服务器地址
-  tunInterfaceName?: string
-  disableTun?: boolean
-  localProxy?: {
-    enabled: boolean
-    port: number
-  }
-}
+const GEOIP_CN_RULE_SET_TAG = 'geoip-cn'
+const LOYALSOLDIER_GEOIP_CN_SRS_URL = 'https://cdn.jsdelivr.net/gh/Loyalsoldier/geoip@release/srs/cn.srs'
+const GEOSITE_CN_RULE_SET_TAG = 'geosite-cn'
+const SAGERNET_GEOSITE_CN_SRS_URL = 'https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set/geosite-cn.srs'
 
 /**
  * 生成 Sing-box 配置文件
@@ -60,12 +23,19 @@ export interface DnsConfigOptions {
 export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?: DnsConfigOptions): string {
   const isRoutingMode = game.proxyMode === 'routing'
   const processes = normalizeProcessNames(Array.isArray(game.processName) ? game.processName : [game.processName])
+  const routingRules = Array.isArray(game.routingRules) ? game.routingRules.map(r => String(r).trim()).filter(Boolean) : []
+  const hasBypassCn = routingRules.some(r => r.toLowerCase() === 'bypass_cn')
+  const hasGlobal = routingRules.some(r => r.toLowerCase() === 'global')
+  const routingIpCidrs = normalizeRoutingIpCidrs(routingRules)
+  const hasRoutingProcessScope = isRoutingMode && processes.length > 0
   const dnsMode = dnsOptions?.mode || 'secure'
   const dnsPrimary = String(dnsOptions?.primary || 'https://dns.google/dns-query').trim()
   const dnsSecondary = String(dnsOptions?.secondary || 'https://1.1.1.1/dns-query').trim()
   const tunInterfaceName = String(dnsOptions?.tunInterfaceName || pkg.productName).trim() || pkg.productName
   const useSecureDns = dnsMode === 'secure'
   const disableTun = !!dnsOptions?.disableTun
+  const localProxyNode = dnsOptions?.localProxyNode
+  const localProxyStrictNode = !!dnsOptions?.localProxyStrictNode
 
   // 基础配置结构
   const config: SingboxConfig = {
@@ -107,7 +77,7 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
       {
         type: 'selector',
         tag: 'proxy',
-        outbounds: ['node-out', 'direct'],
+        outbounds: localProxyStrictNode ? ['node-out'] : ['node-out', 'direct'],
         default: 'node-out'
       },
       {
@@ -128,7 +98,9 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
         { protocol: 'dns', outbound: 'dns-out' }
       ],
       auto_detect_interface: true,
-      final: isRoutingMode ? 'proxy' : 'direct'
+      final: isRoutingMode
+        ? ((hasBypassCn || hasGlobal || routingIpCidrs.length === 0) && !hasRoutingProcessScope ? 'proxy' : 'direct')
+        : 'direct'
     }
   }
 
@@ -169,12 +141,33 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
       sniff: true
     })
 
-    // Local mixed proxy inbounds should always tunnel through selected node.
-    // Otherwise process mode falls back to route.final=direct, which may timeout.
+    const localProxyOutboundTag = localProxyNode ? 'local-proxy' : 'proxy'
+    if (localProxyNode) {
+      config.outbounds.push({
+        type: 'selector',
+        tag: 'local-proxy',
+        outbounds: ['local-node-out', 'direct'],
+        default: 'local-node-out'
+      })
+      config.outbounds.push(convertNodeToOutbound(localProxyNode, 'local-node-out'))
+    }
+
+    // Local mixed proxy inbounds should always tunnel through selected local proxy outbound.
     config.route.rules.push({
       inbound: ['http-in', 'socks-in'],
-      outbound: 'proxy'
+      outbound: localProxyOutboundTag
     })
+  }
+
+  if (useSecureDns) {
+    const bootstrapDomains = collectBootstrapDomains(node, localProxyNode)
+    if (bootstrapDomains.length > 0) {
+      // Avoid DNS bootstrap loop: node server domains must be resolved directly first.
+      config.dns.rules.unshift({
+        domain: bootstrapDomains,
+        server: 'local'
+      })
+    }
   }
 
   // 1. 将节点配置转换为 Outbound 格式并添加到配置中
@@ -191,33 +184,62 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
 
   // 3. 配置路由规则
   if (isRoutingMode) {
-    // 路由模式：处理“绕过中国大陆”或“全局代理”
-    const routingRules = game.routingRules || []
-
-    if (routingRules.includes('bypass_cn')) {
-      // 绕过中国大陆规则
-      config.route.rules.push({
+    if (hasBypassCn) {
+      const privateRule: Record<string, any> = {
         ip_is_private: true,
         outbound: 'direct'
+      }
+      if (hasRoutingProcessScope) privateRule.process_name = processes
+      config.route.rules.push(privateRule)
+      ensureRemoteRuleSet(config, {
+        tag: GEOIP_CN_RULE_SET_TAG,
+        type: 'remote',
+        format: 'binary',
+        url: LOYALSOLDIER_GEOIP_CN_SRS_URL,
+        download_detour: 'proxy'
       })
-      config.route.rules.push({
-        domain_suffix: ['cn'],
+      ensureRemoteRuleSet(config, {
+        tag: GEOSITE_CN_RULE_SET_TAG,
+        type: 'remote',
+        format: 'binary',
+        url: SAGERNET_GEOSITE_CN_SRS_URL,
+        download_detour: 'proxy'
+      })
+      const geoipRule: Record<string, any> = {
+        rule_set: [GEOIP_CN_RULE_SET_TAG],
         outbound: 'direct'
-      })
-      config.route.rules.push({
-        domain_suffix: [
-          'qq.com', 'baidu.com', 'bilibili.com', 'taobao.com', 'tmall.com',
-          'jd.com', 'douyin.com', 'douban.com', 'weibo.com', 'zhihu.com',
-          'youku.com', 'iqiyi.com', '163.com', 'sina.com.cn', 'alicdn.com'
-        ],
+      }
+      if (hasRoutingProcessScope) geoipRule.process_name = processes
+      config.route.rules.push(geoipRule)
+      const geositeRule: Record<string, any> = {
+        rule_set: [GEOSITE_CN_RULE_SET_TAG],
         outbound: 'direct'
-      })
-      // 默认出口在 config.route.final 中已设置为 'proxy'
-    } else {
-      // 全局模式（或默认路由）
-      // 默认出口为 'proxy'
+      }
+      if (hasRoutingProcessScope) geositeRule.process_name = processes
+      config.route.rules.push(geositeRule)
+      if (hasRoutingProcessScope) {
+        config.route.rules.push({
+          process_name: processes,
+          outbound: 'proxy'
+        })
+      }
+    } else if (hasGlobal) {
+      if (hasRoutingProcessScope) {
+        config.route.rules.push({
+          process_name: processes,
+          outbound: 'proxy'
+        })
+      }
+    } else if (routingIpCidrs.length > 0) {
+      const rule: Record<string, any> = {
+        ip_cidr: routingIpCidrs,
+        outbound: 'proxy'
+      }
+      if (processes.length > 0) {
+        rule.process_name = processes
+      }
+      config.route.rules.push(rule)
     }
-
   } else {
     // 进程模式：仅指定的游戏进程走代理，其余默认直连
     if (processes.length > 0) {
@@ -237,9 +259,9 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
  * @param node 原始节点配置
  * @returns Sing-box outbound 对象
  */
-function convertNodeToOutbound(node: NodeConfig): any {
+function convertNodeToOutbound(node: NodeConfig, tag: string = 'node-out'): any {
   const base = {
-    tag: 'node-out',
+    tag,
     server: node.server,
     server_port: node.server_port
   }
@@ -285,8 +307,8 @@ function convertNodeToOutbound(node: NodeConfig): any {
         transport,
         tls: tls || {
           enabled: true,
-          server_name: node.tls?.server_name || node.host || node.server,
-          insecure: node.tls?.insecure
+          server_name: resolveTlsServerName(node),
+          insecure: !!node.tls?.insecure
         }
       }
     case 'socks':
@@ -357,8 +379,8 @@ function buildTls(node: NodeConfig): any {
 
   const tls: any = {
     enabled: true,
-    server_name: node.tls.server_name || node.host || node.server,
-    insecure: node.tls.insecure,
+    server_name: resolveTlsServerName(node),
+    insecure: !!node.tls.insecure,
     alpn: alpn.length > 0 ? alpn : undefined,
     utls: fingerprint ? {
       enabled: true,
@@ -378,6 +400,44 @@ function buildTls(node: NodeConfig): any {
   return tls
 }
 
+function resolveTlsServerName(node: NodeConfig): string | undefined {
+  const candidates = [
+    node.tls?.server_name,
+    node.host,
+    node.server
+  ]
+    .map((v) => String(v ?? '').trim())
+    .filter(Boolean)
+
+  for (const candidate of candidates) {
+    if (!isIpLiteral(candidate)) return candidate
+  }
+  return undefined
+}
+
+function isIpLiteral(value: string): boolean {
+  const v = String(value ?? '').trim()
+  if (!v) return false
+  if (v.includes(':')) return true // IPv6 literal
+  const parts = v.split('.')
+  if (parts.length !== 4) return false
+  return parts.every((part) => {
+    if (!/^\d+$/.test(part)) return false
+    const n = Number(part)
+    return n >= 0 && n <= 255
+  })
+}
+
+function collectBootstrapDomains(...nodes: Array<NodeConfig | undefined>): string[] {
+  const set = new Set<string>()
+  for (const node of nodes) {
+    const domain = String(node?.server || '').trim().toLowerCase()
+    if (!domain || isIpLiteral(domain)) continue
+    set.add(domain)
+  }
+  return Array.from(set)
+}
+
 /**
  * 标准化进程名称列表
  * 去除路径只保留文件名，并添加小写版本以提高兼容性
@@ -389,9 +449,11 @@ function normalizeProcessNames(processes: string[]): string[] {
 
   const set = new Set<string>()
   items.forEach(p => {
-    set.add(p)
-    const lower = p.toLowerCase()
-    if (lower !== p) set.add(lower)
+    for (const alias of expandProcessAliases(p)) {
+      set.add(alias)
+      const lower = alias.toLowerCase()
+      if (lower !== alias) set.add(lower)
+    }
   })
 
   return Array.from(set)
@@ -406,4 +468,62 @@ function toProcessBaseName(processName: string): string {
   const normalized = value.replace(/\\/g, '/')
   const base = normalized.split('/').pop() || normalized
   return base.trim()
+}
+
+function expandProcessAliases(processName: string): string[] {
+  const value = String(processName || '').trim()
+  if (!value) return []
+  const aliases = new Set<string>([value])
+
+  // Tolerate users entering "chrome" instead of "chrome.exe" on Windows.
+  if (!value.includes('.') && !value.includes('/') && !value.includes('\\')) {
+    aliases.add(`${value}.exe`)
+  }
+
+  return Array.from(aliases)
+}
+
+function ensureRemoteRuleSet(config: SingboxConfig, ruleSet: Record<string, any>) {
+  const route = config.route as any
+  if (!Array.isArray(route.rule_set)) {
+    route.rule_set = []
+  }
+  if (route.rule_set.some((item: any) => String(item?.tag || '') === String(ruleSet.tag || ''))) {
+    return
+  }
+  route.rule_set.push(ruleSet)
+}
+
+function normalizeRoutingIpCidrs(rules: string[]): string[] {
+  const set = new Set<string>()
+  for (const raw of rules) {
+    const value = String(raw || '').trim()
+    if (!value) continue
+    const lower = value.toLowerCase()
+    if (lower === 'bypass_cn' || lower === 'global') continue
+
+    if (isIpLiteral(value)) {
+      set.add(value.includes(':') ? `${value}/128` : `${value}/32`)
+      continue
+    }
+    if (isValidCidr(value)) {
+      set.add(value)
+    }
+  }
+  return Array.from(set)
+}
+
+function isValidCidr(value: string): boolean {
+  const s = String(value || '').trim()
+  if (!s.includes('/')) return false
+  const [ip, prefix] = s.split('/')
+  if (!ip || !prefix || !/^\d+$/.test(prefix)) return false
+  const bits = Number(prefix)
+
+  if (ip.includes(':')) {
+    return bits >= 0 && bits <= 128
+  }
+
+  if (!isIpLiteral(ip)) return false
+  return bits >= 0 && bits <= 32
 }

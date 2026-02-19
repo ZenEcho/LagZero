@@ -11,14 +11,19 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AboutSettings: typeof import('./../components/settings/AboutSettings.vue')['default']
     AdvancedConfigEditor: typeof import('./../components/library/AdvancedConfigEditor.vue')['default']
     CategoryManager: typeof import('./../components/library/CategoryManager.vue')['default']
     GameEditModal: typeof import('./../components/library/GameEditModal.vue')['default']
+    GeneralSettings: typeof import('./../components/settings/GeneralSettings.vue')['default']
+    IconSelector: typeof import('./../components/common/IconSelector.vue')['default']
     LatencyChart: typeof import('./../components/dashboard/LatencyChart.vue')['default']
+    LogsSettings: typeof import('./../components/settings/LogsSettings.vue')['default']
     NButton: typeof import('naive-ui')['NButton']
     NConfigProvider: typeof import('naive-ui')['NConfigProvider']
     NDialogProvider: typeof import('naive-ui')['NDialogProvider']
     NDivider: typeof import('naive-ui')['NDivider']
+    NetworkSettings: typeof import('./../components/settings/NetworkSettings.vue')['default']
     NForm: typeof import('naive-ui')['NForm']
     NFormItem: typeof import('naive-ui')['NFormItem']
     NInput: typeof import('naive-ui')['NInput']
@@ -37,8 +42,11 @@ declare module 'vue' {
     NSelect: typeof import('naive-ui')['NSelect']
     NSpace: typeof import('naive-ui')['NSpace']
     NSwitch: typeof import('naive-ui')['NSwitch']
+    NTag: typeof import('naive-ui')['NTag']
+    ProcessSelector: typeof import('./../components/common/ProcessSelector.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SettingsSidebar: typeof import('./../components/settings/SettingsSidebar.vue')['default']
     ThemeToggle: typeof import('./../components/common/ThemeToggle.vue')['default']
   }
 }

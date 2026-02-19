@@ -26,11 +26,26 @@ export function normalizeProcessNames(processNames: string[]): string[] {
   for (const item of processNames) {
     const normalized = normalizeProcessName(item)
     if (!normalized) continue
-    set.add(normalized)
-    const lower = normalized.toLowerCase()
-    if (lower !== normalized) set.add(lower)
+    for (const alias of expandProcessAliases(normalized)) {
+      set.add(alias)
+      const lower = alias.toLowerCase()
+      if (lower !== alias) set.add(lower)
+    }
   }
   return Array.from(set)
+}
+
+function expandProcessAliases(processName: string): string[] {
+  const value = String(processName || '').trim()
+  if (!value) return []
+  const aliases = new Set<string>([value])
+
+  // Tolerate users entering "chrome" instead of "chrome.exe" on Windows.
+  if (!value.includes('.') && !value.includes('/') && !value.includes('\\')) {
+    aliases.add(`${value}.exe`)
+  }
+
+  return Array.from(aliases)
 }
 
 /**

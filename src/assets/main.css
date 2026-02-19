@@ -1,0 +1,395 @@
+/* 全局样式调整 */
+:root {
+  /* Primitive Colors (Semantic Base) */
+  --rgb-white: 255, 255, 255;
+  --rgb-black: 0, 0, 0;
+
+  /* Status Colors (Modern Zinc/Tailwind Palette) */
+  --rgb-success: 22, 163, 74; /* Green-600 */
+  --rgb-success-bg: 220, 252, 231; /* Green-100 */
+  --rgb-on-success: 255, 255, 255; /* White */
+
+  --rgb-warning: 202, 138, 4; /* Yellow-600 */
+  --rgb-warning-bg: 254, 249, 195; /* Yellow-100 */
+  --rgb-on-warning: 255, 255, 255; /* White */
+
+  --rgb-error: 225, 29, 72; /* Rose-600 */
+  --rgb-error-bg: 255, 228, 230; /* Rose-100 */
+  --rgb-on-error: 255, 255, 255; /* White */
+
+  --rgb-info: 37, 99, 235; /* Blue-600 */
+  --rgb-info-bg: 219, 234, 254; /* Blue-100 */
+  --rgb-on-info: 255, 255, 255; /* White */
+
+  /* Theme: Light (Sophisticated Modern) */
+  --rgb-primary: 16, 185, 129; /* Emerald-500 */
+  --rgb-primary-hover: 5, 150, 105; /* Emerald-600 */
+  --rgb-on-primary: 255, 255, 255;
+
+  --rgb-secondary: 100, 116, 139; /* Slate-500 */
+  --rgb-secondary-hover: 71, 85, 105; /* Slate-600 */
+  --rgb-on-secondary: 255, 255, 255;
+
+  /* Backgrounds - Refined Off-white */
+  --rgb-background: 250, 250, 251; /* Softer than pure white */
+  --rgb-surface: 255, 255, 255; /* Pure white for cards */
+  --rgb-surface-panel: 244, 245, 247; /* Panel background */
+  --rgb-surface-overlay: 238, 240, 243; /* Hover/Input background */
+
+  /* Text - Slate Palette for better legibility */
+  --rgb-on-surface: 15, 23, 42; /* Slate-900 */
+  --rgb-on-surface-variant: 71, 85, 105; /* Slate-600 */
+  --rgb-on-surface-muted: 148, 163, 184; /* Slate-400 */
+
+  /* Borders - Soft Slate */
+  --rgb-border: 226, 232, 240; /* Slate-200 */
+  --rgb-border-hover: 203, 213, 225; /* Slate-300 */
+
+  --rgb-overlay: 0, 0, 0;
+
+  /* CSS Variables for direct usage */
+  --color-primary: rgb(var(--rgb-primary));
+  --color-background: rgb(var(--rgb-background));
+  --color-surface: rgb(var(--rgb-surface));
+  --color-on-surface: rgb(var(--rgb-on-surface));
+  --color-border: rgb(var(--rgb-border));
+  
+  /* Font Base */
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  overflow: hidden; /* Prevent body scroll, use inner containers */
+}
+
+/* Reset buttons */
+button {
+  border: none;
+  background: none;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: var(--color-background);
+  color: var(--color-on-surface);
+}
+
+/* Theme Colors Override */
+html.theme-green {
+  --rgb-primary: 16, 185, 129; /* Emerald-500 */
+  --rgb-primary-hover: 5, 150, 105; /* Emerald-600 */
+}
+html.theme-blue {
+  --rgb-primary: 59, 130, 246; /* Blue-500 */
+  --rgb-primary-hover: 37, 99, 235; /* Blue-600 */
+}
+html.theme-purple {
+  --rgb-primary: 139, 92, 246; /* Violet-500 */
+  --rgb-primary-hover: 124, 58, 237; /* Violet-600 */
+}
+html.theme-orange {
+  --rgb-primary: 249, 115, 22; /* Orange-500 */
+  --rgb-primary-hover: 234, 88, 12; /* Orange-600 */
+}
+html.theme-red {
+  --rgb-primary: 239, 68, 68; /* Red-500 */
+  --rgb-primary-hover: 220, 38, 38; /* Red-600 */
+}
+
+html.dark {
+  /* Theme: Dark (Deep Midnight Noir) */
+  --rgb-on-primary: 255, 255, 255;
+
+  --rgb-secondary: 148, 163, 184; /* Slate-400 */
+  --rgb-secondary-hover: 226, 232, 240; /* Slate-200 */
+  --rgb-on-secondary: 15, 23, 42; /* Slate-900 */
+
+  /* Backgrounds - DEEP NOIR */
+  --rgb-background: 10, 10, 12; /* Midnight Black */
+  --rgb-surface: 18, 18, 22; /* Ebony surface */
+  --rgb-surface-panel: 28, 28, 32; /* Obsidian panel */
+  --rgb-surface-overlay: 38, 38, 44; /* Hover state */
+
+  /* Text - High Contrast for Dark Mode */
+  --rgb-on-surface: 248, 250, 252; /* Slate-50 */
+  --rgb-on-surface-variant: 148, 163, 184; /* Slate-400 */
+  --rgb-on-surface-muted: 71, 85, 105; /* Slate-600 */
+
+  /* Borders - Subdued Obsidian */
+  --rgb-border: 38, 38, 44; /* Quiet borders */
+  --rgb-border-hover: 63, 63, 70; /* Visible hover borders */
+
+  /* Adjusted Status Colors for Dark Mode (Vibrant but readable) */
+  --rgb-success: 52, 211, 153; /* Emerald-400 */
+  --rgb-warning: 251, 191, 36; /* Amber-400 */
+  --rgb-error: 251, 113, 133; /* Rose-400 */
+  --rgb-info: 56, 189, 248; /* Sky-400 */
+}
+
+/* Transitions */
+*,
+*::before,
+*::after {
+  transition:
+    background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+  }
+}
+
+/* Animations */
+@keyframes pulse-slow {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.1);
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 8s infinite ease-in-out;
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.5s ease-out;
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-scale-in {
+  animation: scale-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Transitions */
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: all 0.3s ease;
+}
+
+.fade-slide-enter-from {
+  opacity: 0;
+  transform: translateX(10px);
+}
+
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateX(-10px);
+}
+
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar,
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track,
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-thumb {
+  background: rgba(var(--rgb-border), 0.5);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--rgb-border), 0.8);
+}
+
+/* Glass overrides */
+.glass-input :deep(.n-input) {
+  background-color: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(10px);
+}
+
+.glass-select :deep(.n-base-selection) {
+  background-color: rgba(255, 255, 255, 0.03) !important;
+  backdrop-filter: blur(10px);
+}
+
+.glass-button,
+.glass-button-primary {
+  background-color: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(5px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.3s ease;
+}
+
+.glass-button:hover,
+.glass-button-primary:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  transform: translateY(-1px);
+}
+
+.glass-button-primary {
+  background-color: rgba(var(--rgb-primary), 0.1);
+  border-color: rgba(var(--rgb-primary), 0.3);
+  color: rgb(var(--rgb-primary));
+}
+
+.glass-button-primary:hover {
+  background-color: rgba(var(--rgb-primary), 0.2);
+  box-shadow: 0 4px 12px rgba(var(--rgb-primary), 0.2);
+}
+
+/* 
+  Fix for Naive UI Primary Button transparency issue in Light Mode 
+  caused by Tailwind Preflight or style conflicts.
+*/
+
+/* Green Theme (Default) */
+html.theme-green .n-button.n-button--primary-type,
+html:not([class*="theme-"]) .n-button.n-button--primary-type {
+  background-color: #3eaf7c !important;
+  color: #ffffff !important;
+  border: 1px solid #3eaf7c !important;
+}
+html.theme-green .n-button.n-button--primary-type:hover,
+html:not([class*="theme-"]) .n-button.n-button--primary-type:hover {
+  background-color: #10b981 !important;
+  border-color: #10b981 !important;
+}
+
+/* Blue Theme */
+html.theme-blue .n-button.n-button--primary-type {
+  background-color: #3b82f6 !important;
+  color: #ffffff !important;
+  border: 1px solid #3b82f6 !important;
+}
+html.theme-blue .n-button.n-button--primary-type:hover {
+  background-color: #2563eb !important;
+  border-color: #2563eb !important;
+}
+
+/* Purple Theme */
+html.theme-purple .n-button.n-button--primary-type {
+  background-color: #8b5cf6 !important;
+  color: #ffffff !important;
+  border: 1px solid #8b5cf6 !important;
+}
+html.theme-purple .n-button.n-button--primary-type:hover {
+  background-color: #7c3aed !important;
+  border-color: #7c3aed !important;
+}
+
+/* Orange Theme */
+html.theme-orange .n-button.n-button--primary-type {
+  background-color: #f97316 !important;
+  color: #ffffff !important;
+  border: 1px solid #f97316 !important;
+}
+html.theme-orange .n-button.n-button--primary-type:hover {
+  background-color: #ea580c !important;
+  border-color: #ea580c !important;
+}
+
+/* Red Theme */
+html.theme-red .n-button.n-button--primary-type {
+  background-color: #ef4444 !important;
+  color: #ffffff !important;
+  border: 1px solid #ef4444 !important;
+}
+html.theme-red .n-button.n-button--primary-type:hover {
+  background-color: #dc2626 !important;
+  border-color: #dc2626 !important;
+}
+
+/* Fix for Error and Warning buttons transparency issue */
+.n-button.n-button--error-type:not(.n-button--quaternary):not(
+    .n-button--tertiary
+  ):not(.n-button--secondary):not(.n-button--ghost) {
+  background-color: rgb(var(--rgb-error)) !important;
+  color: #ffffff !important;
+  border: 1px solid rgb(var(--rgb-error)) !important;
+}
+.n-button.n-button--error-type:not(.n-button--quaternary):not(
+    .n-button--tertiary
+  ):not(.n-button--secondary):not(.n-button--ghost):hover {
+  filter: brightness(0.9);
+}
+
+.n-button.n-button--warning-type:not(.n-button--quaternary):not(
+    .n-button--tertiary
+  ):not(.n-button--secondary):not(.n-button--ghost) {
+  background-color: rgb(var(--rgb-warning)) !important;
+  color: #ffffff !important;
+  border: 1px solid rgb(var(--rgb-warning)) !important;
+}
+.n-button.n-button--warning-type:not(.n-button--quaternary):not(
+    .n-button--tertiary
+  ):not(.n-button--secondary):not(.n-button--ghost):hover {
+  filter: brightness(0.9);
+}
+
+/* Electron Drag Region Support */
+.app-drag-region {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Ensure Naive UI modals and overlays are not draggable and thus clickable */
+.n-modal-container,
+.n-modal-mask,
+.n-modal-body-wrapper,
+.n-dialog,
+.n-notification-container,
+.n-message-container,
+.n-dropdown-menu,
+.n-popover {
+  -webkit-app-region: no-drag;
+}
+
+/* Disabled state for Primary Button */
+.n-button.n-button--primary-type.n-button--disabled {
+  opacity: 0.6 !important;
+  cursor: not-allowed !important;
+}
