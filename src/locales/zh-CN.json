@@ -234,6 +234,8 @@
     "logs_clear": "清空日志",
     "logs_empty": "暂无日志",
     "logs_count_info": "共 {filtered} 条（当前缓存 {total} 条）",
+    "logs_current_dir": "日志目录",
+    "logs_current_path": "当前日志路径",
     "logs_all_categories": "全部分类",
     "logs_category_frontend": "前端",
     "logs_category_backend": "后端",

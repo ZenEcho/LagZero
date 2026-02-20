@@ -17,6 +17,14 @@
           {{ $t('settings.logs_count_info', { filtered: filteredLogs.length, total: logEntries.length }) }}
         </div>
 
+        <div v-if="logDirPath" class="text-xs text-on-surface-muted break-all">
+          {{ $t('settings.logs_current_dir') }}: <span class="font-mono">{{ logDirPath }}</span>
+        </div>
+
+        <div v-if="logFilePath" class="text-xs text-on-surface-muted break-all">
+          {{ $t('settings.logs_current_path') }}: <span class="font-mono">{{ logFilePath }}</span>
+        </div>
+
         <div class="rounded-xl border border-border/60 bg-surface-overlay/50 h-[520px] overflow-y-auto custom-scrollbar">
           <div v-if="filteredLogs.length === 0"
             class="h-full flex items-center justify-center text-sm text-on-surface-muted">
@@ -82,6 +90,8 @@ import type { LogEntry } from '@/types/electron'
 const { t } = useI18n()
 
 const logEntries = ref<LogEntry[]>([])
+const logDirPath = ref('')
+const logFilePath = ref('')
 const logCategory = ref<'all' | 'frontend' | 'backend' | 'core'>('all')
 const logLevel = ref<'all' | 'debug' | 'info' | 'warn' | 'error'>('all')
 const logKeyword = ref('')
@@ -132,6 +142,24 @@ async function loadLogs() {
   }
 }
 
+async function loadLogFilePath() {
+  try {
+    const filePath = await logsApi.getFilePath()
+    logFilePath.value = String(filePath || '')
+  } catch {
+    logFilePath.value = ''
+  }
+}
+
+async function loadLogDirPath() {
+  try {
+    const dirPath = await logsApi.getDirPath()
+    logDirPath.value = String(dirPath || '')
+  } catch {
+    logDirPath.value = ''
+  }
+}
+
 async function clearLogs() {
   try {
     await logsApi.clear()
@@ -167,7 +195,7 @@ function logMessageTextClass(level: LogEntry['level']) {
 }
 
 onMounted(async () => {
-  await loadLogs()
+  await Promise.all([loadLogs(), loadLogFilePath(), loadLogDirPath()])
   try {
     logsApi.onNew(onLogNew)
   } catch (e) { }

@@ -15,10 +15,16 @@
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
+    "prepare:singbox-core": "node electron/scripts/prepare-singbox-core.mjs",
     "rebuild:native": "electron-builder install-app-deps",
     "rebuild:sqlite": "pnpm rebuild better-sqlite3",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
+    "predist:win:x64:nsis": "pnpm prepare:singbox-core",
+    "predist:win:arm64:nsis": "pnpm prepare:singbox-core",
+    "predist:win:x64:portable": "pnpm prepare:singbox-core",
+    "predist:win:arm64:portable": "pnpm prepare:singbox-core",
+    "predist:win:all": "pnpm prepare:singbox-core",
     "dist:win:x64:nsis": "electron-builder --win nsis --x64",
     "dist:win:arm64:nsis": "electron-builder --win nsis --arm64",
     "dist:win:x64:portable": "electron-builder --win portable --x64",
@@ -41,6 +47,15 @@
       "!**/node_modules/better-sqlite3/src/**",
       "!**/node_modules/better-sqlite3/build/**/obj/**",
       "!**/node_modules/better-sqlite3/build/**/obj.target/**"
+    ],
+    "extraResources": [
+      {
+        "from": "electron/resources/singbox",
+        "to": "singbox",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "asar": true,
     "electronLanguages": [

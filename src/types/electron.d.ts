@@ -93,6 +93,7 @@ export interface LogsAPI {
   getAll: () => Promise<LogEntry[]>
   clear: () => Promise<void>
   getFilePath: () => Promise<string>
+  getDirPath: () => Promise<string>
   pushFrontend: (entry: Partial<LogEntry>) => Promise<void>
   onNew: (callback: (entry: LogEntry) => void) => void
   offNew: (callback: (entry: LogEntry) => void) => void

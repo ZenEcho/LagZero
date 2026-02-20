@@ -40,6 +40,11 @@ export class SingBoxInstaller {
       return binPath
     }
 
+    const installedFromBundle = await this.tryInstallBundledBinary(platform, arch, binPath)
+    if (installedFromBundle) {
+      return binPath
+    }
+
     return this.downloadAndInstallBinary(platform, arch, binPath)
   }
 
@@ -246,6 +251,57 @@ export class SingBoxInstaller {
     }
 
     await fs.chmod(binPath, 0o755).catch(() => {})
+  }
+
+  /**
+   * 尝试从安装包内置资源复制 sing-box
+   */
+  private async tryInstallBundledBinary(
+    platform: NodeJS.Platform,
+    arch: string,
+    binPath: string
+  ): Promise<boolean> {
+    const platformName = platform === 'win32' ? 'windows'
+      : platform === 'darwin' ? 'darwin'
+      : platform === 'linux' ? 'linux'
+      : null
+    if (!platformName) return false
+
+    const archName = arch === 'x64' ? 'x64'
+      : arch === 'arm64' ? 'arm64'
+      : arch === 'ia32' ? 'x86'
+      : arch
+
+    const exeName = platform === 'win32' ? 'sing-box.exe' : 'sing-box'
+    const sourceDirCandidates = [
+      path.join(process.resourcesPath, 'singbox', `${platformName}-${archName}`),
+      path.join(process.resourcesPath, 'singbox', platformName),
+      path.join(process.resourcesPath, 'singbox'),
+    ]
+
+    for (const sourceDir of sourceDirCandidates) {
+      const sourceExe = path.join(sourceDir, exeName)
+      if (!await fs.pathExists(sourceExe)) continue
+
+      await fs.copyFile(sourceExe, binPath)
+      if (platform === 'win32') {
+        await this.copySidecarDlls(sourceDir)
+      }
+      await fs.chmod(binPath, 0o755).catch(() => {})
+      this.log(`已使用内置 sing-box：${sourceExe}`)
+      return true
+    }
+
+    return false
+  }
+
+  private async copySidecarDlls(sourceDir: string): Promise<void> {
+    const entries = await fs.readdir(sourceDir, { withFileTypes: true }).catch(() => [])
+    for (const entry of entries) {
+      if (!entry.isFile()) continue
+      if (!entry.name.toLowerCase().endsWith('.dll')) continue
+      await fs.copyFile(path.join(sourceDir, entry.name), path.join(BIN_DIR, entry.name))
+    }
   }
 
   /**

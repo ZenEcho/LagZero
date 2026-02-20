@@ -269,6 +269,7 @@ export function setupLogger(getWin: () => BrowserWindow | null) {
     })
   })
   ipcMain.handle('logs:get-file-path', () => getAppLogFilePath())
+  ipcMain.handle('logs:get-dir-path', () => getAppLogDir())
   ipcMain.handle('logs:push-frontend', (_, payload: Partial<AppLogEntry>) => {
     const level: AppLogLevel = payload.level === 'debug' || payload.level === 'warn' || payload.level === 'error'
       ? payload.level

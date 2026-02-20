@@ -137,6 +137,7 @@ contextBridge.exposeInMainWorld('logs', {
   getAll: () => ipcRenderer.invoke('logs:get-all'),
   clear: () => ipcRenderer.invoke('logs:clear'),
   getFilePath: () => ipcRenderer.invoke('logs:get-file-path'),
+  getDirPath: () => ipcRenderer.invoke('logs:get-dir-path'),
   pushFrontend: (entry: any) => ipcRenderer.invoke('logs:push-frontend', entry),
   onNew: (callback: (entry: any) => void) => {
     const wrapped = (_event: any, entry: any) => callback(entry)

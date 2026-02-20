@@ -10,6 +10,7 @@ export const logsApi = {
   getAll: () => window.logs.getAll(),
   clear: () => window.logs.clear(),
   getFilePath: () => window.logs.getFilePath(),
+  getDirPath: () => window.logs.getDirPath(),
   pushFrontend: (entry: Partial<LogEntry>) => window.logs.pushFrontend(entry),
   onNew: (callback: (entry: LogEntry) => void) => window.logs.onNew(callback),
   offNew: (callback: (entry: LogEntry) => void) => window.logs.offNew(callback),

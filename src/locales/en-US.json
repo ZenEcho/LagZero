@@ -234,6 +234,8 @@
     "logs_clear": "Clear Logs",
     "logs_empty": "No logs available",
     "logs_count_info": "{filtered} logs found ({total} in cache)",
+    "logs_current_dir": "Log Directory",
+    "logs_current_path": "Current Log Path",
     "logs_all_categories": "All Categories",
     "logs_category_frontend": "Frontend",
     "logs_category_backend": "Backend",

@@ -77,7 +77,7 @@ export async function collectExePaths(dir: string, maxDepth: number, currentDept
     if (dirent.isDirectory()) {
       const folderName = dirent.name.toLowerCase()
       if (GAME_SCAN_IGNORE_DIR_NAMES.has(folderName)) continue
-      if (maxDepth === -1 || currentDepth < maxDepth) {
+      if (maxDepth === -1 || currentDepth <= maxDepth) {
         const sub = await collectExePaths(full, maxDepth, currentDepth + 1)
         results.push(...sub)
       }
