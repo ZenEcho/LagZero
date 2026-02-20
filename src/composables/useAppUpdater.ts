@@ -3,9 +3,10 @@ import { useNotification, NButton } from 'naive-ui'
 import { h } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { appApi } from '@/api'
+import pkg from '../../package.json'
 
 export function useAppUpdater() {
-  const appVersion = ref('0.0.0')
+  const appVersion = ref(pkg.version)
   const checkingUpdate = ref(false)
   const updateInfo = ref<{ 
     available: boolean, 

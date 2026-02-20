@@ -1,16 +1,24 @@
 import { ref } from 'vue'
 import { useMessage } from 'naive-ui'
-import { systemApi } from '@/api'
+import { categoryApi, systemApi } from '@/api'
 import { useGameStore } from '@/stores/games'
+import { useCategoryStore } from '@/stores/categories'
 import type { Game, LocalScanGame } from '@/types'
 
 export function useGameScanner() {
   const isScanning = ref(false)
   const message = useMessage()
   const gameStore = useGameStore()
-  // 临时使用 useCategoryStore 来获取默认分类，或者硬编码 'other'
-  // 为了解耦，这里简单硬编码，或者要求外部传入 fallbackCategoryId
-  const fallbackCategoryId = 'other' 
+  const categoryStore = useCategoryStore()
+
+  function getFallbackCategoryId() {
+    const categories = categoryStore.categories || []
+    const preferred = categories.find(c => String(c.id) === 'other')
+      || categories.find(c => String(c.name || '').toLowerCase() === 'other')
+      || categories.find(c => String(c.name || '').includes('其他'))
+      || categories[0]
+    return preferred?.id || 'other'
+  }
 
   async function scanGames() {
     isScanning.value = true
@@ -56,10 +64,12 @@ export function useGameScanner() {
     let added = 0
 
     for (const item of candidates) {
+      const matchedCategoryId = await categoryApi.match(item.name, [item.processName])
+      const categoryId = matchedCategoryId || getFallbackCategoryId()
       await gameStore.addGame({
         name: item.name,
         processName: [item.processName],
-        category: fallbackCategoryId,
+        category: categoryId,
         status: 'idle',
         latency: 0,
         proxyMode: 'process',

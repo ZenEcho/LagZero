@@ -41,15 +41,13 @@
         </h2>
         <div class="flex bg-surface-overlay/50 rounded-lg p-1 border border-border/30">
           <button @click="settingsStore.dnsMode = 'secure'" :disabled="applyingDns"
-            class="px-3 py-1 text-xs rounded-md transition font-medium"
-            :class="settingsStore.dnsMode === 'secure'
+            class="px-3 py-1 text-xs rounded-md transition font-medium" :class="settingsStore.dnsMode === 'secure'
               ? 'bg-surface shadow-sm text-primary'
               : 'text-on-surface-muted hover:text-on-surface'">
             {{ $t('settings.dns_mode_secure') }}
           </button>
           <button @click="settingsStore.dnsMode = 'system'" :disabled="applyingDns"
-            class="px-3 py-1 text-xs rounded-md transition font-medium"
-            :class="settingsStore.dnsMode === 'system'
+            class="px-3 py-1 text-xs rounded-md transition font-medium" :class="settingsStore.dnsMode === 'system'
               ? 'bg-surface shadow-sm text-primary'
               : 'text-on-surface-muted hover:text-on-surface'">
             {{ $t('settings.dns_mode_system') }}
@@ -131,11 +129,11 @@
             {{ $t('common.status') }}
           </label>
           <div class="px-3 py-2 rounded-lg border text-xs" :class="localProxyStore.statusLevel === 'error'
-            ? 'border-red-500/40 text-red-500 bg-red-500/10'
+            ? 'border-error/40 text-error bg-error/10'
             : localProxyStore.statusLevel === 'warning'
               ? 'border-yellow-500/40 text-yellow-500 bg-yellow-500/10'
               : localProxyStore.statusLevel === 'success'
-                ? 'border-green-500/40 text-green-500 bg-green-500/10'
+                ? 'border-success/40 text-success bg-success/10'
                 : 'border-border/50 text-on-surface-muted bg-surface-overlay/40'">
             {{ localProxyStore.statusText || (localProxyStore.starting ? $t('common.checking') : '-') }}
           </div>
@@ -143,6 +141,119 @@
             {{ $t('common.checking') }} {{ localProxyStore.testingCurrent }}/{{ localProxyStore.testingTotal }}
             <span v-if="localProxyStore.testingNodeLabel">- {{ localProxyStore.testingNodeLabel }}</span>
           </p>
+        </div>
+      </div>
+    </section>
+
+    <div class="w-full h-px bg-border/30"></div>
+
+    <!-- System Proxy -->
+    <section>
+      <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
+        <div class="i-material-symbols-public text-primary"></div>
+        {{ $t('settings.system_proxy') }}
+      </h2>
+      <div class="bg-surface-panel/50 border border-border/50 rounded-2xl p-6 backdrop-blur-sm space-y-4">
+        <div class="space-y-2">
+          <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
+            {{ $t('settings.system_proxy_port') }} (HTTP)
+          </label>
+          <n-input-number v-model:value="settingsStore.systemProxyPort" :min="1024" :max="65535" class="glass-select"
+            button-placement="both" />
+          <p class="text-xs text-on-surface-muted mt-1">
+            {{ $t('settings.system_proxy_info') }}
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <div class="w-full h-px bg-border/30"></div>
+
+    <!-- Game Network Tuning -->
+    <section>
+      <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
+        <div class="i-material-symbols-joystick text-primary"></div>
+        {{ $t('settings.game_network_tuning') }}
+      </h2>
+      <div class="bg-surface-panel/50 border border-border/50 rounded-2xl p-6 backdrop-blur-sm space-y-4">
+        <p class="text-xs text-on-surface-muted">
+          {{ $t('settings.game_network_tuning_hint') }}
+        </p>
+        <div class="flex items-center justify-between">
+          <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
+            {{ $t('common.enabled') }}
+          </label>
+          <n-switch v-model:value="settingsStore.sessionNetworkTuning.enabled" />
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4"
+          :class="{ 'opacity-50 pointer-events-none': !settingsStore.sessionNetworkTuning.enabled }">
+          <div class="space-y-2 md:col-span-2">
+            <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
+              {{ $t('settings.network_profile') }}
+            </label>
+            <div class="flex bg-surface-overlay/50 p-1 rounded-xl border border-border/30">
+              <button @click="applyProfilePreset('stable')"
+                class="flex-1 py-2 text-sm rounded-lg transition-all font-bold" :class="settingsStore.sessionNetworkTuning.profile === 'stable'
+                  ? 'bg-surface shadow-sm text-primary'
+                  : 'text-on-surface-muted hover:text-on-surface'">
+                {{ $t('settings.network_profile_stable') }}
+              </button>
+              <button @click="applyProfilePreset('aggressive')"
+                class="flex-1 py-2 text-sm rounded-lg transition-all font-bold" :class="settingsStore.sessionNetworkTuning.profile === 'aggressive'
+                  ? 'bg-surface shadow-sm text-primary'
+                  : 'text-on-surface-muted hover:text-on-surface'">
+                {{ $t('settings.network_profile_aggressive') }}
+              </button>
+            </div>
+          </div>
+          <div class="space-y-2">
+            <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
+              {{ $t('settings.udp_mode') }}
+            </label>
+            <n-select v-model:value="settingsStore.sessionNetworkTuning.udpMode" :options="udpModeOptions"
+              class="glass-select" />
+          </div>
+          <div class="space-y-2">
+            <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
+              MTU
+            </label>
+            <n-input-number v-model:value="settingsStore.sessionNetworkTuning.tunMtu" :min="1200" :max="1500"
+              class="glass-select" button-placement="both" />
+          </div>
+          <div class="space-y-2">
+            <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
+              {{ $t('settings.tun_stack') }}
+            </label>
+            <n-select v-model:value="settingsStore.sessionNetworkTuning.tunStack" :options="tunStackOptions"
+              class="glass-select" />
+          </div>
+          <div class="space-y-2">
+            <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
+              {{ $t('settings.vless_packet_encoding') }} ({{ $t('settings.vless_only') }})
+            </label>
+            <n-select v-model:value="settingsStore.sessionNetworkTuning.vlessPacketEncodingOverride"
+              :options="vlessEncodingOptions" class="glass-select" />
+            <p class="text-xs text-on-surface-muted">{{ $t('settings.vless_only_hint') }}</p>
+          </div>
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
+                {{ $t('settings.strict_route') }}
+              </label>
+              <n-switch v-model:value="settingsStore.sessionNetworkTuning.strictRoute" />
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center justify-between gap-3">
+          <p class="text-xs text-on-surface-muted">
+            {{ $t('settings.high_loss_hint_only') }}
+          </p>
+          <n-switch v-model:value="settingsStore.sessionNetworkTuning.highLossHintOnly" />
+        </div>
+        <div class="pt-1">
+          <n-button secondary @click="settingsStore.resetSessionNetworkTuning()" class="glass-button">
+            {{ $t('settings.reset_session_network_tuning') }}
+          </n-button>
         </div>
       </div>
     </section>
@@ -180,7 +291,7 @@
         </div>
 
         <div v-if="opMessage" class="px-4 py-3 rounded-xl text-sm flex items-center gap-3 border animate-scale-in"
-          :class="opOk ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'">
+          :class="opOk ? 'bg-success/10 text-success border-success/20' : 'bg-error/10 text-error border-error/20'">
           <div :class="opOk ? 'i-material-symbols-check-circle text-lg' : 'i-material-symbols-error text-lg'">
           </div>
           {{ opMessage }}
@@ -191,7 +302,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
 import { useLocalProxyStore } from '@/stores/local-proxy'
@@ -206,6 +317,7 @@ const gameStore = useGameStore()
 
 const working = ref(false)
 const applyingDns = ref(false)
+const applyingSessionTuning = ref(false)
 const opMessage = ref('')
 const opOk = ref(true)
 
@@ -217,10 +329,27 @@ const intervalOptions = [
   { label: '30s', value: 30000 },
   { label: '1m', value: 60000 }
 ]
+const udpModeOptions = computed(() => ([
+  { label: t('settings.udp_mode_auto'), value: 'auto' },
+  { label: t('settings.udp_mode_prefer_udp'), value: 'prefer_udp' },
+  { label: t('settings.udp_mode_prefer_tcp'), value: 'prefer_tcp' }
+]))
+const tunStackOptions = [
+  { label: 'system', value: 'system' },
+  { label: 'mixed', value: 'mixed' }
+]
+const vlessEncodingOptions = computed(() => ([
+  { label: t('settings.vless_packet_encoding_off'), value: 'off' },
+  { label: 'xudp', value: 'xudp' }
+]))
 
 function setCheckMethod(method: string) {
   // @ts-ignore
   settingsStore.checkMethod = method
+}
+
+function applyProfilePreset(profile: 'stable' | 'aggressive') {
+  settingsStore.applySessionNetworkProfilePreset(profile)
 }
 
 async function handleFlushDns() {
@@ -285,6 +414,33 @@ watch(
       opMessage.value = String(e?.message || e || t('dashboard.start_failed'))
     } finally {
       applyingDns.value = false
+    }
+  }
+)
+
+watch(
+  () => JSON.stringify(settingsStore.sessionNetworkTuning),
+  async (_next, prev) => {
+    if (_next === prev) return
+    if (applyingSessionTuning.value) return
+    const active = gameStore.getAcceleratingGame()
+    if (!active?.id) return
+    if (!gameStore.isUsingGlobalSessionNetworkTuning(active.id)) return
+    if (gameStore.operationState !== 'idle') return
+
+    applyingSessionTuning.value = true
+    try {
+      opOk.value = true
+      opMessage.value = t('settings.session_network_tuning_restarting')
+      const restarted = await gameStore.applySessionNetworkTuningChange()
+      if (restarted) {
+        opMessage.value = t('settings.session_network_tuning_applied')
+      }
+    } catch (e: any) {
+      opOk.value = false
+      opMessage.value = String(e?.message || e || t('settings.session_network_tuning_apply_failed'))
+    } finally {
+      applyingSessionTuning.value = false
     }
   }
 )

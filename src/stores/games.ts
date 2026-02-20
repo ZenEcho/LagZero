@@ -1,12 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref, computed, toRaw, reactive } from 'vue'
 import { useLocalStorage } from '@vueuse/core'
-import type { Game } from '@/types'
+import type { Game, SessionNetworkTuningOptions, NetworkProfile } from '@/types'
 import { useNodeStore } from './nodes'
 import { generateSingboxConfig } from '@/utils/singbox-config'
 import { useSettingsStore } from './settings'
 import { useLocalProxyStore } from './local-proxy'
-import { gameApi, singboxApi, proxyMonitorApi } from '@/api'
+import { gameApi, singboxApi, proxyMonitorApi, systemApi } from '@/api'
 
 export type { Game }
 
@@ -65,6 +65,89 @@ export const useGameStore = defineStore('games', () => {
   const operationState = ref<'idle' | 'starting' | 'stopping'>('idle')
   /** 当前正在执行操作的游戏 ID。 */
   const operationGameId = ref<string | null>(null)
+  /** 开启系统代理前的系统代理快照，用于停止和回滚恢复。 */
+  const systemProxySnapshot = ref<any | null>(null)
+  /** 当前会话中，按游戏维度覆盖的网络优化参数。 */
+  const gameSessionNetworkTuning = reactive<Record<string, SessionNetworkTuningOptions>>({})
+
+  function toPlainSnapshot(snapshot: any) {
+    if (snapshot == null) return null
+    try {
+      return JSON.parse(JSON.stringify(snapshot))
+    } catch {
+      return null
+    }
+  }
+
+  function cloneGlobalSessionNetworkTuning(): SessionNetworkTuningOptions {
+    const settingsStore = useSettingsStore()
+    const g = settingsStore.sessionNetworkTuning
+    return {
+      enabled: !!g.enabled,
+      profile: g.profile === 'aggressive' ? 'aggressive' : 'stable',
+      udpMode: g.udpMode,
+      tunMtu: g.tunMtu,
+      tunStack: g.tunStack,
+      strictRoute: !!g.strictRoute,
+      vlessPacketEncodingOverride: g.vlessPacketEncodingOverride,
+      highLossHintOnly: g.highLossHintOnly !== false
+    }
+  }
+
+  function getEffectiveSessionNetworkTuning(gameId?: string): SessionNetworkTuningOptions {
+    const id = String(gameId || '').trim()
+    if (id && gameSessionNetworkTuning[id]) return gameSessionNetworkTuning[id]!
+    return cloneGlobalSessionNetworkTuning()
+  }
+
+  function isUsingGlobalSessionNetworkTuning(gameId: string): boolean {
+    return !gameSessionNetworkTuning[String(gameId || '').trim()]
+  }
+
+  function ensureGameSessionNetworkTuning(gameId: string): SessionNetworkTuningOptions {
+    const id = String(gameId || '').trim()
+    if (!id) return cloneGlobalSessionNetworkTuning()
+    if (!gameSessionNetworkTuning[id]) {
+      gameSessionNetworkTuning[id] = cloneGlobalSessionNetworkTuning()
+    }
+    return gameSessionNetworkTuning[id]!
+  }
+
+  function resetGameSessionNetworkTuning(gameId: string): void {
+    const id = String(gameId || '').trim()
+    if (!id) return
+    gameSessionNetworkTuning[id] = cloneGlobalSessionNetworkTuning()
+  }
+
+  function applyGameSessionNetworkProfilePreset(
+    gameId: string,
+    profile: NetworkProfile,
+    options?: { isCurrentNodeVless?: boolean }
+  ): void {
+    const tuning = ensureGameSessionNetworkTuning(gameId)
+    const isCurrentNodeVless = !!options?.isCurrentNodeVless
+    if (profile === 'aggressive') {
+      Object.assign(tuning, {
+        enabled: true,
+        profile: 'aggressive',
+        udpMode: 'prefer_udp',
+        tunMtu: 1360,
+        tunStack: 'mixed',
+        strictRoute: true,
+        vlessPacketEncodingOverride: isCurrentNodeVless ? 'xudp' : 'off'
+      })
+      return
+    }
+    Object.assign(tuning, {
+      enabled: true,
+      profile: 'stable',
+      udpMode: 'auto',
+      tunMtu: 1280,
+      tunStack: 'system',
+      strictRoute: false,
+      vlessPacketEncodingOverride: 'off'
+    })
+  }
 
   /** 获取当前加速中的游戏（可排除某个 ID）。 */
   function getAcceleratingGame(excludeId?: string): Game | null {
@@ -269,7 +352,30 @@ export const useGameStore = defineStore('games', () => {
 
     operationState.value = 'starting'
     operationGameId.value = id
+    const useSystemProxy = settingsStore.accelNetworkMode === 'system_proxy'
+    const previousSystemProxySnapshot = systemProxySnapshot.value
+    let systemProxyPortToUse = settingsStore.systemProxyPort
     try {
+      if (useSystemProxy) {
+        const reservedPorts = new Set<number>()
+        if (settingsStore.localProxyEnabled) {
+          reservedPorts.add(settingsStore.localProxyPort)
+          reservedPorts.add(settingsStore.localProxyPort + 1)
+        }
+
+        let candidate = Math.max(1024, Math.floor(Number(settingsStore.systemProxyPort || 0)))
+        if (reservedPorts.has(candidate)) candidate += 2
+        let available = await systemApi.findAvailablePort(candidate, 1)
+        while (reservedPorts.has(available)) {
+          available = await systemApi.findAvailablePort(available + 1, 1)
+        }
+        if (available !== settingsStore.systemProxyPort) {
+          console.info(`[SystemProxy] system proxy port changed ${settingsStore.systemProxyPort} -> ${available}`)
+          settingsStore.systemProxyPort = available
+        }
+        systemProxyPortToUse = available
+      }
+
       const rawGame = toRaw(game) as Game
       const rawNode = toRaw(node) as any
       const config = String(generateSingboxConfig(rawGame, rawNode, {
@@ -277,13 +383,39 @@ export const useGameStore = defineStore('games', () => {
         primary: settingsStore.dnsPrimary,
         secondary: settingsStore.dnsSecondary,
         tunInterfaceName: settingsStore.tunInterfaceName,
+        accelNetworkMode: settingsStore.accelNetworkMode,
+        sessionTuning: { ...getEffectiveSessionNetworkTuning(rawGame.id) },
         localProxyNode,
         localProxy: {
           enabled: settingsStore.localProxyEnabled,
           port: settingsStore.localProxyPort
+        },
+        systemProxy: {
+          enabled: useSystemProxy,
+          port: systemProxyPortToUse
         }
       }))
       await singboxApi.restart(config)
+
+      if (useSystemProxy) {
+        const proxyResult = await systemApi.setSystemProxy(systemProxyPortToUse, '<local>')
+        if (!proxyResult?.ok) {
+          await singboxApi.stop()
+          const rollbackResult = await systemApi.clearSystemProxy(proxyResult?.snapshot || previousSystemProxySnapshot || undefined)
+          if (!rollbackResult?.ok) {
+            console.warn('[SystemProxy] rollback failed after setSystemProxy error:', rollbackResult?.message)
+          }
+          systemProxySnapshot.value = previousSystemProxySnapshot || null
+          throw new Error(String(proxyResult?.message || 'Failed to set system proxy'))
+        }
+        systemProxySnapshot.value = toPlainSnapshot(proxyResult.snapshot) || toPlainSnapshot(previousSystemProxySnapshot)
+      } else {
+        const clearResult = await systemApi.clearSystemProxy(systemProxySnapshot.value || undefined)
+        if (!clearResult?.ok && !String(clearResult?.message || '').startsWith('Unsupported platform')) {
+          console.warn('[SystemProxy] clear before tun mode failed:', clearResult?.message)
+        }
+        systemProxySnapshot.value = null
+      }
 
       const procs = Array.isArray(rawGame.processName) ? rawGame.processName.map(p => String(p)) : [String(rawGame.processName)]
       const shouldEnableChainProxy = rawGame.proxyMode === 'process' && rawGame.chainProxy !== false
@@ -292,6 +424,15 @@ export const useGameStore = defineStore('games', () => {
 
       setGameStatus(id, 'accelerating')
     } catch (e) {
+      if (useSystemProxy) {
+        try {
+          await singboxApi.stop()
+        } catch { }
+        try {
+          await systemApi.clearSystemProxy(previousSystemProxySnapshot || undefined)
+        } catch { }
+        systemProxySnapshot.value = toPlainSnapshot(previousSystemProxySnapshot)
+      }
       console.error('Failed to start game acceleration:', e)
       throw e
     } finally {
@@ -314,6 +455,14 @@ export const useGameStore = defineStore('games', () => {
     operationState.value = 'stopping'
     operationGameId.value = _id
     try {
+      try {
+        const clearResult = await systemApi.clearSystemProxy(systemProxySnapshot.value || undefined)
+        if (!clearResult?.ok && !String(clearResult?.message || '').startsWith('Unsupported platform')) {
+          console.warn('[SystemProxy] clear on stop failed:', clearResult?.message)
+        }
+      } finally {
+        systemProxySnapshot.value = null
+      }
       await proxyMonitorApi.stop()
       const settingsStore = useSettingsStore()
       const localProxyStore = useLocalProxyStore()
@@ -332,6 +481,16 @@ export const useGameStore = defineStore('games', () => {
       operationState.value = 'idle'
       operationGameId.value = null
     }
+  }
+
+  async function applySessionNetworkTuningChange(): Promise<boolean> {
+    const active = getAcceleratingGame()
+    if (!active?.id) return false
+    if (operationState.value !== 'idle') return false
+
+    await stopGame(active.id)
+    await startGame(active.id)
+    return true
   }
 
   /** 仓库创建后立即执行一次初始化。 */
@@ -356,7 +515,13 @@ export const useGameStore = defineStore('games', () => {
     updateGame,
     removeGame,
     startGame,
-    stopGame
+    stopGame,
+    applySessionNetworkTuningChange,
+    getEffectiveSessionNetworkTuning,
+    isUsingGlobalSessionNetworkTuning,
+    ensureGameSessionNetworkTuning,
+    resetGameSessionNetworkTuning,
+    applyGameSessionNetworkProfilePreset
   }
 })
 

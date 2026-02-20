@@ -17,9 +17,11 @@ declare module 'vue' {
     GameEditModal: typeof import('./../components/library/GameEditModal.vue')['default']
     GeneralSettings: typeof import('./../components/settings/GeneralSettings.vue')['default']
     IconSelector: typeof import('./../components/common/IconSelector.vue')['default']
+    LanguageToggle: typeof import('./../components/common/LanguageToggle.vue')['default']
     LatencyChart: typeof import('./../components/dashboard/LatencyChart.vue')['default']
     LogsSettings: typeof import('./../components/settings/LogsSettings.vue')['default']
     NButton: typeof import('naive-ui')['NButton']
+    NCheckbox: typeof import('naive-ui')['NCheckbox']
     NConfigProvider: typeof import('naive-ui')['NConfigProvider']
     NDialogProvider: typeof import('naive-ui')['NDialogProvider']
     NDivider: typeof import('naive-ui')['NDivider']
@@ -37,6 +39,7 @@ declare module 'vue' {
     NodeImportModal: typeof import('./../components/node/NodeImportModal.vue')['default']
     NodeManager: typeof import('./../components/node/NodeManager.vue')['default']
     NodeSelector: typeof import('./../components/dashboard/NodeSelector.vue')['default']
+    NPopselect: typeof import('naive-ui')['NPopselect']
     NRadio: typeof import('naive-ui')['NRadio']
     NRadioGroup: typeof import('naive-ui')['NRadioGroup']
     NSelect: typeof import('naive-ui')['NSelect']
@@ -47,6 +50,7 @@ declare module 'vue' {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SettingsSidebar: typeof import('./../components/settings/SettingsSidebar.vue')['default']
+    SubscriptionManagerModal: typeof import('./../components/node/SubscriptionManagerModal.vue')['default']
     ThemeToggle: typeof import('./../components/common/ThemeToggle.vue')['default']
   }
 }

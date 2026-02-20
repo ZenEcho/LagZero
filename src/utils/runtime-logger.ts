@@ -2,6 +2,8 @@ import { logsApi } from '@/api'
 import type { FrontendLogLevel, FrontendLogPayload } from '@/types'
 
 const MAX_TEXT_LENGTH = 2000
+const PROMPT_DEDUPE_WINDOW_MS = 1200
+const promptSeenAt = new Map<string, number>()
 
 function stringifyPart(value: unknown): string {
   if (typeof value === 'string') return value
@@ -36,6 +38,70 @@ function push(payload: FrontendLogPayload) {
   } catch {
     // ignore logging channel errors
   }
+}
+
+function normalizePromptText(text: string) {
+  return truncate(text.replace(/\s+/g, ' ').trim())
+}
+
+function shouldPushPrompt(key: string) {
+  const now = Date.now()
+  const last = promptSeenAt.get(key) || 0
+  if (now - last < PROMPT_DEDUPE_WINDOW_MS) return false
+  promptSeenAt.set(key, now)
+  return true
+}
+
+function inferPromptLevelByClassName(className: string): FrontendLogLevel {
+  const cls = className.toLowerCase()
+  if (cls.includes('error') || cls.includes('danger')) return 'error'
+  if (cls.includes('warning') || cls.includes('warn')) return 'warn'
+  if (cls.includes('success')) return 'info'
+  return 'info'
+}
+
+function collectPromptLogsFromElement(root: Element): FrontendLogPayload[] {
+  const logs: FrontendLogPayload[] = []
+  const buckets: Array<{ source: string, selector: string, type: string }> = [
+    { source: 'renderer.prompt.message', selector: '.n-message', type: 'message' },
+    { source: 'renderer.prompt.notification', selector: '.n-notification', type: 'notification' },
+    { source: 'renderer.prompt.dialog', selector: '.n-dialog', type: 'dialog' }
+  ]
+
+  for (const bucket of buckets) {
+    const candidates: Element[] = []
+    if (root.matches?.(bucket.selector)) candidates.push(root)
+    root.querySelectorAll(bucket.selector).forEach((el) => candidates.push(el))
+
+    for (const el of candidates) {
+      const text = normalizePromptText(el.textContent || '')
+      if (!text) continue
+      const key = `${bucket.type}|${text}`
+      if (!shouldPushPrompt(key)) continue
+      logs.push({
+        level: inferPromptLevelByClassName((el as HTMLElement).className || ''),
+        source: bucket.source,
+        message: `[${bucket.type}] ${text}`
+      })
+    }
+  }
+
+  return logs
+}
+
+function installPromptLayerLogging() {
+  const onMutation: MutationCallback = (mutations) => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (!(node instanceof Element)) continue
+        const entries = collectPromptLogsFromElement(node)
+        for (const entry of entries) push(entry)
+      }
+    }
+  }
+
+  const observer = new MutationObserver(onMutation)
+  observer.observe(document.documentElement, { childList: true, subtree: true })
 }
 
 declare global {
@@ -82,4 +148,6 @@ export function setupRuntimeLogging() {
       detail: truncate(stringifyPart(event.reason))
     })
   })
+
+  installPromptLayerLogging()
 }

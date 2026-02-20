@@ -59,22 +59,41 @@ export class NodeService {
     this.registerIPC()
   }
 
+  /**
+   * 获取所有节点
+   * @returns Promise<NodeConfig[]>
+   */
   public getAll() {
     return this.db.getAllNodes()
   }
 
+  /**
+   * 保存节点配置
+   * @param node - 节点配置对象
+   */
   public save(node: Partial<NodeConfig>) {
     return this.db.saveNode(node)
   }
 
+  /**
+   * 删除节点
+   * @param id - 节点 ID
+   */
   public delete(id: string) {
     return this.db.deleteNode(id)
   }
 
+  /**
+   * 批量导入节点
+   * @param newNodes - 节点列表
+   */
   public importNodes(newNodes: Partial<NodeConfig>[]) {
     return this.db.importNodes(newNodes)
   }
 
+  /**
+   * 注册 IPC 监听器
+   */
   private registerIPC() {
     ipcMain.handle('nodes:get-all', () => this.getAll())
     ipcMain.handle('nodes:save', (_, node: any) => this.save(node))

@@ -15,7 +15,8 @@
           </div>
         </div>
       </div>
-      <div class="flex gap-1 no-drag items-center">
+      <div class="flex gap-2 no-drag items-center">
+        <LanguageToggle />
         <ThemeToggle />
         <div class="w-[1px] h-4 bg-border mx-2"></div>
         <button @click="minimize"
@@ -24,7 +25,7 @@
         </button>
         <button @click="maximize"
           class="w-7 h-7 flex items-center justify-center rounded hover:bg-on-surface/10 text-on-surface-variant hover:text-on-surface transition">
-          <div class="i-material-symbols-crop-square text-lg"></div>
+          <div class="i-material-symbols-crop-square-outline text-lg"></div>
         </button>
         <button @click="close"
           class="w-7 h-7 flex items-center justify-center rounded hover:bg-error hover:text-white text-on-surface-variant transition">
@@ -120,6 +121,7 @@ import { ref, watchEffect, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useIntervalFn, useWindowSize } from '@vueuse/core'
 import ThemeToggle from '@/components/common/ThemeToggle.vue'
+import LanguageToggle from '@/components/common/LanguageToggle.vue'
 import pkg from '../../package.json'
 import { electronApi } from '@/api'
 import { useAppUpdater } from '@/composables/useAppUpdater'

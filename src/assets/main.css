@@ -35,6 +35,7 @@
   --rgb-surface: 255, 255, 255; /* Pure white for cards */
   --rgb-surface-panel: 244, 245, 247; /* Panel background */
   --rgb-surface-overlay: 238, 240, 243; /* Hover/Input background */
+  --rgb-surface-variant: 232, 235, 240; /* Stronger chips/media placeholders */
 
   /* Text - Slate Palette for better legibility */
   --rgb-on-surface: 15, 23, 42; /* Slate-900 */
@@ -45,7 +46,7 @@
   --rgb-border: 226, 232, 240; /* Slate-200 */
   --rgb-border-hover: 203, 213, 225; /* Slate-300 */
 
-  --rgb-overlay: 0, 0, 0;
+  --rgb-overlay: 15, 23, 42;
 
   /* CSS Variables for direct usage */
   --color-primary: rgb(var(--rgb-primary));
@@ -53,7 +54,7 @@
   --color-surface: rgb(var(--rgb-surface));
   --color-on-surface: rgb(var(--rgb-on-surface));
   --color-border: rgb(var(--rgb-border));
-  
+
   /* Font Base */
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
@@ -121,11 +122,12 @@ html.dark {
   --rgb-surface: 18, 18, 22; /* Ebony surface */
   --rgb-surface-panel: 28, 28, 32; /* Obsidian panel */
   --rgb-surface-overlay: 38, 38, 44; /* Hover state */
+  --rgb-surface-variant: 48, 48, 56; /* Chips/media placeholders */
 
   /* Text - High Contrast for Dark Mode */
   --rgb-on-surface: 248, 250, 252; /* Slate-50 */
-  --rgb-on-surface-variant: 148, 163, 184; /* Slate-400 */
-  --rgb-on-surface-muted: 71, 85, 105; /* Slate-600 */
+  --rgb-on-surface-variant: 203, 213, 225; /* Slate-300 */
+  --rgb-on-surface-muted: 161, 161, 170; /* Zinc-400, brighter than Slate-600 */
 
   /* Borders - Subdued Obsidian */
   --rgb-border: 38, 38, 44; /* Quiet borders */
@@ -133,9 +135,14 @@ html.dark {
 
   /* Adjusted Status Colors for Dark Mode (Vibrant but readable) */
   --rgb-success: 52, 211, 153; /* Emerald-400 */
+  --rgb-success-bg: 6, 78, 59; /* Emerald-900 */
   --rgb-warning: 251, 191, 36; /* Amber-400 */
+  --rgb-warning-bg: 120, 53, 15; /* Amber-900 */
   --rgb-error: 251, 113, 133; /* Rose-400 */
+  --rgb-error-bg: 136, 19, 55; /* Rose-900 */
   --rgb-info: 56, 189, 248; /* Sky-400 */
+  --rgb-info-bg: 12, 74, 110; /* Sky-900 */
+  --rgb-overlay: 0, 0, 0;
 }
 
 /* Transitions */
@@ -283,61 +290,17 @@ html.dark {
   caused by Tailwind Preflight or style conflicts.
 */
 
-/* Green Theme (Default) */
-html.theme-green .n-button.n-button--primary-type,
+.n-button.n-button--primary-type,
 html:not([class*="theme-"]) .n-button.n-button--primary-type {
-  background-color: #3eaf7c !important;
-  color: #ffffff !important;
-  border: 1px solid #3eaf7c !important;
+  background-color: rgb(var(--rgb-primary)) !important;
+  color: rgb(var(--rgb-on-primary)) !important;
+  border: 1px solid rgb(var(--rgb-primary)) !important;
 }
-html.theme-green .n-button.n-button--primary-type:hover,
+
+.n-button.n-button--primary-type:hover,
 html:not([class*="theme-"]) .n-button.n-button--primary-type:hover {
-  background-color: #10b981 !important;
-  border-color: #10b981 !important;
-}
-
-/* Blue Theme */
-html.theme-blue .n-button.n-button--primary-type {
-  background-color: #3b82f6 !important;
-  color: #ffffff !important;
-  border: 1px solid #3b82f6 !important;
-}
-html.theme-blue .n-button.n-button--primary-type:hover {
-  background-color: #2563eb !important;
-  border-color: #2563eb !important;
-}
-
-/* Purple Theme */
-html.theme-purple .n-button.n-button--primary-type {
-  background-color: #8b5cf6 !important;
-  color: #ffffff !important;
-  border: 1px solid #8b5cf6 !important;
-}
-html.theme-purple .n-button.n-button--primary-type:hover {
-  background-color: #7c3aed !important;
-  border-color: #7c3aed !important;
-}
-
-/* Orange Theme */
-html.theme-orange .n-button.n-button--primary-type {
-  background-color: #f97316 !important;
-  color: #ffffff !important;
-  border: 1px solid #f97316 !important;
-}
-html.theme-orange .n-button.n-button--primary-type:hover {
-  background-color: #ea580c !important;
-  border-color: #ea580c !important;
-}
-
-/* Red Theme */
-html.theme-red .n-button.n-button--primary-type {
-  background-color: #ef4444 !important;
-  color: #ffffff !important;
-  border: 1px solid #ef4444 !important;
-}
-html.theme-red .n-button.n-button--primary-type:hover {
-  background-color: #dc2626 !important;
-  border-color: #dc2626 !important;
+  background-color: rgb(var(--rgb-primary-hover)) !important;
+  border-color: rgb(var(--rgb-primary-hover)) !important;
 }
 
 /* Fix for Error and Warning buttons transparency issue */

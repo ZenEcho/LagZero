@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <n-modal :show="modelValue" @update:show="$emit('update:modelValue', $event)" preset="card"
     :title="isEdit ? $t('nodes.edit_node') : $t('nodes.add_node')" class="w-[640px]" :mask-closable="false">
     <n-form label-placement="top" :model="form">

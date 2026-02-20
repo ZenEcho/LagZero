@@ -88,7 +88,8 @@ export function ping(host: string, timeout = 2000): Promise<PingResult> {
 export function tcpPing(host: string, port: number, timeout = 2000): Promise<PingResult> {
     return new Promise((resolve) => {
         const start = Date.now()
-        const socket = new net.Socket()
+        const socket = new net.Socket() 
+        socket.setNoDelay(true) 
 
         let resolved = false
 

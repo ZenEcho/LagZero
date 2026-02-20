@@ -7,6 +7,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
 import { useNodeStore } from '@/stores/nodes'
 import { useIntervalFn } from '@vueuse/core'
+import { useTheme } from '@/composables/useTheme'
 
 const props = defineProps<{
   nodeKey?: string | null
@@ -15,6 +16,8 @@ const props = defineProps<{
 const nodeStore = useNodeStore()
 const chartRef = ref<HTMLElement>()
 let chart: echarts.ECharts | null = null
+
+const { isDark, themeColor } = useTheme()
 
 const activeNodeKey = computed(() => props.nodeKey || '')
 
@@ -25,6 +28,15 @@ function formatTime(timestamp: number) {
 
 function renderChart(xData: string[], yData: (number | null)[]) {
   if (!chart) return
+
+  const css = getComputedStyle(document.documentElement)
+  const primaryRgb = css.getPropertyValue('--rgb-primary').trim() || '16, 185, 129'
+  const borderRgb = css.getPropertyValue('--rgb-border').trim() || '226, 232, 240'
+  const mutedTextRgb = css.getPropertyValue('--rgb-on-surface-muted').trim() || '148, 163, 184'
+  const axisColor = `rgba(${borderRgb}, 0.9)`
+  const splitColor = `rgba(${borderRgb}, 0.45)`
+  const axisTextColor = `rgba(${mutedTextRgb}, 1)`
+
   chart.setOption({
     backgroundColor: 'transparent',
     tooltip: {
@@ -41,12 +53,14 @@ function renderChart(xData: string[], yData: (number | null)[]) {
     xAxis: {
       type: 'category',
       data: xData,
-      axisLine: { lineStyle: { color: '#666' } }
+      axisLabel: { color: axisTextColor },
+      axisLine: { lineStyle: { color: axisColor } }
     },
     yAxis: {
       type: 'value',
-      splitLine: { lineStyle: { color: '#333' } },
-      axisLine: { lineStyle: { color: '#666' } }
+      axisLabel: { color: axisTextColor },
+      splitLine: { lineStyle: { color: splitColor } },
+      axisLine: { lineStyle: { color: axisColor } }
     },
     series: [
       {
@@ -57,11 +71,11 @@ function renderChart(xData: string[], yData: (number | null)[]) {
         connectNulls: false,
         areaStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(62, 175, 124, 0.5)' },
-            { offset: 1, color: 'rgba(62, 175, 124, 0.0)' }
+            { offset: 0, color: `rgba(${primaryRgb}, 0.5)` },
+            { offset: 1, color: `rgba(${primaryRgb}, 0.0)` }
           ])
         },
-        itemStyle: { color: '#3eaf7c' }
+        itemStyle: { color: `rgba(${primaryRgb}, 1)` }
       }
     ]
   })
@@ -93,7 +107,7 @@ onMounted(() => {
   window.addEventListener('resize', resize)
 })
 
-watch(activeNodeKey, () => {
+watch([activeNodeKey, themeColor, isDark], () => {
   void refreshChart()
 })
 

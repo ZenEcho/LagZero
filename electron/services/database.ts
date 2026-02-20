@@ -428,11 +428,19 @@ export class DatabaseService {
     return this.getAllGames()
   }
 
+  /**
+   * 删除游戏
+   * @param id - 游戏 ID
+   */
   async deleteGame(id: string) {
     await this.db.deleteFrom('games').where('id', '=', id).execute()
     return this.getAllGames()
   }
 
+  /**
+   * 获取所有分类
+   * @returns Promise<Category[]>
+   */
   async getAllCategories() {
     const rows = await this.db.selectFrom('categories').selectAll().orderBy('order_index').execute()
     return rows.map(row => ({
@@ -445,6 +453,10 @@ export class DatabaseService {
     }))
   }
 
+  /**
+   * 保存分类（新增或更新）
+   * @param category - 分类对象
+   */
   async saveCategory(category: any) {
     const data = {
       id: category.id || generateId(),
@@ -464,11 +476,19 @@ export class DatabaseService {
     return this.getAllCategories()
   }
 
+  /**
+   * 删除分类
+   * @param id - 分类 ID
+   */
   async deleteCategory(id: string) {
     await this.db.deleteFrom('categories').where('id', '=', id).execute()
     return this.getAllCategories()
   }
 
+  /**
+   * 获取所有配置文件
+   * @returns Promise<Profile[]>
+   */
   async getAllProfiles() {
     const rows = await this.db.selectFrom('profiles').selectAll().execute()
     return rows.map(row => ({
@@ -480,6 +500,10 @@ export class DatabaseService {
     }))
   }
 
+  /**
+   * 保存配置文件（新增或更新）
+   * @param profile - 配置文件对象
+   */
   async saveProfile(profile: any) {
     const data = {
       id: profile.id || generateId(),
@@ -498,6 +522,10 @@ export class DatabaseService {
     return this.getAllProfiles()
   }
 
+  /**
+   * 删除配置文件
+   * @param id - 配置文件 ID
+   */
   async deleteProfile(id: string) {
     await this.db.deleteFrom('profiles').where('id', '=', id).execute()
     return this.getAllProfiles()

@@ -13,21 +13,35 @@ electron/
 │   └── schema.ts            # SQLite 数据库表结构定义 (Kysely Schema)
 │
 ├── main/                    # [入口层] 主进程核心引导
-│   ├── index.ts             # **应用入口**：负责 App 生命周期、窗口创建、IPC 注册、服务组装
-│   └── logger.ts            # 日志系统：负责日志文件写入、轮转及向渲染进程广播日志
+│   ├── bootstrap.ts         # **启动引导**：环境检查、管理员权限校验、图标加载
+│   ├── index.ts             # **应用入口**：负责 App 生命周期、服务组装
+│   ├── logger.ts            # 日志系统：负责日志文件写入、轮转及向渲染进程广播日志
+│   ├── tray.ts              # 托盘管理：系统托盘图标与菜单逻辑
+│   └── window.ts            # 窗口管理：主窗口创建、配置与生命周期控制
 │
 ├── preload/                 # [桥接层] 预加载脚本
 │   └── index.ts             # 暴露给渲染进程的 API 定义 (ContextBridge)
 │
 ├── services/                # [业务层] 核心业务逻辑服务 (Service)
+│   ├── scanners/            # [扫描器] 游戏扫描具体实现
+│   │   ├── flat.ts          # 通用目录扫描 (Epic/EA)
+│   │   ├── microsoft.ts     # Xbox/Microsoft Store 游戏扫描 (Registry/Manifest)
+│   │   ├── steam.ts         # Steam 库扫描 (libraryfolders.vdf)
+│   │   ├── types.ts         # 扫描结果类型定义
+│   │   └── utils.ts         # 扫描工具函数
+│   ├── singbox/             # [核心] sing-box 内核管理
+│   │   ├── config.ts        # 配置管理：校验配置、更新路由规则
+│   │   ├── constants.ts     # 常量定义
+│   │   ├── index.ts         # **SingBoxService**：服务入口，协调各模块
+│   │   ├── installer.ts     # 安装器：负责内核下载与安装
+│   │   └── utils.ts         # 工具函数
 │   ├── category.ts          # 游戏分类服务：管理侧边栏分类数据
 │   ├── database.ts          # 数据库服务：封装 SQLite 连接与基础 CRUD 操作
-│   ├── game-scanner.ts      # 游戏扫描服务：自动识别 Steam/Epic/Xbox/EA 本地已安装游戏
+│   ├── game-scanner.ts      # 游戏扫描服务：统一入口，聚合 scanners 目录下的扫描逻辑
 │   ├── game.ts              # 游戏管理服务：管理“我的游戏”列表、配置与状态
 │   ├── node.ts              # 节点管理服务：管理代理节点/订阅信息
 │   ├── process.ts           # 进程管理服务：提供进程树查找、父子进程分析能力
 │   ├── proxy-monitor.ts     # 监控服务：实时监控游戏进程启动，自动触发加速路由
-│   ├── singbox.ts           # **核心加速服务**：管理 sing-box 内核进程、生成配置、处理路由规则
 │   ├── system.ts            # 系统服务：提供 DNS 刷新、虚拟网卡重置、网络测试等底层能力
 │   └── updater.ts           # 更新服务：检查 GitHub Releases 新版本
 │
@@ -43,20 +57,30 @@ electron/
 ## 模块详细说明
 
 ### 1. 入口层 (`main/`)
-- **`index.ts`**:
-    - 是整个 Electron 应用的起点。
-    - 负责初始化所有 Service 实例（依赖注入）。
-    - 处理窗口管理（最小化、最大化、关闭）。
-    - 处理系统托盘 (Tray) 逻辑。
-- **`logger.ts`**:
-    - 实现了双向日志系统：既记录后端日志，也接收前端日志。
-    - 包含日志文件自动清理策略（限制文件大小和总占用空间）。
+经过重构，入口层职责更加单一：
+- **`index.ts`**: 核心入口，负责组装各个模块，初始化服务。
+- **`bootstrap.ts`**: 处理应用启动前的环境准备，如强制管理员权限、处理 SQLite 原生模块错误。
+- **`window.ts`**: 封装了 `BrowserWindow` 的创建与配置，管理窗口 IPC 事件（最小化/关闭）。
+- **`tray.ts`**: 独立管理系统托盘逻辑。
 
 ### 2. 业务层 (`services/`)
-这是代码最集中的地方，每个文件对应一个具体的业务领域：
-- **`singbox.ts`**: 最核心的文件。负责下载 sing-box 内核、生成 `config.json`、启动/停止内核、动态更新路由规则。
-- **`proxy-monitor.ts`**: 实现了智能进程捕获。它会轮询系统进程树，当发现已配置的游戏进程及其子进程启动时，自动通知 `singbox.ts` 添加分流规则。
-- **`game-scanner.ts`**: 包含复杂的跨平台（目前主要是 Windows）扫描逻辑，读取注册表、Steam 库文件 (`libraryfolders.vdf`) 等信息来定位游戏。
+这是代码最集中的地方，每个文件对应一个具体的业务领域。
+
+#### 核心服务：`singbox/`
+将原有的 `singbox.ts` 拆分为独立模块：
+- **`index.ts`**: 服务外观 (Facade)，对外提供 `start`, `stop`, `restart` 接口。
+- **`installer.ts`**: 专注于二进制文件的下载、解压和安装逻辑。
+- **`config.ts`**: 专注于配置文件的生成、校验和动态规则更新。
+
+#### 扫描服务：`game-scanner.ts` & `scanners/`
+- **`game-scanner.ts`**: 作为统一入口，对外暴露 `scanLocalGamesFromPlatforms`。
+- **`scanners/`**: 包含各平台的具体扫描实现：
+    - **`steam.ts`**: 解析 Steam 库文件。
+    - **`microsoft.ts`**: 结合注册表和 AppxManifest 解析 Xbox 游戏。
+    - **`flat.ts`**: 简单的目录遍历扫描 (Epic/EA)。
+
+#### 监控服务：`proxy-monitor.ts`
+- 实现了智能进程捕获。它会轮询系统进程树，当发现已配置的游戏进程及其子进程启动时，自动通知 `singbox` 服务添加分流规则。
 
 ### 3. 工具层 (`utils/`)
 提炼了纯函数工具，不依赖具体业务逻辑，易于测试和复用。

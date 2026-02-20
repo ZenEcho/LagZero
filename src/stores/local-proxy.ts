@@ -182,8 +182,6 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
     const primary = String(settings.dnsPrimary || '').trim()
     const secondary = String(settings.dnsSecondary || '').trim()
     const config = generateSingboxConfig(localGame, node, {
-      // Local browser/system proxy should always use secure DNS to avoid DNS pollution
-      // that can surface as certificate/privacy warnings across different node types.
       mode: 'secure',
       primary: primary.startsWith('https://') ? primary : DEFAULT_DNS_PRIMARY,
       secondary: secondary.startsWith('https://') ? secondary : DEFAULT_DNS_SECONDARY,

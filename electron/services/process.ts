@@ -26,6 +26,9 @@ export class ProcessService {
     this.setupIPC()
   }
 
+  /**
+   * 注册 IPC 监听器
+   */
   private setupIPC() {
     ipcMain.handle('process-scan', async () => {
       return await this.scanProcesses()

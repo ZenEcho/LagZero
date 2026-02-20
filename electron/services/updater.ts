@@ -1,14 +1,34 @@
 import { net, app } from 'electron'
 
+/**
+ * 更新检查结果信息
+ */
 export type UpdateInfo = {
+  /** 是否有可用更新 */
   updateAvailable?: boolean
+  /** 最新版本号 */
   version?: string
+  /** 发布日期 */
   releaseDate?: string
+  /** 更新日志 */
   releaseNotes?: string
+  /** 错误信息 */
   error?: string
 }
 
+/**
+ * 自动更新服务
+ * 
+ * 负责检查 GitHub Release 或 Tags 获取最新版本信息。
+ * 仅提供检查功能，不包含自动下载和安装逻辑（通常由用户手动下载或跳转）。
+ */
 export class UpdaterService {
+  /**
+   * 检查更新
+   * 
+   * 对比当前应用版本与 GitHub 最新版本。
+   * @returns Promise<UpdateInfo>
+   */
   async checkUpdate(): Promise<UpdateInfo> {
     try {
       const fetchGithub = async (url: string): Promise<string> => {

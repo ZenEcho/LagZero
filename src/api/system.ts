@@ -1,3 +1,12 @@
+function toIpcSafeSnapshot(snapshot?: any) {
+  if (snapshot == null) return undefined
+  try {
+    return JSON.parse(JSON.stringify(snapshot))
+  } catch {
+    return undefined
+  }
+}
+
 export const systemApi = {
   scanProcesses: () => window.system.scanProcesses(),
   scanLocalGames: () => window.system.scanLocalGames(),
@@ -13,4 +22,34 @@ export const systemApi = {
     targetPort?: number,
     timeoutMs?: number
   ) => window.system.testHttpProxyConnect(proxyPort, targetHost, targetPort, timeoutMs),
+  setSystemProxy: (port: number, bypass?: string) => {
+    const fn = (window.system as any)?.setSystemProxy
+    if (typeof fn !== 'function') {
+      return Promise.resolve({
+        ok: false,
+        message: 'system.setSystemProxy is unavailable in current preload. Please restart app or update electron main/preload build.'
+      })
+    }
+    return fn(port, bypass)
+  },
+  clearSystemProxy: (snapshot?: any) => {
+    const fn = (window.system as any)?.clearSystemProxy
+    if (typeof fn !== 'function') {
+      return Promise.resolve({
+        ok: false,
+        message: 'system.clearSystemProxy is unavailable in current preload. Please restart app or update electron main/preload build.'
+      })
+    }
+    return fn(toIpcSafeSnapshot(snapshot))
+  },
+  getSystemProxyState: () => {
+    const fn = (window.system as any)?.getSystemProxyState
+    if (typeof fn !== 'function') {
+      return Promise.resolve({
+        ok: false,
+        message: 'system.getSystemProxyState is unavailable in current preload. Please restart app or update electron main/preload build.'
+      })
+    }
+    return fn()
+  },
 }

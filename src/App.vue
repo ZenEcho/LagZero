@@ -22,7 +22,7 @@ const { isDark, themeColor } = useTheme()
 const theme = computed(() => isDark.value ? darkTheme : null)
 
 const themeColors: Record<ThemeColor, { primary: string; hover: string; pressed: string }> = {
-  green: { primary: '#3eaf7c', hover: '#10b981', pressed: '#047857' },
+  green: { primary: '#10b981', hover: '#059669', pressed: '#047857' },
   blue: { primary: '#3b82f6', hover: '#2563eb', pressed: '#1d4ed8' },
   purple: { primary: '#8b5cf6', hover: '#7c3aed', pressed: '#6d28d9' },
   orange: { primary: '#f97316', hover: '#ea580c', pressed: '#c2410c' },

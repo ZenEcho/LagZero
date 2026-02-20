@@ -4,9 +4,9 @@
     <div class="flex flex-col gap-4 mb-6">
       <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div class="flex items-center gap-4">
-          <h1 class="text-xl md:text-2xl font-bold text-on-surface">{{ $t('games.library') }}</h1>
+          <h1 class="text-xl md:text-2xl font-bold text-on-surface ">{{ $t('games.library') }}</h1>
           <div class="bg-surface rounded-lg p-1 flex border border-border">
-            <button @click="viewMode = 'grid'" class="p-1.5 md:p-2 rounded transition"
+            <button @click="viewMode = 'grid'" class="p-1.5 md:p-2  rounded transition"
               :class="viewMode === 'grid' ? 'bg-primary text-on-primary' : 'text-on-surface-muted hover:text-on-surface'">
               <div class="i-carbon-grid text-sm md:text-base"></div>
             </button>
@@ -28,7 +28,7 @@
             <template #icon>
               <div class="i-carbon-radar"></div>
             </template>
-            <span class="hidden xs:inline">{{ isScanning ? $t('games.scanning') : $t('games.scan_local') }}</span>
+            <span class="hidden xs:inline ">{{ isScanning ? $t('games.scanning') : $t('games.scan_local') }}</span>
             <span class="xs:hidden">{{ isScanning ? '...' : '扫描' }}</span>
           </n-button>
 
@@ -36,7 +36,7 @@
             <template #icon>
               <div class="i-carbon-add"></div>
             </template>
-            <span class="hidden xs:inline">{{ $t('games.add_game') }}</span>
+            <span class="hidden xs:inline ">{{ $t('games.add_game') }}</span>
             <span class="xs:hidden">添加</span>
           </n-button>
 
@@ -52,8 +52,8 @@
     <!-- Filters -->
     <div class="flex gap-2 mb-6 overflow-x-auto pb-2 no-scrollbar">
       <button v-for="cat in categories" :key="cat.value" @click="activeCategory = cat.value"
-        class="px-4 py-1.5 rounded-full text-sm border transition whitespace-nowrap font-medium"
-        :class="activeCategory === cat.value ? 'bg-primary border-primary text-on-primary shadow-md shadow-primary/20' : 'bg-surface border-border text-on-surface-muted hover:border-primary/50 hover:text-on-surface'">
+        class="px-4 py-1.5 rounded-full  text-sm border transition whitespace-nowrap font-medium"
+        :class="activeCategory === cat.value ? 'bg-primary border-primary text-on-primary shadow-md shadow-primary/20 ' : 'bg-surface border-border text-on-surface-muted hover:border-primary/50 hover:text-on-surface '">
         {{ cat.label }}
       </button>
     </div>
@@ -66,10 +66,10 @@
           <div class="i-carbon-rocket text-xl animate-pulse"></div>
         </div>
         <div>
-          <div class="text-xs text-success/80 font-bold uppercase tracking-wider mb-0.5">当前正在加速</div>
-          <div class="text-lg font-bold text-on-surface flex items-center gap-2">
+          <div class="text-xs text-success/80 font-bold uppercase tracking-wider mb-0.5 ">当前正在加速</div>
+          <div class="text-lg font-bold text-on-surface flex items-center gap-2 ">
             {{ acceleratingGame.name }}
-            <n-tag size="small" type="success" :bordered="false" class="text-xs">
+            <n-tag size="small" type="success" :bordered="false" class="text-xs ">
               {{ acceleratingGame.latency ? acceleratingGame.latency + ' ms' : '已连接' }}
             </n-tag>
           </div>
@@ -86,25 +86,31 @@
       <div v-if="filteredGames.length === 0"
         class="h-full flex flex-col items-center justify-center text-on-surface-muted">
         <div class="i-carbon-game-console text-6xl mb-4 opacity-50"></div>
-        <p class="text-lg">{{ $t('games.no_games_found') }}</p>
+        <p class="text-lg ">{{ $t('games.no_games_found') }}</p>
       </div>
 
       <div v-else class="mt-1"
-        :class="viewMode === 'grid' ? 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4' : 'flex flex-col gap-2'">
+        :class="viewMode === 'grid' ? 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 ' : 'flex flex-col gap-2'">
         <div v-for="game in filteredGames" :key="game.id" @click="game.id && handleGameClick(game)"
-          class="group relative bg-surface border rounded-xl transition-all duration-300 overflow-hidden" :class="[
-            isAccelerationLockedFor(game) ? 'opacity-50 grayscale cursor-not-allowed border-border' : 'cursor-pointer hover:-translate-y-1 hover:shadow-xl hover:border-primary/50',
+          class="group relative bg-surface border rounded-xl transition-all duration-300 overflow-hidden hover:shadow-[0_12px_28px_-12px_rgba(var(--rgb-primary),0.4)] "
+          :class="[
+            isAccelerationLockedFor(game) ? 'opacity-50 grayscale cursor-not-allowed border-border' : 'cursor-pointer  hover:border-primary/50',
             game.status === 'accelerating' ? 'border-success shadow-[0_0_15px_rgba(var(--rgb-success),0.2)] ring-1 ring-success/30' : 'border-border/50',
             viewMode === 'grid' ? 'flex flex-col' : 'flex items-center p-3 gap-4'
           ]">
 
           <!-- Grid View Image Area -->
-          <div v-if="viewMode === 'grid'" class="aspect-[16/9] relative bg-surface-variant/50 overflow-hidden">
+          <div v-if="viewMode === 'grid'" class="aspect-[16/9] relative bg-surface-variant/50 overflow-hidden ">
             <!-- Background Image/Icon -->
-            <div class="absolute inset-0 flex items-center justify-center">
-              <img v-if="game.iconUrl" :src="game.iconUrl"
-                class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-              <div v-else class="i-carbon-game-console text-5xl text-on-surface-muted/30"></div>
+            <div
+              class="absolute inset-0 flex items-center justify-center transition-transform duration-700 group-hover:scale-110"
+              :style="!game.iconUrl ? getFallbackStyle(game.name) : {}">
+              <div v-if="!game.iconUrl" class="absolute inset-0 bg-overlay/20 pointer-events-none"></div>
+
+              <img v-if="game.iconUrl" :src="game.iconUrl" class="w-full h-full object-cover relative " />
+              <div v-else
+                class="relative z-10 text-2xl font-black text-white/90 drop-shadow-md tracking-wider px-2 text-center">
+                {{ getFallbackText(game.name) }}</div>
             </div>
 
             <!-- Gradient Overlay -->
@@ -112,7 +118,7 @@
 
             <!-- Hover Overlay with Actions -->
             <div
-              class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center gap-3 backdrop-blur-[2px]"
+              class="absolute inset-0 bg-overlay/55 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center gap-3 backdrop-blur-[2px]"
               v-if="!isAccelerationLockedFor(game)">
               <template v-if="game.status !== 'accelerating'">
                 <button
@@ -132,11 +138,10 @@
                 </button>
               </template>
               <template v-else>
-                <button
-                  class="px-4 py-1.5 rounded-full bg-error text-on-error font-bold text-sm hover:bg-error-hover transition shadow-lg"
-                  @click.stop="stopAcceleration(game.id!)" :disabled="isActionPending">
+                <n-button type="error" round class="shadow-lg font-bold px-6" @click.stop="stopAcceleration(game.id!)"
+                  :disabled="isActionPending" :loading="gameStore.operationState === 'stopping'">
                   停止加速
-                </button>
+                </n-button>
               </template>
             </div>
 
@@ -144,7 +149,7 @@
             <div class="absolute top-2 right-2 flex gap-1">
               <div v-if="game.status === 'accelerating'"
                 class="px-2 py-0.5 rounded text-[10px] font-bold bg-success text-on-success shadow-sm flex items-center gap-1">
-                <div class="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
+                <div class="w-1.5 h-1.5 bg-white rounded-full animate-pulse "></div>
                 加速中
               </div>
               <div class="px-2 py-0.5 rounded text-[10px] font-bold shadow-sm uppercase backdrop-blur-md"
@@ -156,17 +161,19 @@
 
           <!-- List View Image -->
           <div v-else
-            class="w-12 h-12 rounded-lg bg-surface-variant/50 flex-shrink-0 overflow-hidden relative group-hover:ring-2 ring-primary/20">
-            <img v-if="game.iconUrl" :src="game.iconUrl" class="w-full h-full object-cover" />
-            <div v-else class="w-full h-full flex items-center justify-center">
-              <div class="i-carbon-game-console text-xl text-on-surface-muted"></div>
-            </div>
+            class="w-12 h-12 rounded-lg bg-surface-variant/50 flex-shrink-0 overflow-hidden relative group-hover:ring-2 ring-primary/20 flex items-center justify-center"
+            :style="!game.iconUrl ? getFallbackStyle(game.name) : {}">
+            <div v-if="!game.iconUrl" class="absolute inset-0 bg-overlay/20 pointer-events-none"></div>
+
+            <img v-if="game.iconUrl" :src="game.iconUrl" class="w-full h-full object-cover absolute inset-0 z-10" />
+            <div v-else class="relative z-10 text-white font-bold text-xl drop-shadow-sm">{{ getFallbackText(game.name,
+              true) }}</div>
           </div>
 
           <!-- Content -->
           <div class="flex-1 min-w-0" :class="viewMode === 'grid' ? 'p-3' : ''">
             <div class="flex items-center justify-between mb-1">
-              <h3 class="font-bold text-on-surface truncate" :class="viewMode === 'grid' ? 'text-base' : 'text-sm'">
+              <h3 class="font-bold text-on-surface truncate " :class="viewMode === 'grid' ? 'text-base' : 'text-sm'">
                 {{ game.name }}
               </h3>
               <!-- List View Badges -->
@@ -183,13 +190,13 @@
 
             <div class="flex items-center justify-between text-xs text-on-surface-muted">
               <div class="flex items-center gap-2">
-                <span class="bg-surface-variant px-1.5 py-0.5 rounded text-[10px]">{{ getCategoryLabel(game.category)
+                <span class="bg-surface-variant px-1.5 py-0.5 rounded text-[10px] ">{{ getCategoryLabel(game.category)
                   }}</span>
-                <span v-if="game.lastPlayed">{{ formatTime(game.lastPlayed) }}</span>
+                <span v-if="game.lastPlayed" class="">{{ formatTime(game.lastPlayed) }}</span>
               </div>
 
               <div v-if="game.status === 'accelerating' && game.latency !== undefined"
-                class="font-mono text-success font-bold">
+                class="font-mono text-success font-bold ">
                 {{ game.latency }} ms
               </div>
             </div>
@@ -242,6 +249,36 @@ import { useMessage, useDialog } from 'naive-ui'
 import AdvancedConfigEditor from '@/components/library/AdvancedConfigEditor.vue'
 import CategoryManager from '@/components/library/CategoryManager.vue'
 import { useGameScanner } from '@/composables/useGameScanner'
+
+const fallbackGradients = [
+  'linear-gradient(135deg, #ff416c, #ff4b2b)',
+  'linear-gradient(135deg, #f12711, #f5af19)',
+  'linear-gradient(135deg, #f7971e, #ffd200)',
+  'linear-gradient(135deg, #11998e, #38ef7d)',
+  'linear-gradient(135deg, #4facfe, #00f2fe)',
+  'linear-gradient(135deg, #667eea, #764ba2)',
+  'linear-gradient(135deg, #a18cd1, #fbc2eb)',
+  'linear-gradient(135deg, #8a4fff, #733dd9)'
+]
+
+function getFallbackStyle(name: string) {
+  if (!name) return { background: fallbackGradients[0], color: 'white' }
+  let hash = 0
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  const index = Math.abs(hash) % fallbackGradients.length
+  return {
+    background: fallbackGradients[index],
+    color: 'white'
+  }
+}
+
+function getFallbackText(name: string, isList = false) {
+  if (!name) return '?'
+  if (isList) return name.substring(0, 1).toUpperCase()
+  return name.length > 8 ? name.substring(0, 8) + '...' : name
+}
 
 const { t } = useI18n()
 const message = useMessage()

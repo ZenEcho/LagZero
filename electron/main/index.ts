@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, NativeImage, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 import fs from 'fs-extra'
@@ -15,6 +15,9 @@ import { GameScannerService } from '../services/game-scanner'
 import { UpdaterService } from '../services/updater'
 import { SystemService } from '../services/system'
 import { setupLogger } from './logger'
+import { ensureAdminAtStartup, loadAppIcon, handleStartupError } from './bootstrap'
+import { WindowManager, VITE_DEV_SERVER_URL, MAIN_DIST, RENDERER_DIST } from './window'
+import { TrayManager } from './tray'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const __filename = fileURLToPath(import.meta.url)
@@ -28,10 +31,6 @@ global.__dirname = __dirname
 process.env.APP_ROOT = path.join(__dirname, '../')
 const APP_ID = 'com.' + pkg.name + '.client'
 
-export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
-export const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron')
-export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
-
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
 if (VITE_DEV_SERVER_URL) {
@@ -41,8 +40,11 @@ if (process.platform === 'win32') {
   app.setAppUserModelId(APP_ID)
 }
 
-let win: BrowserWindow | null = null
-let tray: Tray | null = null
+// 确保以管理员权限启动
+ensureAdminAtStartup()
+
+const windowManager = new WindowManager()
+const trayManager = new TrayManager(null as any) // 稍后更新 win 引用
 
 // Services
 let dbService: DatabaseService | null = null
@@ -55,123 +57,17 @@ let nodeService: NodeService | null = null
 let gameScannerService: GameScannerService | null = null
 let updaterService: UpdaterService | null = null
 let systemService: SystemService | null = null
+let quitCleanupStarted = false
 
-// Setup Logger
-setupLogger(() => win)
+// 初始化日志系统
+setupLogger(() => windowManager.get())
 
-function loadAppIcon(): NativeImage | null {
-  const baseDir = process.env.VITE_PUBLIC || ''
-  const candidates = [
-    path.join(baseDir, 'logo.png'),
-    path.join(baseDir, 'logo.ico'),
-    path.join(baseDir, 'logo.svg'),
-  ]
-
-  const tryFromPath = (p: string): NativeImage | null => {
-    if (!p || !fs.existsSync(p)) return null
-    const img = nativeImage.createFromPath(p)
-    if (!img.isEmpty()) return img
-    return null
-  }
-
-  for (const p of candidates) {
-    const image = tryFromPath(p)
-    if (image) return image
-  }
-
-  const svgPath = path.join(baseDir, 'logo.svg')
-  if (!fs.existsSync(svgPath)) {
-    console.warn('[Main] Icon file not found:', svgPath)
-    return null
-  }
-
-  const svg = fs.readFileSync(svgPath, 'utf-8')
-  const toImage = (content: string) => {
-    const svgBase64 = Buffer.from(content, 'utf-8').toString('base64')
-    return nativeImage.createFromDataURL(`data:image/svg+xml;base64,${svgBase64}`)
-  }
-
-  const sanitized = svg
-    .replace(/<filter[\s\S]*?<\/filter>/gi, '')
-    .replace(/\sfilter="url\(#.*?\)"/gi, '')
-
-  const image = toImage(sanitized)
-  if (!image.isEmpty()) return image
-
-  const fallbackSvg = `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
-  <rect width="256" height="256" rx="48" fill="#0f172a"/>
-  <path d="M145 20 L78 131 L136 131 L118 236 L202 111 L141 111 L168 20 Z"
-        fill="#22c55e" stroke="#ffffff" stroke-width="6" stroke-linejoin="round" />
-</svg>`
-  const fallbackImage = toImage(fallbackSvg)
-  if (!fallbackImage.isEmpty()) {
-    console.warn('[Main] logo.svg decode failed, using built-in fallback icon')
-    return fallbackImage
-  }
-
-  return null
-}
-
-function createTray(icon: NativeImage | null) {
-  if (tray || !icon) return
-
-  const trayIcon = icon.resize({ width: 20, height: 20, quality: 'best' })
-  tray = new Tray(trayIcon)
-  tray.setToolTip(pkg.productName)
-  tray.setContextMenu(Menu.buildFromTemplate([
-    {
-      label: 'Show Window',
-      click: () => {
-        if (!win) return
-        win.show()
-        win.focus()
-      }
-    },
-    {
-      label: 'Quit',
-      click: () => app.quit()
-    }
-  ]))
-
-  tray.on('double-click', () => {
-    if (!win) return
-    if (win.isVisible()) {
-      win.focus()
-    } else {
-      win.show()
-      win.focus()
-    }
-  })
-}
-
-function createWindow() {
-  const appIcon = loadAppIcon()
-  const preloadCandidates = [
-    path.join(__dirname, '../preload/index.mjs'),
-    path.join(__dirname, 'preload.mjs'),
-    path.join(__dirname, 'index.mjs'),
-  ]
-  const preloadPath = preloadCandidates.find(p => fs.existsSync(p)) || preloadCandidates[0]
-
-  win = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 860,
-    minHeight: 620,
-    frame: false,
-    webPreferences: {
-      // Compatible with both nested and flat dist-electron outputs.
-      preload: preloadPath,
-      nodeIntegration: false,
-      contextIsolation: true,
-      webSecurity: false,
-    },
-    backgroundColor: '#1e1e1e',
-    ...(appIcon ? { icon: appIcon } : {}),
-  })
-
-  // Initialize Services
+/**
+ * 初始化所有业务服务并注册 IPC 监听
+ * @param win 主窗口实例
+ */
+function initServices(win: BrowserWindow) {
+  // 实例化服务
   dbService = new DatabaseService()
   singboxService = new SingBoxService(win)
   processService = new ProcessService()
@@ -183,11 +79,11 @@ function createWindow() {
   updaterService = new UpdaterService()
   systemService = new SystemService()
 
-  // Register generic DB IPCs
+  // 注册通用数据库 IPC
   ipcMain.handle('db:export', () => dbService?.exportData())
   ipcMain.handle('db:import', (_, data) => dbService?.importData(data))
 
-  // Register Scanner IPCs
+  // 注册扫描服务 IPC
   ipcMain.handle('system:scan-local-games', async () => {
     try {
       return await gameScannerService?.scanLocalGamesFromPlatforms() || []
@@ -197,6 +93,7 @@ function createWindow() {
     }
   })
   ipcMain.handle('dialog:pick-process-folder', async (_, maxDepth: number = 1) => {
+    const win = windowManager.get()
     if (!win) return null
     const result = await dialog.showOpenDialog(win, {
       properties: ['openDirectory']
@@ -206,122 +103,106 @@ function createWindow() {
     return gameScannerService?.scanDir(dir, maxDepth)
   })
 
-  // Register Updater IPCs
+  // 注册更新服务 IPC
   ipcMain.handle('app:get-version', () => app.getVersion())
   ipcMain.handle('app:check-update', () => updaterService?.checkUpdate())
   ipcMain.handle('app:open-url', (_, url: string) => {
     shell.openExternal(url)
   })
 
-  if (VITE_DEV_SERVER_URL) {
-    win.loadURL(VITE_DEV_SERVER_URL)
-    win.webContents.openDevTools()
-  } else {
-    win.loadFile(path.join(RENDERER_DIST, 'index.html'))
-  }
+  // 注册系统对话框 IPC
+  ipcMain.handle('dialog:pick-image', async () => {
+    const win = windowManager.get()
+    if (!win) return null
+    const result = await dialog.showOpenDialog(win, {
+      properties: ['openFile'],
+      filters: [
+        { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'ico', 'svg'] }
+      ]
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return pathToFileURL(result.filePaths[0]!).toString()
+  })
 
-  createTray(appIcon)
+  ipcMain.handle('dialog:pick-process', async () => {
+    const win = windowManager.get()
+    if (!win) return null
+    const result = await dialog.showOpenDialog(win, {
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: 'Executables', extensions: ['exe'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths.map(p => path.basename(p))
+  })
 }
 
+/**
+ * 启动应用程序
+ * 创建窗口、托盘图标并初始化服务
+ */
+function startApp() {
+  const appIcon = loadAppIcon()
+  const win = windowManager.create(appIcon)
+  
+  // 重新创建托盘以绑定正确的窗口引用
+  trayManager.destroy()
+  // @ts-ignore: 我们知道这是在创建一个新的
+  const newTrayManager = new TrayManager(win)
+  newTrayManager.create(appIcon)
+  // 保持 trayManager 引用，防止被 GC
+  Object.assign(trayManager, newTrayManager) 
+
+  initServices(win)
+}
+
+// 监听所有窗口关闭事件
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
 
+// 监听应用激活事件
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow()
-  } else if (win) {
-    win.show()
-    win.focus()
+    startApp()
+  } else {
+    windowManager.show()
   }
 })
 
-function formatStartupError(error: unknown) {
-  const raw = String((error as any)?.stack || (error as any)?.message || error || 'Unknown error')
-  const lower = raw.toLowerCase()
-
-  if (lower.includes('better_sqlite3.node') && lower.includes('not a valid win32 application')) {
-    return [
-      'Failed to load better-sqlite3 native module due to architecture mismatch.',
-      '',
-      `Current runtime arch: ${process.arch}`,
-      'Fix command: pnpm rebuild better-sqlite3',
-      '',
-      'Details:',
-      raw
-    ].join('\n')
-  }
-
-  if (lower.includes('better_sqlite3.node') && lower.includes('compiled against a different node.js version')) {
-    return [
-      'Failed to load better-sqlite3 due to native ABI mismatch.',
-      '',
-      `Current runtime: electron ${process.versions.electron}, modules ${process.versions.modules}, arch ${process.arch}`,
-      'Fix command: pnpm run rebuild:native',
-      'Fallback command: pnpm run rebuild:sqlite',
-      '',
-      'Details:',
-      raw
-    ].join('\n')
-  }
-
-  return raw
-}
-
+// 应用准备就绪
 app.whenReady()
   .then(() => {
-    createWindow()
+    startApp()
   })
   .catch((error) => {
-    const message = formatStartupError(error)
-    console.error('[Main] App startup failed:', message)
-    dialog.showErrorBox('LagZero startup failed', message)
-    app.quit()
+    handleStartupError(error)
   })
 
+// 全局未捕获异常处理
 process.on('unhandledRejection', (reason) => {
-  const message = formatStartupError(reason)
+  const message = String(reason)
   console.error('[Main] Unhandled rejection:', message)
 })
 
-app.on('before-quit', () => {
-  tray?.destroy()
-  tray = null
-})
+// 应用退出前清理
+app.on('before-quit', (event) => {
+  trayManager.destroy()
 
-ipcMain.handle('window-minimize', () => win?.minimize())
-ipcMain.handle('window-maximize', () => {
-  if (win && win.isMaximized()) {
-    win.unmaximize()
-  } else if (win) {
-    win.maximize()
-  }
-})
-ipcMain.handle('window-close', () => win?.close())
+  if (quitCleanupStarted) return
+  quitCleanupStarted = true
+  event.preventDefault()
 
-ipcMain.handle('dialog:pick-image', async () => {
-  if (!win) return null
-  const result = await dialog.showOpenDialog(win, {
-    properties: ['openFile'],
-    filters: [
-      { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'ico', 'svg'] }
-    ]
-  })
-  if (result.canceled || result.filePaths.length === 0) return null
-  return pathToFileURL(result.filePaths[0]!).toString()
-})
-
-ipcMain.handle('dialog:pick-process', async () => {
-  if (!win) return null
-  const result = await dialog.showOpenDialog(win, {
-    properties: ['openFile', 'multiSelections'],
-    filters: [
-      { name: 'Executables', extensions: ['exe'] },
-      { name: 'All Files', extensions: ['*'] }
-    ]
-  })
-  if (result.canceled || result.filePaths.length === 0) return null
-  return result.filePaths.map(p => path.basename(p))
+  // 尝试清理系统代理设置
+  Promise.resolve(systemService?.clearSystemProxy())
+    .catch((e) => {
+      console.warn('[Main] Failed to clear system proxy on app quit:', e)
+    })
+    .finally(() => {
+      app.exit(0)
+    })
 })

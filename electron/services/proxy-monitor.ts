@@ -28,6 +28,9 @@ export class ProxyMonitorService {
     this.setupIPC();
   }
 
+  /**
+   * 注册 IPC 监听器
+   */
   private setupIPC() {
     ipcMain.handle('proxy-monitor:start', (_, gameId: string, processNames: string[]) => {
       this.startMonitoring(gameId, processNames);

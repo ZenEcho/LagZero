@@ -75,29 +75,49 @@ function queueLogWrite(task: () => Promise<void>) {
     })
 }
 
-function sanitizeLogText(text?: string) {
-  if (!text) return ''
-  return String(text).replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-}
+/**
+   * 净化日志文本
+   * 
+   * 移除换行符等特殊字符，防止日志格式错乱。
+   */
+  function sanitizeLogText(text?: string) {
+    if (!text) return ''
+    return String(text).replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  }
 
-function formatLogLine(row: AppLogEntry) {
-  const iso = new Date(row.timestamp).toISOString()
-  const base = `[${iso}] [${row.level.toUpperCase()}] [${row.category}] [${row.source}] ${sanitizeLogText(row.message)}`
-  if (!row.detail) return `${base}\n`
-  return `${base}\n${sanitizeLogText(row.detail)}\n`
-}
+  /**
+   * 格式化单行日志
+   * 
+   * 格式: [ISO时间] [LEVEL] [CATEGORY] [SOURCE] MESSAGE
+   */
+  function formatLogLine(row: AppLogEntry) {
+    const iso = new Date(row.timestamp).toISOString()
+    const base = `[${iso}] [${row.level.toUpperCase()}] [${row.category}] [${row.source}] ${sanitizeLogText(row.message)}`
+    if (!row.detail) return `${base}\n`
+    return `${base}\n${sanitizeLogText(row.detail)}\n`
+  }
 
-async function ensureSingleFileLimit(logFilePath: string, incomingBytes: number) {
-  const exists = await fs.pathExists(logFilePath)
-  if (!exists) return
-  const stat = await fs.stat(logFilePath)
-  const nextSize = stat.size + incomingBytes
-  if (nextSize <= MAX_LOG_FILE_BYTES) return
-  await fs.truncate(logFilePath, 0)
-}
+  /**
+   * 确保单个日志文件大小不超过限制
+   * 
+   * 如果超过限制 (MAX_LOG_FILE_BYTES)，则清空文件内容（简单轮转策略）。
+   */
+  async function ensureSingleFileLimit(logFilePath: string, incomingBytes: number) {
+    const exists = await fs.pathExists(logFilePath)
+    if (!exists) return
+    const stat = await fs.stat(logFilePath)
+    const nextSize = stat.size + incomingBytes
+    if (nextSize <= MAX_LOG_FILE_BYTES) return
+    await fs.truncate(logFilePath, 0)
+  }
 
-async function pruneLogDirIfNeeded(logDir: string) {
-  const exists = await fs.pathExists(logDir)
+  /**
+   * 清理过期的日志文件
+   * 
+   * 如果日志目录总大小超过限制 (MAX_LOG_DIR_BYTES)，则删除最旧的文件。
+   */
+  async function pruneLogDirIfNeeded(logDir: string) {
+    const exists = await fs.pathExists(logDir)
   if (!exists) return
 
   const dirents = await fs.readdir(logDir, { withFileTypes: true })

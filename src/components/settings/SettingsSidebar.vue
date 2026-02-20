@@ -34,7 +34,7 @@
           <img src="/logo.svg" class="w-5 h-5" alt="Logo" />
         </div>
         <div>
-          <div class="text-sm font-bold">{{ pkg.name }}</div>
+          <div class="text-sm font-bold">{{ pkg.productName }}</div>
           <div class="text-[10px] text-on-surface-muted font-mono">v{{ appVersion }}</div>
         </div>
       </div>

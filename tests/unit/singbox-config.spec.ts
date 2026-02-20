@@ -37,6 +37,49 @@ describe('generateSingboxConfig', () => {
     expect(config.inbounds[0].type).toBe('tun')
   })
 
+  it('should disable tun and add system proxy inbounds in system_proxy mode', () => {
+    const config = JSON.parse(generateSingboxConfig(mockGame, mockNode, {
+      accelNetworkMode: 'system_proxy',
+      systemProxy: {
+        enabled: true,
+        port: 10808
+      }
+    }))
+
+    const tunInbound = config.inbounds.find((i: any) => i.tag === 'tun-in')
+    expect(tunInbound).toBeUndefined()
+
+    const httpInbound = config.inbounds.find((i: any) => i.tag === 'system-http-in')
+    expect(httpInbound).toBeDefined()
+    expect(httpInbound.listen_port).toBe(10808)
+    const socksInbound = config.inbounds.find((i: any) => i.tag === 'system-socks-in')
+    expect(socksInbound).toBeUndefined()
+  })
+
+  it('should keep process+cidr constraint in routing mode under system_proxy mode', () => {
+    const routingGame = {
+      ...mockGame,
+      proxyMode: 'routing' as const,
+      processName: ['chrome.exe'],
+      routingRules: ['1.1.1.1']
+    }
+    const config = JSON.parse(generateSingboxConfig(routingGame, mockNode, {
+      accelNetworkMode: 'system_proxy',
+      systemProxy: {
+        enabled: true,
+        port: 10808
+      }
+    }))
+
+    const cidrRule = config.route.rules.find((r: any) =>
+      Array.isArray(r?.ip_cidr) && r.ip_cidr.includes('1.1.1.1/32')
+    )
+    expect(cidrRule).toBeDefined()
+    expect(cidrRule.outbound).toBe('proxy')
+    expect(Array.isArray(cidrRule.process_name)).toBe(true)
+    expect(cidrRule.process_name).toContain('chrome.exe')
+  })
+
   it('should configure process mode correctly', () => {
     const config = JSON.parse(generateSingboxConfig(mockGame, mockNode))
     // Process mode: default final should be 'direct' (implied by not being 'proxy' or explicit final)

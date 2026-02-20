@@ -47,7 +47,7 @@
                   <div v-else class="i-material-symbols-sports-esports text-xl text-primary/60"></div>
                </div>
                <div>
-                  <h1 class="text-lg font-bold leading-tight text-on-surface">{{ game.name }}</h1>
+                  <h1 class="text-lg font-bold leading-tight text-on-surface ">{{ game.name }}</h1>
                   <div class="flex items-center gap-2 text-xs text-on-surface-muted">
                      <span
                         class="bg-surface-overlay px-1.5 py-0.5 rounded border border-border data-[active=true]:text-primary data-[active=true]:border-primary/20"
@@ -69,49 +69,126 @@
                   <div class="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></div>
                   <span class="text-[10px] font-black uppercase tracking-widest text-success">Live</span>
                </div>
+               <div class="flex flex-row gap-1">
+                  <div class="flex items-center p-1 rounded-xl border border-border/60 bg-surface-overlay/60">
+                     <button @click="onNetworkModeChange('tun')" :disabled="isActionPending"
+                        class="px-3 py-1 text-xs rounded-lg transition font-bold disabled:opacity-60 disabled:cursor-not-allowed"
+                        :class="settingsStore.accelNetworkMode === 'tun'
+                           ? 'bg-surface text-primary shadow-sm'
+                           : 'text-on-surface-muted hover:text-on-surface'">
+                        TUN
+                     </button>
+                     <button @click="onNetworkModeChange('system_proxy')" :disabled="isActionPending"
+                        class="px-3 py-1 text-xs rounded-lg transition font-bold disabled:opacity-60 disabled:cursor-not-allowed"
+                        :class="settingsStore.accelNetworkMode === 'system_proxy'
+                           ? 'bg-surface text-primary shadow-sm'
+                           : 'text-on-surface-muted hover:text-on-surface'">
+                        {{ $t('dashboard.system_proxy_mode') }}
+                     </button>
+                  </div>
+                  <button @click="showSessionTuningPanel = !showSessionTuningPanel"
+                     class="px-3 py-1 text-[11px] font-bold rounded-lg border border-border/60 bg-surface-overlay/60 text-on-surface-muted hover:text-on-surface transition">
+                     {{ $t('dashboard.session_tuning') }}
+                  </button>
+               </div>
             </div>
          </header>
 
+         <div v-if="showSessionTuningPanel"
+            class="mx-6 mt-4 p-4 rounded-2xl border border-border/60 bg-surface-panel/60 backdrop-blur-sm">
+            <div class="flex items-center justify-between mb-3">
+               <div class="text-xs font-black uppercase tracking-widest text-on-surface-muted">
+                  {{ $t('settings.game_network_tuning') }}
+               </div>
+               <button @click="resetCurrentGameSessionTuning()"
+                  class="px-2 py-1 text-[11px] rounded-md border border-border/50 text-on-surface-muted hover:text-on-surface transition">
+                  {{ $t('settings.reset_session_network_tuning') }}
+               </button>
+            </div>
+            <p class="text-xs text-on-surface-muted mb-3">{{ $t('dashboard.current_game_tuning_hint') }}</p>
+            <div class="flex items-center justify-between mb-3 rounded-lg border border-border/50 px-3 py-2">
+               <span class="text-xs text-on-surface-muted">{{ $t('common.enabled') }}</span>
+               <n-switch v-model:value="currentGameSessionTuning.enabled" size="small" />
+            </div>
+            <div class="flex bg-surface-overlay/50 p-1 rounded-xl border border-border/30 mb-3"
+               :class="{ 'opacity-50 pointer-events-none': !currentGameSessionTuning.enabled }">
+               <button @click="applyProfilePreset('stable')"
+                  class="flex-1 py-2 text-xs rounded-lg transition-all font-bold" :class="currentGameSessionTuning.profile === 'stable'
+                     ? 'bg-surface shadow-sm text-primary'
+                     : 'text-on-surface-muted hover:text-on-surface'">
+                  {{ $t('settings.network_profile_stable') }}
+               </button>
+               <button @click="applyProfilePreset('aggressive')"
+                  class="flex-1 py-2 text-xs rounded-lg transition-all font-bold" :class="currentGameSessionTuning.profile === 'aggressive'
+                     ? 'bg-surface shadow-sm text-primary'
+                     : 'text-on-surface-muted hover:text-on-surface'">
+                  {{ $t('settings.network_profile_aggressive') }}
+               </button>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3"
+               :class="{ 'opacity-50 pointer-events-none': !currentGameSessionTuning.enabled }">
+               <n-select v-model:value="currentGameSessionTuning.udpMode" :options="udpModeOptions" size="small" />
+               <n-input-number v-model:value="currentGameSessionTuning.tunMtu" :min="1200" :max="1500" size="small" />
+               <n-select v-model:value="currentGameSessionTuning.tunStack" :options="tunStackOptions" size="small" />
+               <div class="space-y-1">
+                  <n-select v-model:value="currentGameSessionTuning.vlessPacketEncodingOverride"
+                     :disabled="!currentNodeIsVless" :options="vlessEncodingOptions" size="small" />
+                  <p v-if="!currentNodeIsVless" class="text-[11px] text-warning">
+                     {{ $t('settings.vless_only_hint') }}
+                  </p>
+               </div>
+               <div class="flex items-center justify-between rounded-lg border border-border/50 px-3 py-2">
+                  <span class="text-xs text-on-surface-muted">{{ $t('settings.strict_route') }}</span>
+                  <n-switch v-model:value="currentGameSessionTuning.strictRoute" size="small" />
+               </div>
+            </div>
+         </div>
+
          <div class="flex-1 flex overflow-hidden">
             <!-- Main Dashboard Area (Left) -->
-            <main class="flex-1 overflow-y-auto custom-scrollbar p-6 lg:p-10 flex flex-col gap-8 relative">
+            <main
+               class="flex-1 overflow-y-auto custom-scrollbar p-6 lg:p-10 flex flex-col justify-evenly items-center gap-8 relative">
 
                <!-- 1. Hero Section: The Status Core -->
-               <section class="flex flex-col items-center justify-center min-h-[500px] ">
-                  <div v-if="isRunning" class=" w-full max-w-2xl flex justify-center">
-                     <div
-                        class="flex items-center gap-8 md:gap-12 px-8 py-4 bg-surface-panel/40 backdrop-blur-lg border border-border/50 rounded-2xl shadow-sm">
+               <section class="flex flex-col items-center justify-center">
+
+                  <!-- Live Stats (Level 1: Latency & Loss) -->
+                  <div v-if="isRunning" class="mb-10 w-full flex justify-center animate-scale-in">
+                     <div class="flex items-center gap-12 md:gap-20">
+                        <!-- Latency -->
                         <div class="flex flex-col items-center">
-                           <span class="text-[10px] uppercase font-bold text-on-surface-muted tracking-widest mb-1">{{
-                              $t('games.packet_loss') }}</span>
-                           <span class="text-2xl font-mono font-bold text-on-surface tabular-nums">{{ currentLoss
-                           }}%</span>
+                           <div class="flex items-baseline justify-center gap-2 relative">
+                              <span
+                                 class="text-7xl md:text-8xl font-black tabular-nums tracking-tighter drop-shadow-sm transition-colors duration-300"
+                                 :class="getLatencyTextColor(currentLatency)">
+                                 {{ currentLatency > 0 ? currentLatency : '---' }}
+                              </span>
+                              <span
+                                 class="text-xl font-bold text-on-surface-muted uppercase tracking-widest absolute -right-10 bottom-3">ms</span>
+                           </div>
+                           <span class="text-xs uppercase font-bold text-on-surface-muted tracking-widest mt-2">{{
+                              $t('common.latency') || '实时延迟' }}</span>
                         </div>
-                        <div class="w-px h-8 bg-border"></div>
+
+                        <div class="w-px h-16 md:h-20 bg-border/60"></div>
+
+                        <!-- Packet Loss -->
                         <div class="flex flex-col items-center">
-                           <span class="text-[10px] uppercase font-bold text-on-surface-muted tracking-widest mb-1">{{
-                              $t('games.duration') }}</span>
-                           <span class="text-2xl font-mono font-bold text-on-surface tabular-nums">{{ durationFormatted
-                           }}</span>
+                           <div class="flex items-baseline justify-center gap-2 relative">
+                              <span
+                                 class="text-7xl md:text-8xl font-black tabular-nums tracking-tighter drop-shadow-sm transition-colors duration-300"
+                                 :class="currentLoss > 0 ? 'text-warning' : 'text-on-surface'">
+                                 {{ currentLoss }}
+                              </span>
+                              <span class="text-xl font-bold text-on-surface-muted absolute -right-6 bottom-3">%</span>
+                           </div>
+                           <span class="text-xs uppercase font-bold text-on-surface-muted tracking-widest mt-2">{{
+                              $t('games.packet_loss') }}</span>
                         </div>
                      </div>
                   </div>
 
-
                   <div class="relative z-10 flex flex-col items-center">
-                     <!-- Latency Big Display -->
-                     <div v-if="isRunning" class="mb-12 text-center animate-scale-in">
-                        <div class="flex items-baseline justify-center gap-3 relative">
-                           <span
-                              class="text-8xl md:text-9xl font-black tabular-nums tracking-tighter drop-shadow-sm transition-colors duration-300"
-                              :class="getLatencyTextColor(currentLatency)">
-                              {{ currentLatency > 0 ? currentLatency : '---' }}
-                           </span>
-                           <span
-                              class="text-xl font-bold text-on-surface-muted uppercase tracking-widest absolute -right-10 bottom-5">ms</span>
-                        </div>
-                     </div>
-
                      <!-- Main Action Button -->
                      <div class="relative group">
                         <!-- Outer Glow Ring -->
@@ -152,7 +229,7 @@
                                     ? 'i-carbon-circle-dash animate-spin text-primary'
                                     : (isRunning ? 'i-carbon-stop-filled text-error drop-shadow-[0_2px_10px_rgba(var(--rgb-error),0.4)]' : 'i-carbon-play-filled-alt text-primary drop-shadow-[0_2px_10px_rgba(var(--rgb-primary),0.4)]')">
                               </div>
-                              <span class="text-xs font-black uppercase tracking-[0.25em] transition-colors"
+                              <span class=" text-xs font-black uppercase tracking-[0.25em] transition-colors"
                                  :class="isRunning ? 'text-error' : 'text-primary'">
                                  {{ actionLabel }}
                               </span>
@@ -160,10 +237,22 @@
                         </button>
                      </div>
 
-                     <p class="mt-10 text-sm font-medium max-w-xs text-center leading-relaxed transition-colors"
-                        :class="isRunning ? 'text-success' : 'text-on-surface-muted'">
-                        {{ isRunning ? $t('dashboard.active_protection') : $t('dashboard.ready_to_boost') }}
-                     </p>
+                     <!-- Status Description & Duration (Level 2) -->
+                     <div class="mt-8 flex flex-col items-center gap-3">
+                        <p class="text-sm font-medium max-w-xs text-center leading-relaxed transition-colors"
+                           :class="isRunning ? 'text-success' : 'text-on-surface-muted'">
+                           {{ isRunning ? $t('dashboard.active_protection') : $t('dashboard.ready_to_boost') }}
+                        </p>
+
+                        <!-- Duration Badge -->
+                        <div v-if="isRunning"
+                           class="flex items-center gap-2 px-3 py-1 bg-surface-overlay/50 border border-border/50 rounded-full text-[11px] font-medium text-on-surface-muted animate-fade-in-up mt-1 shadow-sm">
+                           <div class="i-carbon-time text-sm"></div>
+                           <span>{{ $t('games.duration') }}: <span
+                                 class="font-mono font-bold text-on-surface tracking-wide ml-1">{{ durationFormatted
+                                 }}</span></span>
+                        </div>
+                     </div>
                   </div>
                </section>
 
@@ -179,15 +268,15 @@
                </section>
 
                <!-- Expert Tip (Bottom) -->
-               <div v-else
-                  class="mt-auto mx-auto max-w-lg w-full p-5 rounded-2xl bg-surface-panel/40 border border-border flex items-start gap-4 shadow-sm backdrop-blur-sm">
+               <div v-if="!isRunning"
+                  class="max-w-lg w-full p-5 rounded-2xl bg-surface-panel/40 border border-border flex items-start gap-4 shadow-sm backdrop-blur-sm">
                   <div
                      class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-primary">
                      <div class="i-material-symbols-lightbulb text-lg"></div>
                   </div>
                   <div>
-                     <h4 class="text-xs font-bold text-on-surface mb-1">{{ $t('dashboard.did_you_know') }}</h4>
-                     <p class="text-xs text-on-surface-muted leading-relaxed">{{ $t('dashboard.hint') }}</p>
+                     <h4 class="text-xs font-bold text-on-surface mb-1 ">{{ $t('dashboard.did_you_know') }}</h4>
+                     <p class="text-xs text-on-surface-muted leading-relaxed">{{ currentDashboardHint }}</p>
                   </div>
                </div>
             </main>
@@ -195,16 +284,11 @@
             <!-- Sidebar: Configuration & Node Selector (Right) -->
             <aside
                class="w-80 lg:w-96 flex-none bg-surface-panel/60 border-l border-border/50 backdrop-blur-xl flex flex-col z-10 shadow-[-5px_0_30px_-5px_rgba(0,0,0,0.05)]">
-               <!-- Sidebar Header -->
-               <div class="p-5 border-b border-border/50 flex items-center justify-between">
-                  <span class="text-xs font-black uppercase tracking-widest text-on-surface-muted">{{
-                     $t('games.configuration') }}</span>
-               </div>
 
                <!-- 1. Node Selector (Takes most space) -->
                <div class="flex-1 overflow-hidden flex flex-col p-5 gap-4">
                   <div class="flex items-center justify-between">
-                     <span class="text-sm font-bold text-on-surface">{{ $t('nodes.select_node') }}</span>
+                     <span class="text-sm font-bold text-on-surface ">{{ $t('nodes.select_node') }}</span>
                      <button @click="$router.push('/nodes')"
                         class="text-xs font-medium text-primary hover:text-primary-hover hover:underline">{{
                            $t('common.more') }}</button>
@@ -221,8 +305,11 @@
                   <label class="text-[10px] font-black uppercase tracking-widest text-on-surface-muted mb-3 block">
                      {{ $t('games.mode') }}
                   </label>
-                  <div class="rounded-xl border border-border bg-surface-overlay px-3 py-2 text-xs font-bold flex items-center gap-2">
-                     <div :class="activeProxyMode === 'process' ? 'i-carbon-application-web' : 'i-carbon-network-overlay'"></div>
+                  <div
+                     class="rounded-xl border  border-border bg-surface-overlay px-3 py-2 text-xs font-bold flex items-center gap-2">
+                     <div
+                        :class="activeProxyMode === 'process' ? 'i-carbon-application-web' : 'i-carbon-network-overlay'">
+                     </div>
                      <span>
                         {{ activeProxyMode === 'process' ? $t('games.mode_process') : $t('games.mode_routing') }}
                      </span>
@@ -247,7 +334,8 @@ import LatencyChart from '@/components/dashboard/LatencyChart.vue'
 import NodeSelector from '@/components/dashboard/NodeSelector.vue'
 import { useIntervalFn } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
-import { useMessage } from 'naive-ui'
+import { useMessage, NInputNumber, NSelect, NSwitch } from 'naive-ui'
+import { useI18n } from 'vue-i18n'
 import i18n from '@/i18n'
 import { electronApi } from '@/api'
 
@@ -258,12 +346,14 @@ const nodeStore = useNodeStore()
 const settingsStore = useSettingsStore()
 const { checkInterval } = storeToRefs(settingsStore)
 const message = useMessage()
+const { t } = useI18n()
 
 // State
 const game = computed(() => gameStore.currentGame)
 const isRunning = computed(() => game.value?.status === 'accelerating')
 const isSwitchingNode = ref(false)
-const isActionPending = computed(() => isSwitchingNode.value || gameStore.operationState !== 'idle')
+const isModeSwitching = ref(false)
+const isActionPending = computed(() => isSwitchingNode.value || isModeSwitching.value || gameStore.operationState !== 'idle')
 const actionLabel = computed(() => {
    if (gameStore.operationState === 'starting') return '启动中'
    if (gameStore.operationState === 'stopping') return '暂停中'
@@ -277,6 +367,31 @@ const lastConnection = ref('')
 const pendingNodeRestart = ref(false)
 const totalSamples = ref(0)
 const lostSamples = ref(0)
+const showSessionTuningPanel = ref(false)
+const highLossHintShown = ref(false)
+const applyingSessionTuning = ref(false)
+
+const udpModeOptions = computed(() => ([
+   { label: String(t('settings.udp_mode_auto')), value: 'auto' },
+   { label: String(t('settings.udp_mode_prefer_udp')), value: 'prefer_udp' },
+   { label: String(t('settings.udp_mode_prefer_tcp')), value: 'prefer_tcp' }
+]))
+const tunStackOptions = [
+   { label: 'system', value: 'system' },
+   { label: 'mixed', value: 'mixed' }
+]
+const vlessEncodingOptions = computed(() => ([
+   { label: String(t('settings.vless_packet_encoding_off')), value: 'off' },
+   { label: 'xudp', value: 'xudp' }
+]))
+
+function applyProfilePreset(profile: 'stable' | 'aggressive') {
+   const gameId = String(game.value?.id || '').trim()
+   if (!gameId) return
+   gameStore.applyGameSessionNetworkProfilePreset(gameId, profile, {
+      isCurrentNodeVless: currentNodeIsVless.value
+   })
+}
 
 // Computed Helpers
 const categoryLabel = computed(() => {
@@ -286,8 +401,33 @@ const categoryLabel = computed(() => {
 })
 
 const selectedNode = computed(() => game.value?.nodeId || null)
+const currentGameSessionTuning = computed(() => {
+   const gameId = String(game.value?.id || '').trim()
+   if (!gameId) return settingsStore.sessionNetworkTuning
+   return gameStore.ensureGameSessionNetworkTuning(gameId)
+})
+const currentNodeIsVless = computed(() => {
+   const selectedNodeId = String(selectedNode.value || '').trim()
+   if (!selectedNodeId) return false
+   const node = nodeStore.nodes.find(n => String(n.id || n.tag) === selectedNodeId)
+   return String(node?.type || '').toLowerCase() === 'vless'
+})
+
+function resetCurrentGameSessionTuning() {
+   const gameId = String(game.value?.id || '').trim()
+   if (!gameId) return
+   gameStore.resetGameSessionNetworkTuning(gameId)
+}
 
 const activeProxyMode = computed<'process' | 'routing'>(() => game.value?.proxyMode === 'routing' ? 'routing' : 'process')
+const dashboardHints = computed(() => ([
+   String(i18n.global.t('dashboard.hint_1')),
+   String(i18n.global.t('dashboard.hint_2')),
+   String(i18n.global.t('dashboard.hint_3')),
+   String(i18n.global.t('dashboard.hint_4'))
+]))
+const currentHintIndex = ref(0)
+const currentDashboardHint = computed(() => dashboardHints.value[currentHintIndex.value] || '')
 
 const durationFormatted = computed(() => {
    const s = durationSeconds.value
@@ -333,6 +473,40 @@ async function onNodeChange(val: string) {
    }
 }
 
+function modeLabelOf(mode: 'tun' | 'system_proxy') {
+   return mode === 'system_proxy'
+      ? String(i18n.global.t('dashboard.system_proxy_mode'))
+      : 'TUN'
+}
+
+async function onNetworkModeChange(nextMode: 'tun' | 'system_proxy') {
+   if (!game.value) return
+   if (isActionPending.value) return
+   const prevMode = settingsStore.accelNetworkMode
+   if (prevMode === nextMode) return
+
+   settingsStore.accelNetworkMode = nextMode
+   if (!isRunning.value || !game.value.id) return
+
+   isModeSwitching.value = true
+   try {
+      await gameStore.stopGame(game.value.id)
+      await gameStore.startGame(game.value.id)
+      message.success(i18n.global.t('dashboard.mode_switch_success', { mode: modeLabelOf(nextMode) }))
+   } catch (e: any) {
+      settingsStore.accelNetworkMode = prevMode
+      try {
+         await gameStore.stopGame(game.value.id)
+         await gameStore.startGame(game.value.id)
+      } catch (restoreError) {
+         console.error('Failed to restore previous acceleration mode after rollback', restoreError)
+      }
+      message.error(String(e?.message || e || i18n.global.t('dashboard.mode_switch_failed')))
+   } finally {
+      isModeSwitching.value = false
+   }
+}
+
 function refreshDuration() {
    if (!isRunning.value || startTime.value <= 0) {
       durationSeconds.value = 0
@@ -347,6 +521,16 @@ function refreshSessionLossRate() {
       return
    }
    currentLoss.value = Math.round((lostSamples.value / totalSamples.value) * 100)
+   if (
+      isRunning.value
+      && currentGameSessionTuning.value.highLossHintOnly
+      && !highLossHintShown.value
+      && totalSamples.value >= 20
+      && currentLoss.value >= 15
+   ) {
+      highLossHintShown.value = true
+      message.warning(String(i18n.global.t('dashboard.high_loss_hint')))
+   }
 }
 
 async function syncSessionStateFromStore() {
@@ -397,6 +581,11 @@ const { pause: pauseSampling, resume: resumeSampling } = useIntervalFn(() => {
 const { pause: pauseDuration, resume: resumeDuration } = useIntervalFn(() => {
    refreshDuration()
 }, 1000, { immediate: false })
+
+const { pause: pauseHintRotation, resume: resumeHintRotation } = useIntervalFn(() => {
+   if (dashboardHints.value.length <= 1) return
+   currentHintIndex.value = (currentHintIndex.value + 1) % dashboardHints.value.length
+}, 5000, { immediate: false })
 
 async function toggleAccelerator() {
    if (!game.value) return
@@ -485,10 +674,14 @@ onActivated(() => {
 
 watch(isRunning, (running) => {
    if (running) {
+      highLossHintShown.value = false
+      pauseHintRotation()
       void syncSessionStateFromStore().then(() => sampleLatencyAndLoss(true))
       resumeSampling()
       resumeDuration()
    } else {
+      currentHintIndex.value = 0
+      resumeHintRotation()
       pauseSampling()
       pauseDuration()
       startTime.value = 0
@@ -501,6 +694,7 @@ watch(isRunning, (running) => {
 }, { immediate: true })
 
 onUnmounted(() => {
+   pauseHintRotation()
    pauseSampling()
    pauseDuration()
    try {
@@ -512,6 +706,29 @@ onUnmounted(() => {
       }
    } catch (e) { }
 })
+
+watch(
+   () => JSON.stringify(currentGameSessionTuning.value),
+   async (next, prev) => {
+      if (next === prev) return
+      if (applyingSessionTuning.value) return
+      if (!isRunning.value) return
+      if (gameStore.operationState !== 'idle') return
+
+      applyingSessionTuning.value = true
+      try {
+         message.info(String(i18n.global.t('settings.session_network_tuning_restarting')))
+         const restarted = await gameStore.applySessionNetworkTuningChange()
+         if (restarted) {
+            message.success(String(i18n.global.t('settings.session_network_tuning_applied')))
+         }
+      } catch (e: any) {
+         message.error(String(e?.message || e || i18n.global.t('settings.session_network_tuning_apply_failed')))
+      } finally {
+         applyingSessionTuning.value = false
+      }
+   }
+)
 </script>
 
 

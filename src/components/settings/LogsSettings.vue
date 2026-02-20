@@ -17,18 +17,18 @@
           {{ $t('settings.logs_count_info', { filtered: filteredLogs.length, total: logEntries.length }) }}
         </div>
 
-        <div class="rounded-xl border border-border/60 bg-black/30 h-[520px] overflow-y-auto custom-scrollbar">
+        <div class="rounded-xl border border-border/60 bg-surface-overlay/50 h-[520px] overflow-y-auto custom-scrollbar">
           <div v-if="filteredLogs.length === 0"
             class="h-full flex items-center justify-center text-sm text-on-surface-muted">
             {{ $t('settings.logs_empty') }}
           </div>
-          <div v-else class="divide-y divide-white/5">
+          <div v-else class="divide-y divide-border/40">
             <div v-for="row in filteredLogs" :key="row.id" class="flex gap-4 px-4 py-3 font-mono text-sm border-l-[4px]"
               :class="[
-                row.level === 'error' ? 'border-[#ff4d4f] bg-[#ff4d4f]/10' :
-                  row.level === 'warn' ? 'border-[#faad14] bg-[#faad14]/10' :
-                    row.level === 'debug' ? 'border-[#8c8c8c] bg-[#8c8c8c]/5' :
-                      'border-[#52c41a] bg-[#52c41a]/10'
+                row.level === 'error' ? 'border-error bg-error/10' :
+                  row.level === 'warn' ? 'border-warning bg-warning/10' :
+                    row.level === 'debug' ? 'border-secondary bg-secondary/5' :
+                      'border-success bg-success/10'
               ]">
               <!-- Left Side: Fixed Meta -->
               <div class="flex-none flex flex-col items-center gap-2 w-20">
@@ -46,21 +46,21 @@
               <div class="flex-1 min-w-0 space-y-1">
                 <div class="flex items-center gap-2">
                   <span
-                    class="text-[10px] font-black px-1.5 py-0.5 rounded bg-white/5 text-primary/80 uppercase tracking-tighter shadow-inner">
+                    class="text-[10px] font-black px-1.5 py-0.5 rounded bg-surface-overlay/80 text-primary/80 uppercase tracking-tighter shadow-inner">
                     {{ $t('settings.logs_category_' + row.category) }}
                   </span>
-                  <span class="text-[10px] text-white dark:text-gray-400 italic truncate">
+                  <span class="text-[10px] text-on-surface-muted italic truncate">
                     {{ row.source }}
                   </span>
                 </div>
 
-                <div class="break-words leading-relaxed font-medium text-white dark:text-gray-400"
+                <div class="break-words leading-relaxed font-medium text-on-surface "
                   :class="logMessageTextClass(row.level)">
                   {{ row.message }}
                 </div>
 
                 <div v-if="row.detail"
-                  class="mt-2 p-3 rounded-lg text-white dark:text-gray-400 bg-black/40 border border-white/5 text-xs  break-all whitespace-pre-wrap leading-relaxed shadow-inner">
+                  class="mt-2 p-3 rounded-lg text-on-surface bg-surface/60 border border-border/50 text-xs break-all whitespace-pre-wrap leading-relaxed shadow-inner">
                   {{ row.detail }}
                 </div>
               </div>
@@ -150,19 +150,19 @@ function formatLogTime(ts: number) {
 
 function logLevelLabelClass(level: LogEntry['level']) {
   switch (level) {
-    case 'error': return 'bg-red-500 text-white'
-    case 'warn': return 'bg-amber-500 text-black'
-    case 'debug': return 'bg-zinc-700 text-zinc-300'
-    default: return 'bg-emerald-500 text-white'
+    case 'error': return 'bg-error text-on-error'
+    case 'warn': return 'bg-warning text-on-warning'
+    case 'debug': return 'bg-secondary text-on-secondary'
+    default: return 'bg-success text-on-success'
   }
 }
 
 function logMessageTextClass(level: LogEntry['level']) {
   switch (level) {
-    case 'error': return 'text-[#ff4d4f] font-bold'
-    case 'warn': return 'text-[#fadb14] font-bold'
-    case 'debug': return 'text-[#bfbfbf]'
-    default: return 'text-[#95de64] font-bold'
+    case 'error': return 'text-error font-bold'
+    case 'warn': return 'text-warning font-bold'
+    case 'debug': return 'text-secondary'
+    default: return 'text-success font-bold'
   }
 }
 

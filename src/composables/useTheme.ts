@@ -1,18 +1,29 @@
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useSettingsStore } from '@/stores/settings'
 import type { Theme, ThemeColor } from '@/types'
 
 export type { Theme, ThemeColor }
 
-const theme = ref<Theme>('auto')
-const resolvedTheme = ref<'light' | 'dark'>('dark') // Default to dark
-const themeColor = ref<ThemeColor>('green')
-
 export function useTheme() {
-  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+  const settingsStore = useSettingsStore()
+  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)') // 监听系统主题变化
+  const resolvedTheme = ref<'light' | 'dark'>('dark') 
+
+  // Keep compatibility with existing code
+  const theme = computed({
+    get: () => settingsStore.theme,
+    set: (val) => settingsStore.theme = val
+  })
+  
+  const themeColor = computed({
+    get: () => settingsStore.themeColor,
+    set: (val) => settingsStore.themeColor = val
+  })
 
   function applyTheme() {
     const root = document.documentElement
-    const isDark = theme.value === 'dark' || (theme.value === 'auto' && mediaQuery.matches)
+    const currentTheme = settingsStore.theme
+    const isDark = currentTheme === 'dark' || (currentTheme === 'auto' && mediaQuery.matches)
     
     resolvedTheme.value = isDark ? 'dark' : 'light'
     
@@ -24,45 +35,40 @@ export function useTheme() {
     }
 
     // Apply theme color
-    // Remove previous theme classes
     root.classList.remove('theme-green', 'theme-blue', 'theme-purple', 'theme-orange', 'theme-red')
-    root.classList.add(`theme-${themeColor.value}`)
+    root.classList.add(`theme-${settingsStore.themeColor}`)
   }
 
   function setTheme(newTheme: Theme) {
-    theme.value = newTheme
-    localStorage.setItem('theme', newTheme)
-    applyTheme()
+    settingsStore.theme = newTheme
   }
 
   function setThemeColor(color: ThemeColor) {
-    themeColor.value = color
-    localStorage.setItem('themeColor', color)
-    applyTheme()
+    settingsStore.themeColor = color
   }
 
   function toggleTheme() {
     const next = resolvedTheme.value === 'dark' ? 'light' : 'dark'
+    // If auto, force set to opposite of current resolved
     setTheme(next)
   }
 
   function handleSystemChange() {
-    if (theme.value === 'auto') {
+    if (settingsStore.theme === 'auto') {
       applyTheme()
     }
   }
 
-  onMounted(() => {
-    const savedTheme = localStorage.getItem('theme') as Theme
-    if (savedTheme && ['light', 'dark', 'auto'].includes(savedTheme)) {
-      theme.value = savedTheme
+  // Sync with store changes
+  watch(
+    () => [settingsStore.theme, settingsStore.themeColor],
+    () => {
+      applyTheme()
     }
-    
-    const savedColor = localStorage.getItem('themeColor') as ThemeColor
-    if (savedColor && ['green', 'blue', 'purple', 'orange', 'red'].includes(savedColor)) {
-      themeColor.value = savedColor
-    }
+  )
 
+  onMounted(() => {
+    // Initial apply
     applyTheme()
     mediaQuery.addEventListener('change', handleSystemChange)
   })

@@ -54,6 +54,7 @@ export default defineConfig({
       surface: 'rgba(var(--rgb-surface), <alpha-value>)',
       'surface-panel': 'rgba(var(--rgb-surface-panel), <alpha-value>)',
       'surface-overlay': 'rgba(var(--rgb-surface-overlay), <alpha-value>)',
+      'surface-variant': 'rgba(var(--rgb-surface-variant), <alpha-value>)',
 
       // Semantic Text Colors
       'on-surface': 'rgba(var(--rgb-on-surface), <alpha-value>)',

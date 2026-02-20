@@ -49,18 +49,20 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTheme, type ThemeColor } from '@/composables/useTheme'
+import { useSettingsStore } from '@/stores/settings'
 
 const { locale } = useI18n()
 const { themeColor, setThemeColor } = useTheme()
+const settingsStore = useSettingsStore()
 
-const currentLocale = computed(() => locale.value)
+const currentLocale = computed(() => settingsStore.language)
 const availableLocales = [
   { code: 'zh-CN', name: '简体中文' },
   { code: 'en-US', name: 'English' }
 ]
 
 const themeColors: { value: ThemeColor, label: string, bg: string }[] = [
-  { value: 'green', label: 'Green', bg: 'bg-[#3eaf7c]' },
+  { value: 'green', label: 'Green', bg: 'bg-[#10b981]' },
   { value: 'blue', label: 'Blue', bg: 'bg-[#3b82f6]' },
   { value: 'purple', label: 'Purple', bg: 'bg-[#8b5cf6]' },
   { value: 'orange', label: 'Orange', bg: 'bg-[#f97316]' },
@@ -68,6 +70,7 @@ const themeColors: { value: ThemeColor, label: string, bg: string }[] = [
 ]
 
 function setLanguage(lang: string) {
+  settingsStore.language = lang
   locale.value = lang
 }
 </script>

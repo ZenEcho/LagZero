@@ -64,6 +64,22 @@ export interface NodeConfig {
 // Settings Types
 export type CheckMethod = 'ping' | 'tcp' | 'http'
 export type DnsMode = 'secure' | 'system'
+export type AccelNetworkMode = 'tun' | 'system_proxy'
+export type NetworkProfile = 'stable' | 'aggressive'
+export type UdpMode = 'auto' | 'prefer_udp' | 'prefer_tcp'
+export type TunStackMode = 'system' | 'mixed'
+export type VlessPacketEncodingOverride = 'off' | 'xudp'
+
+export interface SessionNetworkTuningOptions {
+  enabled: boolean
+  profile: NetworkProfile
+  udpMode: UdpMode
+  tunMtu: number
+  tunStack: TunStackMode
+  strictRoute: boolean
+  vlessPacketEncodingOverride: VlessPacketEncodingOverride
+  highLossHintOnly: boolean
+}
 
 // Theme Types
 export type Theme = 'light' | 'dark' | 'auto'
@@ -75,6 +91,7 @@ export interface DnsConfigOptions {
   primary?: string            // 主 DNS 服务器地址
   secondary?: string          // 备用 DNS 服务器地址
   tunInterfaceName?: string
+  accelNetworkMode?: AccelNetworkMode
   disableTun?: boolean
   localProxyNode?: NodeConfig
   localProxyStrictNode?: boolean
@@ -82,6 +99,11 @@ export interface DnsConfigOptions {
     enabled: boolean
     port: number
   }
+  systemProxy?: {
+    enabled: boolean
+    port: number
+  }
+  sessionTuning?: SessionNetworkTuningOptions
 }
 
 // Latency Session Types

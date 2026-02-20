@@ -3,7 +3,7 @@
  * 用于将游戏规则和节点配置转换为 Sing-box 可识别的 JSON 格式
  */
 
-import type { Game, DnsConfigOptions, SingboxConfig } from '@/types'
+import type { Game, DnsConfigOptions, SingboxConfig, SessionNetworkTuningOptions, VlessPacketEncodingOverride } from '@/types'
 import type { NodeConfig } from '@/utils/protocol'
 import pkg from '../../package.json'
 
@@ -23,19 +23,22 @@ const SAGERNET_GEOSITE_CN_SRS_URL = 'https://cdn.jsdelivr.net/gh/SagerNet/sing-g
 export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?: DnsConfigOptions): string {
   const isRoutingMode = game.proxyMode === 'routing'
   const processes = normalizeProcessNames(Array.isArray(game.processName) ? game.processName : [game.processName])
+  const accelNetworkMode = dnsOptions?.accelNetworkMode || 'tun'
   const routingRules = Array.isArray(game.routingRules) ? game.routingRules.map(r => String(r).trim()).filter(Boolean) : []
   const hasBypassCn = routingRules.some(r => r.toLowerCase() === 'bypass_cn')
   const hasGlobal = routingRules.some(r => r.toLowerCase() === 'global')
   const routingIpCidrs = normalizeRoutingIpCidrs(routingRules)
-  const hasRoutingProcessScope = isRoutingMode && processes.length > 0
+  const hasProcessScope = processes.length > 0
+  const hasRoutingProcessScope = isRoutingMode && hasProcessScope
   const dnsMode = dnsOptions?.mode || 'secure'
   const dnsPrimary = String(dnsOptions?.primary || 'https://dns.google/dns-query').trim()
   const dnsSecondary = String(dnsOptions?.secondary || 'https://1.1.1.1/dns-query').trim()
   const tunInterfaceName = String(dnsOptions?.tunInterfaceName || pkg.productName).trim() || pkg.productName
   const useSecureDns = dnsMode === 'secure'
-  const disableTun = !!dnsOptions?.disableTun
+  const disableTun = !!dnsOptions?.disableTun || accelNetworkMode === 'system_proxy'
   const localProxyNode = dnsOptions?.localProxyNode
   const localProxyStrictNode = !!dnsOptions?.localProxyStrictNode
+  const sessionTuning = resolveSessionTuning(dnsOptions?.sessionTuning)
 
   // 基础配置结构
   const config: SingboxConfig = {
@@ -110,12 +113,17 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
       tag: 'tun-in',
       interface_name: tunInterfaceName,
       inet4_address: '172.19.0.1/30',
-      mtu: 1280,
+      mtu: sessionTuning.tunMtu,
       auto_route: true,
-      strict_route: false,
-      stack: 'system',
+      strict_route: sessionTuning.strictRoute,
+      stack: sessionTuning.tunStack,
       sniff: true
     })
+  }
+
+  const udpRule = buildUdpPreferenceRule(sessionTuning, !disableTun)
+  if (udpRule) {
+    config.route.rules.push(udpRule)
   }
 
   if (dnsOptions?.localProxy?.enabled) {
@@ -159,6 +167,27 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
     })
   }
 
+  if (dnsOptions?.systemProxy?.enabled) {
+    const httpPort = dnsOptions.systemProxy.port
+
+    config.inbounds.push({
+      type: 'http',
+      tag: 'system-http-in',
+      listen: '127.0.0.1',
+      listen_port: httpPort,
+      sniff: true,
+      set_system_proxy: false
+    })
+
+    // In routing mode, keep geo/ip rule matching behavior. Do not force inbound->proxy.
+    if (!isRoutingMode) {
+      config.route.rules.push({
+        inbound: ['system-http-in'],
+        outbound: 'proxy'
+      })
+    }
+  }
+
   if (useSecureDns) {
     const bootstrapDomains = collectBootstrapDomains(node, localProxyNode)
     if (bootstrapDomains.length > 0) {
@@ -171,11 +200,11 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
   }
 
   // 1. 将节点配置转换为 Outbound 格式并添加到配置中
-  const nodeOutbound = convertNodeToOutbound(node)
+  const nodeOutbound = convertNodeToOutbound(node, 'node-out', sessionTuning.vlessPacketEncodingOverride)
   config.outbounds.push(nodeOutbound)
 
   // 2. 配置 DNS 规则：如果开启了安全 DNS 且定义了进程，则强制该进程使用远端 DNS
-  if (processes.length > 0 && useSecureDns) {
+  if (hasProcessScope && useSecureDns && (!isRoutingMode || hasRoutingProcessScope)) {
     config.dns.rules.unshift({
       process_name: processes,
       server: 'remote-primary'
@@ -235,14 +264,14 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
         ip_cidr: routingIpCidrs,
         outbound: 'proxy'
       }
-      if (processes.length > 0) {
+      if (hasRoutingProcessScope) {
         rule.process_name = processes
       }
       config.route.rules.push(rule)
     }
   } else {
     // 进程模式：仅指定的游戏进程走代理，其余默认直连
-    if (processes.length > 0) {
+    if (hasProcessScope) {
       config.route.rules.push({
         process_name: processes,
         outbound: 'proxy'
@@ -259,7 +288,11 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
  * @param node 原始节点配置
  * @returns Sing-box outbound 对象
  */
-function convertNodeToOutbound(node: NodeConfig, tag: string = 'node-out'): any {
+function convertNodeToOutbound(
+  node: NodeConfig,
+  tag: string = 'node-out',
+  vlessPacketEncodingOverride: VlessPacketEncodingOverride = 'off'
+): any {
   const base = {
     tag,
     server: node.server,
@@ -295,7 +328,7 @@ function convertNodeToOutbound(node: NodeConfig, tag: string = 'node-out'): any 
         type: 'vless',
         uuid: node.uuid,
         flow: node.flow,
-        packet_encoding: node.packet_encoding,
+        packet_encoding: vlessPacketEncodingOverride === 'xudp' ? 'xudp' : node.packet_encoding,
         transport,
         tls
       }
@@ -526,4 +559,54 @@ function isValidCidr(value: string): boolean {
 
   if (!isIpLiteral(ip)) return false
   return bits >= 0 && bits <= 32
+}
+
+function resolveSessionTuning(tuning?: SessionNetworkTuningOptions): SessionNetworkTuningOptions {
+  if (!tuning?.enabled) {
+    return {
+      enabled: false,
+      profile: 'stable',
+      udpMode: 'auto',
+      tunMtu: 1280,
+      tunStack: 'system',
+      strictRoute: false,
+      vlessPacketEncodingOverride: 'off',
+      highLossHintOnly: true
+    }
+  }
+
+  const tunMtu = normalizeMtu(tuning.tunMtu)
+  return {
+    enabled: true,
+    profile: tuning.profile === 'aggressive' ? 'aggressive' : 'stable',
+    udpMode: tuning.udpMode === 'prefer_udp' || tuning.udpMode === 'prefer_tcp' ? tuning.udpMode : 'auto',
+    tunMtu,
+    tunStack: tuning.tunStack === 'mixed' ? 'mixed' : 'system',
+    strictRoute: !!tuning.strictRoute,
+    vlessPacketEncodingOverride: tuning.vlessPacketEncodingOverride === 'xudp' ? 'xudp' : 'off',
+    highLossHintOnly: tuning.highLossHintOnly !== false
+  }
+}
+
+function normalizeMtu(value: number): number {
+  const fallback = 1280
+  const n = Number(value)
+  if (!Number.isFinite(n)) return fallback
+  return Math.min(1500, Math.max(1200, Math.floor(n)))
+}
+
+function buildUdpPreferenceRule(
+  tuning: SessionNetworkTuningOptions,
+  hasTunInbound: boolean
+): Record<string, any> | null {
+  if (!tuning.enabled || tuning.udpMode === 'auto') return null
+
+  const rule: Record<string, any> = {
+    protocol: 'udp',
+    outbound: tuning.udpMode === 'prefer_udp' ? 'proxy' : 'direct'
+  }
+  if (hasTunInbound) {
+    rule.inbound = ['tun-in']
+  }
+  return rule
 }

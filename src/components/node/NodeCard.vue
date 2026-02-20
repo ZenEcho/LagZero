@@ -3,7 +3,7 @@
         class="group relative bg-surface-panel rounded-xl border transition-all duration-300 cursor-pointer overflow-hidden hover:bg-surface/10"
         :class="[
             selected
-                ? 'border-primary shadow-[0_0_15px_rgba(var(--primary-rgb),0.15)] bg-primary/5'
+                ? 'border-primary shadow-[0_0_15px_rgba(var(--rgb-primary),0.15)] bg-primary/5'
                 : 'border-border hover:border-primary/30'
         ]">
 
@@ -115,10 +115,10 @@ function getNodeIcon(type: string) {
 }
 
 function getLatencyColor(ms: number) {
-    if (ms <= 0) return 'bg-gray-500/50'
-    if (ms < 100) return 'bg-success shadow-[0_0_8px_rgba(var(--success-rgb),0.3)]'
-    if (ms < 200) return 'bg-warning shadow-[0_0_8px_rgba(var(--warning-rgb),0.3)]'
-    return 'bg-error shadow-[0_0_8px_rgba(var(--error-rgb),0.3)]'
+    if (ms <= 0) return 'bg-secondary/50'
+    if (ms < 100) return 'bg-success shadow-[0_0_8px_rgba(var(--rgb-success),0.3)]'
+    if (ms < 200) return 'bg-warning shadow-[0_0_8px_rgba(var(--rgb-warning),0.3)]'
+    return 'bg-error shadow-[0_0_8px_rgba(var(--rgb-error),0.3)]'
 }
 
 function getLatencyTextColor(ms: number) {

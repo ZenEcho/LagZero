@@ -1,15 +1,5 @@
 <template>
   <div class="h-full relative overflow-hidden bg-background text-on-surface flex transition-colors duration-300">
-    <!-- Ambient Background Effects -->
-    <div class="absolute inset-0 pointer-events-none overflow-hidden">
-      <div
-        class="absolute top-[-10%] right-[-5%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-[100px] animate-pulse-slow">
-      </div>
-      <div
-        class="absolute bottom-[-10%] left-[-5%] w-[30%] h-[30%] bg-secondary/5 rounded-full blur-[80px] animate-pulse-slow"
-        style="animation-delay: 2s;"></div>
-    </div>
-
     <!-- Main Layout Container -->
     <div class="relative z-10 flex w-full h-full max-w-7xl mx-auto p-4 md:p-8 gap-8">
 
@@ -55,4 +45,3 @@ onMounted(async () => {
   await getVersion()
 })
 </script>
-

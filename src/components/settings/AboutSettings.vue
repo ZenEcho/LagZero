@@ -11,7 +11,7 @@
 
     <h1
       class=" h-14 text-4xl font-black bg-gradient-to-br from-primary via-purple-500 to-secondary bg-clip-text text-transparent mb-2">
-      {{ pkg.name }}
+      {{ pkg.productName }}
     </h1>
     <p class="text-on-surface-muted mb-8 tracking-wide">{{ $t('settings.tagline') }}</p>
 
@@ -49,12 +49,12 @@
 
     <div v-if="updateInfo"
       class="mt-8 w-full max-w-md text-left bg-surface-panel/80 backdrop-blur-md border border-border p-5 rounded-2xl text-sm space-y-3 animate-scale-in shadow-xl">
-      <div v-if="updateInfo.error" class="text-red-500 flex items-center gap-2">
+      <div v-if="updateInfo.error" class="text-error flex items-center gap-2">
         <div class="i-material-symbols-error text-xl"></div>
         {{ $t('settings.update_error', { msg: updateInfo.error }) }}
       </div>
       <div v-else-if="updateInfo.available" class="space-y-3">
-        <div class="text-green-500 font-bold flex items-center gap-2 text-base">
+        <div class="text-success font-bold flex items-center gap-2 text-base">
           <div class="i-material-symbols-rocket-launch"></div>
           {{ $t('settings.update_available', { version: updateInfo.version }) }}
         </div>
@@ -73,7 +73,7 @@
         <div class="text-xs text-on-surface-muted text-right">{{ updateInfo.date }}</div>
       </div>
       <div v-else class="text-on-surface-muted flex items-center justify-center gap-2 py-2">
-        <div class="i-material-symbols-check-circle text-green-500 text-lg"></div>
+        <div class="i-material-symbols-check-circle text-success text-lg"></div>
         {{ $t('settings.no_update') }}
       </div>
     </div>

@@ -4,9 +4,9 @@ export interface ElectronAPI {
   minimize: () => Promise<void>
   maximize: () => Promise<void>
   close: () => Promise<void>
-  pickImage: () => Promise<string>
-  pickProcess: () => Promise<string[]>
-  pickProcessFolder: (maxDepth?: number) => Promise<string[]>
+  pickImage: () => Promise<string | null>
+  pickProcess: () => Promise<string[] | null>
+  pickProcessFolder: (maxDepth?: number) => Promise<string[] | null>
   on: (channel: string, callback: (...args: any[]) => void) => void
   off: (channel: string, callback: (...args: any[]) => void) => void
 }
@@ -37,6 +37,9 @@ export interface SystemAPI {
     targetPort?: number,
     timeoutMs?: number
   ) => Promise<{ ok: boolean; statusLine: string; error?: string }>
+  setSystemProxy: (port: number, bypass?: string) => Promise<{ ok: boolean; message: string; snapshot?: any }>
+  clearSystemProxy: (snapshot?: any) => Promise<{ ok: boolean; message: string }>
+  getSystemProxyState: () => Promise<{ ok: boolean; message: string; state?: any }>
 }
 
 export interface ProxyMonitorAPI {
@@ -61,6 +64,7 @@ export interface CategoriesAPI {
   getAll: () => Promise<Category[]>
   save: (category: Category) => Promise<Category[]>
   delete: (id: string) => Promise<Category[]>
+  match: (name: string, processes: string | string[]) => Promise<string | null>
 }
 
 export interface AppAPI {
