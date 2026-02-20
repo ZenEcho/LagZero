@@ -24,29 +24,35 @@ export class GameScannerService {
     const [steam, microsoft, epic, ea] = await Promise.all([
       scanSteamGames(),
       scanMicrosoftGames(),
-      scanFlatPlatformFolder('epic', Array.from(new Set(
+      scanFlatPlatformFolder('Epic', Array.from(new Set(
         drives.flatMap(root => [
           path.join(root, 'Epic Games'),
           path.join(root, 'Program Files', 'Epic Games'),
-          path.join(root, 'Program Files (x86)', 'Epic Games')
+          path.join(root, 'Program Files (x86)', 'Epic Games'),
+          path.join(root, 'Games', 'Epic Games'),
+          path.join(root, 'Game', 'Epic Games')
         ])
       ))),
-      scanFlatPlatformFolder('ea', Array.from(new Set(
+      scanFlatPlatformFolder('EA', Array.from(new Set(
         drives.flatMap(root => [
           path.join(root, 'EA Games'),
           path.join(root, 'Electronic Arts'),
           path.join(root, 'Program Files', 'EA Games'),
           path.join(root, 'Program Files', 'Electronic Arts'),
           path.join(root, 'Program Files (x86)', 'EA Games'),
-          path.join(root, 'Program Files (x86)', 'Electronic Arts')
+          path.join(root, 'Program Files (x86)', 'Electronic Arts'),
+          path.join(root, 'Games', 'EA Games'),
+          path.join(root, 'Game', 'EA Games'),
+          path.join(root, 'Games', 'Electronic Arts')
         ])
       )))
     ])
 
-    // 去重逻辑：名称和进程名都相同的视为同一个游戏
+    // 去重逻辑：名称和进程名列表都相同的视为同一个游戏
     const dedup = new Map<string, LocalGameScanResult>()
     for (const game of [...steam, ...microsoft, ...epic, ...ea]) {
-      const key = `${game.name.toLowerCase()}|${game.processName.toLowerCase()}`
+      const processKey = Array.isArray(game.processName) ? game.processName.sort().join(',').toLowerCase() : ''
+      const key = `${game.name.toLowerCase()}|${processKey}`
       if (!dedup.has(key)) dedup.set(key, game)
     }
 

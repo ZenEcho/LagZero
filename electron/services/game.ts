@@ -15,6 +15,8 @@ export interface Game {
   processName: string | string[]
   /** 分类 ID */
   category: string
+  /** 分类 ID 列表（支持多标签分类） */
+  categories?: string[]
   /** 标签列表 */
   tags?: string[]
   /** 关联的配置文件 ID */

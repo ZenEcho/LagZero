@@ -1,5 +1,5 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { app, BrowserWindow, ipcMain, dialog, shell, session } from 'electron'
+import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'fs-extra'
 import pkg from '../../package.json'
@@ -62,6 +62,51 @@ let quitCleanupStarted = false
 // 初始化日志系统
 setupLogger(() => windowManager.get())
 
+function buildContentSecurityPolicy(): string {
+  return [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "img-src 'self' data: blob: https: http:",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "connect-src 'self' ws: wss: http: https:",
+    "worker-src 'self' blob:",
+  ].join('; ')
+}
+
+function setupRendererCsp() {
+  const csp = buildContentSecurityPolicy()
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    if (details.resourceType !== 'mainFrame') {
+      callback({ responseHeaders: details.responseHeaders })
+      return
+    }
+
+    const responseHeaders = details.responseHeaders || {}
+    responseHeaders['Content-Security-Policy'] = [csp]
+    callback({ responseHeaders })
+  })
+}
+
+function toImageDataUrl(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase()
+  const mimeMap: Record<string, string> = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.ico': 'image/x-icon',
+    '.svg': 'image/svg+xml',
+  }
+  const mime = mimeMap[ext] || 'application/octet-stream'
+  const data = fs.readFileSync(filePath)
+  return `data:${mime};base64,${data.toString('base64')}`
+}
+
 /**
  * 初始化所有业务服务并注册 IPC 监听
  * @param win 主窗口实例
@@ -121,7 +166,7 @@ function initServices(win: BrowserWindow) {
       ]
     })
     if (result.canceled || result.filePaths.length === 0) return null
-    return pathToFileURL(result.filePaths[0]!).toString()
+    return toImageDataUrl(result.filePaths[0]!)
   })
 
   ipcMain.handle('dialog:pick-process', async () => {
@@ -177,6 +222,7 @@ app.on('activate', () => {
 // 应用准备就绪
 app.whenReady()
   .then(() => {
+    setupRendererCsp()
     startApp()
   })
   .catch((error) => {

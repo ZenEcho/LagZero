@@ -1,7 +1,7 @@
 import fs from 'fs-extra'
 import path from 'path'
-import { LocalGameScanResult } from './types'
-import { normalizeDisplayName, pickBestExecutable, safeReadDir } from './utils'
+import { LocalGameScanResult, Platform } from './types'
+import { normalizeDisplayName, pickRelatedExecutables, safeReadDir } from './utils'
 
 /**
  * 扫描指定目录下的通用平台游戏 (Epic, EA, Microsoft Store)
@@ -12,7 +12,7 @@ import { normalizeDisplayName, pickBestExecutable, safeReadDir } from './utils'
  * @param roots 需要扫描的根目录列表
  * @returns 扫描到的游戏列表
  */
-export async function scanFlatPlatformFolder(source: 'epic' | 'ea' | 'microsoft', roots: string[]): Promise<LocalGameScanResult[]> {
+export async function scanFlatPlatformFolder(source: Platform, roots: string[]): Promise<LocalGameScanResult[]> {
   const results: LocalGameScanResult[] = []
 
   for (const root of roots) {
@@ -21,11 +21,11 @@ export async function scanFlatPlatformFolder(source: 'epic' | 'ea' | 'microsoft'
     for (const entry of entries) {
       if (!entry.isDirectory()) continue
       const installDir = path.join(root, entry.name)
-      const exe = await pickBestExecutable(installDir, entry.name)
-      if (!exe) continue
+      const exes = await pickRelatedExecutables(installDir, entry.name)
+      if (!exes || exes.length === 0) continue
       results.push({
         name: normalizeDisplayName(entry.name),
-        processName: path.basename(exe),
+        processName: exes.map(e => path.basename(e)),
         source,
         installDir
       })

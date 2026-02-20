@@ -396,8 +396,14 @@ function applyProfilePreset(profile: 'stable' | 'aggressive') {
 // Computed Helpers
 const categoryLabel = computed(() => {
    if (!game.value) return ''
-   const cat = categoryStore.categories.find((c: any) => c.id === game.value!.category)
-   return cat?.name || i18n.global.t('common.uncategorized')
+   const categoryIds = Array.isArray(game.value.categories) && game.value.categories.length > 0
+      ? game.value.categories
+      : (game.value.category ? [game.value.category] : [])
+   if (categoryIds.length === 0) return String(i18n.global.t('common.uncategorized'))
+   return categoryIds
+      .map((id) => categoryStore.categories.find((c: any) => c.id === id)?.name || '')
+      .filter(Boolean)
+      .join(' / ') || String(i18n.global.t('common.uncategorized'))
 })
 
 const selectedNode = computed(() => game.value?.nodeId || null)

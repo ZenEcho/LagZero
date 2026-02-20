@@ -93,7 +93,7 @@ export async function collectExePaths(dir: string, maxDepth: number, currentDept
 }
 
 /**
- * 启发式算法：从目录下选择最像是游戏主进程的可执行文件
+ * 启发式算法：从目录下选择所有像是游戏主进程及相关子程序的可执行文件
  * 
  * 评分规则：
  * - 文件名与文件夹名完全匹配 (+10)
@@ -102,10 +102,10 @@ export async function collectExePaths(dir: string, maxDepth: number, currentDept
  * - 不包含 launcher 关键词 (+2)
  * - 文件体积越大分数越高 (每 40MB +1, 上限 +8)
  */
-export async function pickBestExecutable(gameDir: string, displayName: string): Promise<string | null> {
+export async function pickRelatedExecutables(gameDir: string, displayName: string): Promise<string[]> {
   const exes = await collectExePaths(gameDir, 3)
-  if (exes.length === 0) return null
-  if (exes.length === 1) return exes[0] || null
+  if (exes.length === 0) return []
+  if (exes.length === 1) return [exes[0]]
 
   const target = normalizeDisplayName(displayName).toLowerCase()
   const ranked = await Promise.all(exes.map(async (exe) => {
@@ -129,5 +129,10 @@ export async function pickBestExecutable(gameDir: string, displayName: string): 
   }))
 
   ranked.sort((a, b) => b.score - a.score)
-  return ranked[0]?.exe || null
+
+  // 选择得分较高的进程（比如前5个，或者得分 > 0 的进程），但至少返回1个（如果是空则前面已经返回了）
+  // 加上为了支持子程序，我们把得分最高的，以及所有比较可能的是子程序的也带上。
+  // 可以把前3到5个得分最高的 exe 选出来，只要它们不是安装包即可。
+  const selected = ranked.filter(r => r.score >= 0).slice(0, 5).map(r => r.exe)
+  return selected.length > 0 ? selected : [ranked[0].exe]
 }

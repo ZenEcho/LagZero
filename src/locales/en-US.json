@@ -29,7 +29,7 @@
     "sort_by": "Sort by:",
     "network_stability": "Network Stability",
     "live": "Live",
-    "uncategorized": "Uncategorized",
+    "uncategorized": "Untagged",
     "search": "Search",
     "paste_link": "Paste links here (Batch/Sub)",
     "no_nodes": "No nodes available. Import some or add manually!",
@@ -41,7 +41,7 @@
     "deleted": "Deleted",
     "edit": "Edit",
     "add": "Add",
-    "categories": "Categories",
+    "categories": "Tag Management",
     "optional": "Optional",
     "more": "More",
     "fill_required": "Please complete required fields.",
@@ -50,7 +50,8 @@
     "enabled": "Enabled",
     "disabled": "Disabled",
     "add_node_hint": "Click the add button at the top right to import or create a node",
-    "no_data": "No Data"
+    "no_data": "No Data",
+    "all": "All"
   },
   "nodes": {
     "add_node": "Add Node",
@@ -162,11 +163,22 @@
     "process_name_tip": "Separate multiple process names with commas",
     "icon": "Icon Class",
     "category": "Category",
+    "tags": "Platform/Other Tags",
     "delete_confirm": "Are you sure to delete this game?",
     "advanced_config": "Advanced Configuration",
     "chain_proxy": "Enable Chain Proxy Detection",
     "chain_proxy_desc": "Automatically detect and proxy child processes started by the game.",
-    "add_process": "Add Process"
+    "add_process": "Add Process",
+    "scan": "Scan",
+    "scan_complete_added": "Scan complete: {added} new games added, {matched} running matched.",
+    "scan_complete_no_added": "Scan complete: No new games added, {matched} running matched.",
+    "scan_complete_none": "Scan complete: No new local games found.",
+    "scan_failed": "Scan failed, please try again.",
+    "accelerating_now": "Accelerating Now",
+    "current_game": "Current Game",
+    "switching_warning": "Accelerating \"{name}\", please stop acceleration before switching.",
+    "stopped_acceleration": "Acceleration stopped",
+    "stop_failed": "Stop failed"
   },
   "rules": {
     "routing": "Routing",
@@ -258,7 +270,15 @@
     "session_network_tuning_apply_failed": "Failed to apply network tuning"
   },
   "categories": {
-    "new_category_placeholder": "Enter new category name..."
+    "new_category_placeholder": "Enter new tag name...",
+    "added": "Tag added",
+    "updated": "Tag saved",
+    "deleted": "Tag deleted",
+    "delete_title": "Delete Tag",
+    "delete_confirm": "Are you sure you want to delete \"{name}\"?",
+    "delete_failed": "Delete failed",
+    "keep_one": "At least one tag must remain. You cannot delete the last tag.",
+    "name_required": "Tag name is required"
   },
   "dashboard": {
     "hint": "Tip: After enabling acceleration, please restart the game to ensure traffic routes through the virtual network adapter.",

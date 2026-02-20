@@ -1,4 +1,4 @@
-import { net, app } from 'electron'
+import { app } from 'electron'
 
 /**
  * 更新检查结果信息
@@ -32,21 +32,17 @@ export class UpdaterService {
   async checkUpdate(): Promise<UpdateInfo> {
     try {
       const fetchGithub = async (url: string): Promise<string> => {
-        return new Promise((resolve, reject) => {
-          const request = net.request(url)
-          request.setHeader('User-Agent', 'LagZero-Client')
-          request.on('response', (response) => {
-            if (response.statusCode !== 200) {
-              reject(new Error(`GitHub API Error: ${response.statusCode}`))
-              return
-            }
-            let data = ''
-            response.on('data', (chunk) => { data += chunk })
-            response.on('end', () => resolve(data))
-          })
-          request.on('error', (err) => reject(err))
-          request.end()
+        const target = new URL(url)
+        const response = await fetch(target, {
+          headers: {
+            'User-Agent': 'LagZero-Client',
+            'Accept': 'application/vnd.github+json',
+          },
         })
+        if (!response.ok) {
+          throw new Error(`GitHub API Error: ${response.status}`)
+        }
+        return await response.text()
       }
 
       let latestVersion = ''

@@ -110,6 +110,8 @@ export interface GamesTable {
   process_name: string // JSON string[] or comma separated? Let's use JSON for string[]
   /** 所属分类 ID */
   category_id: string
+  /** 所属分类 ID 列表 (JSON 字符串数组) */
+  category_ids: string | null // JSON string[]
   /** 标签列表 (JSON 字符串数组) */
   tags: string | null // JSON string[]
   /** 关联的配置文件 ID */

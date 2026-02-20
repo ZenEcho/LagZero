@@ -21,8 +21,8 @@ export interface SystemAPI {
   scanProcesses: () => Promise<string[]>
   scanLocalGames: () => Promise<Array<{
     name: string
-    processName: string
-    source: 'steam' | 'microsoft' | 'epic' | 'ea'
+    processName: string[]
+    source: 'Steam' | 'Microsoft' | 'Epic' | 'EA'
     installDir: string
   }>>
   getProcessTree: () => Promise<any>

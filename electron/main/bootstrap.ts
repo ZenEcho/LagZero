@@ -7,6 +7,15 @@ import pkg from '../../package.json'
 const ELEVATION_FLAG = '--lagzero-elevated'
 
 /**
+ * electron-builder portable runtime env:
+ * - PORTABLE_EXECUTABLE_DIR
+ * - PORTABLE_EXECUTABLE_FILE
+ */
+function isPortableRuntime(): boolean {
+  return Boolean(process.env.PORTABLE_EXECUTABLE_DIR || process.env.PORTABLE_EXECUTABLE_FILE)
+}
+
+/**
  * 格式化 PowerShell 参数字符串
  * @param input 输入字符串
  * @returns 转义后的字符串
@@ -62,6 +71,8 @@ function relaunchAsAdmin(): boolean {
  */
 export function ensureAdminAtStartup() {
   if (process.platform !== 'win32') return
+  // Portable 包在自提权重启时可能导致主进程退出且子进程未成功拉起，默认不强制提权。
+  if (isPortableRuntime()) return
   if (isWindowsAdmin()) return
 
   const relaunched = relaunchAsAdmin()

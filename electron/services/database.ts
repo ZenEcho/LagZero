@@ -18,6 +18,7 @@ export class DatabaseService {
   private sqlite: DatabaseConstructor.Database
   /** 缓存 "Other/其他" 分类的 ID，避免频繁查询 */
   private otherCategoryId: string | null | undefined
+  private readonly platformCategoryNames = ['Steam', 'Microsoft', 'Epic', 'EA'] as const
 
   constructor() {
     const userDataPath = app.getPath('userData')
@@ -84,6 +85,143 @@ export class DatabaseService {
     return this.otherCategoryId
   }
 
+  private normalizeTagList(tags: unknown): string[] {
+    if (!Array.isArray(tags)) return []
+    const seen = new Set<string>()
+    const result: string[] = []
+    for (const tag of tags) {
+      const value = String(tag ?? '').trim()
+      if (!value || seen.has(value)) continue
+      seen.add(value)
+      result.push(value)
+    }
+    return result
+  }
+
+  private mergeCategoryIds(base: string[], extra: string[]): string[] {
+    const seen = new Set<string>()
+    const result: string[] = []
+    for (const id of [...base, ...extra]) {
+      const value = String(id || '').trim()
+      if (!value || seen.has(value)) continue
+      seen.add(value)
+      result.push(value)
+    }
+    return result
+  }
+
+  private splitCategoryLikeTags(
+    tags: string[],
+    categoryNameToId: Map<string, string>
+  ): { categoryIds: string[], tags: string[] } {
+    const categoryIds: string[] = []
+    const remain: string[] = []
+    for (const tag of tags) {
+      const categoryId = categoryNameToId.get(String(tag).toLowerCase())
+      if (categoryId) categoryIds.push(categoryId)
+      else remain.push(tag)
+    }
+    return { categoryIds: this.mergeCategoryIds([], categoryIds), tags: remain }
+  }
+
+  private async reconcileGameCategoryTagConflicts() {
+    const rows = await this.db
+      .selectFrom('games')
+      .select(['id', 'category_id', 'category_ids', 'tags'])
+      .execute()
+    if (rows.length === 0) return
+
+    const allTags = rows.flatMap((row) => this.normalizeTagList(safeJsonParse(row.tags || '[]', [])))
+    const needPlatformCategories = this.platformCategoryNames.filter((name) => allTags.some((tag) => tag === name))
+    if (needPlatformCategories.length > 0) {
+      const existingCategories = await this.db.selectFrom('categories').select(['name']).execute()
+      const existingNames = new Set(existingCategories.map((c) => String(c.name || '').toLowerCase()))
+      const missingPlatformCategories = needPlatformCategories.filter((name) => !existingNames.has(name.toLowerCase()))
+      if (missingPlatformCategories.length > 0) {
+        const maxOrderRow = await this.db
+          .selectFrom('categories')
+          .select(['order_index'])
+          .orderBy('order_index', 'desc')
+          .executeTakeFirst()
+        let nextOrder = Number(maxOrderRow?.order_index || 0) + 1
+        for (const name of missingPlatformCategories) {
+          await this.db.insertInto('categories').values({
+            id: generateId(),
+            name,
+            parent_id: null,
+            rules: null,
+            icon: null,
+            order_index: nextOrder++,
+            updated_at: new Date().toISOString()
+          }).execute()
+        }
+      }
+    }
+
+    const categories = await this.db.selectFrom('categories').select(['id', 'name']).execute()
+    const categoryNameToId = new Map(categories.map((c) => [String(c.name || '').toLowerCase(), c.id]))
+    const otherCategoryId = await this.resolveOtherCategoryId()
+
+    for (const row of rows) {
+      const currentCategoryIds = (() => {
+        const fromColumn = parseStringArray(String(row.category_ids || '')).map((id) =>
+          id === 'other' ? (otherCategoryId || id) : id
+        )
+        if (fromColumn.length > 0) return fromColumn
+        if (row.category_id) return [row.category_id === 'other' ? (otherCategoryId || row.category_id) : row.category_id]
+        return []
+      })()
+
+      const normalizedTags = this.normalizeTagList(safeJsonParse(row.tags || '[]', []))
+      const fromTags = this.splitCategoryLikeTags(normalizedTags, categoryNameToId)
+      const mergedCategoryIds = this.mergeCategoryIds(currentCategoryIds, fromTags.categoryIds)
+      const primaryCategoryId = mergedCategoryIds[0] || (otherCategoryId || 'other')
+      const nextCategoryIds = JSON.stringify(mergedCategoryIds.length > 0 ? mergedCategoryIds : [primaryCategoryId])
+      const nextTags = fromTags.tags.length > 0 ? JSON.stringify(fromTags.tags) : null
+      const prevCategoryIds = String(row.category_ids || '')
+      const prevCategoryId = row.category_id === 'other' ? (otherCategoryId || row.category_id) : row.category_id
+      const prevTags = row.tags || null
+
+      if (prevCategoryId === primaryCategoryId && prevCategoryIds === nextCategoryIds && prevTags === nextTags) continue
+
+      await this.db
+        .updateTable('games')
+        .set({
+          category_id: primaryCategoryId,
+          category_ids: nextCategoryIds,
+          tags: nextTags,
+          updated_at: new Date().toISOString()
+        })
+        .where('id', '=', row.id)
+        .execute()
+    }
+  }
+
+  private normalizeGameCategoryPayload(game: any, otherCategoryId: string) {
+    const normalizedCategories = Array.isArray(game.categories)
+      ? game.categories
+        .map((c: any) => String(c || '').trim())
+        .filter(Boolean)
+        .map((id: string) => id === 'other' ? (otherCategoryId || id) : id)
+      : []
+
+    const categoryValue = String(game.category || '').trim()
+    const normalizedCategoryValue = categoryValue === 'other'
+      ? (otherCategoryId || categoryValue)
+      : categoryValue
+
+    const categoryId =
+      normalizedCategories[0]
+      || normalizedCategoryValue
+      || (otherCategoryId || 'other')
+
+    const categoryIds = normalizedCategories.length > 0
+      ? normalizedCategories
+      : [categoryId]
+
+    return { categoryId, categoryIds }
+  }
+
   /**
    * 初始化数据库 Schema
    * 
@@ -145,6 +283,7 @@ export class DatabaseService {
         icon TEXT,
         process_name TEXT NOT NULL,
         category_id TEXT NOT NULL,
+        category_ids TEXT,
         tags TEXT,
         profile_id TEXT,
         last_played INTEGER,
@@ -166,6 +305,7 @@ export class DatabaseService {
     this.ensureColumn('nodes', 'alpn', 'TEXT')
     this.ensureColumn('nodes', 'fingerprint', 'TEXT')
     this.ensureColumn('nodes', 'username', 'TEXT')
+    this.ensureColumn('games', 'category_ids', 'TEXT')
 
     this.initDefaultData()
   }
@@ -233,6 +373,7 @@ export class DatabaseService {
             name: '加速海外游戏',
             process_name: '[]',
             category_id: otherCategoryId,
+            category_ids: JSON.stringify([otherCategoryId]),
             proxy_mode: 'routing',
             routing_rules: JSON.stringify(['bypass_cn']),
             status: 'idle',
@@ -243,6 +384,7 @@ export class DatabaseService {
             name: '加速全部游戏',
             process_name: '[]',
             category_id: otherCategoryId,
+            category_ids: JSON.stringify([otherCategoryId]),
             proxy_mode: 'routing',
             routing_rules: JSON.stringify(['global']),
             status: 'idle',
@@ -251,8 +393,8 @@ export class DatabaseService {
         ]
 
         const insertGame = this.sqlite.prepare(`
-              INSERT INTO games (id, name, process_name, category_id, proxy_mode, routing_rules, status, latency, created_at, updated_at)
-              VALUES (@id, @name, @process_name, @category_id, @proxy_mode, @routing_rules, @status, @latency, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+              INSERT INTO games (id, name, process_name, category_id, category_ids, proxy_mode, routing_rules, status, latency, created_at, updated_at)
+              VALUES (@id, @name, @process_name, @category_id, @category_ids, @proxy_mode, @routing_rules, @status, @latency, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
           `)
 
         const insertManyGames = this.sqlite.transaction((games: typeof defaultGames) => {
@@ -264,6 +406,8 @@ export class DatabaseService {
         insertManyGames(defaultGames)
         console.log('默认模式初始化完成。')
       }
+
+      await this.reconcileGameCategoryTagConflicts()
     } catch (err) {
       console.error('初始化默认数据失败：', err)
     }
@@ -371,22 +515,38 @@ export class DatabaseService {
   async getAllGames() {
     const rows = await this.db.selectFrom('games').selectAll().execute()
     const otherCategoryId = await this.resolveOtherCategoryId()
-    return rows.map(row => ({
-      id: row.id,
-      name: row.name,
-      iconUrl: row.icon && isIconUrl(row.icon) ? row.icon : undefined,
-      processName: parseStringArray(row.process_name),
-      category: row.category_id === 'other' ? (otherCategoryId || row.category_id) : row.category_id,
-      tags: safeJsonParse(row.tags || 'null', undefined),
-      profileId: row.profile_id || undefined,
-      lastPlayed: row.last_played || undefined,
-      status: row.status || undefined,
-      latency: row.latency || undefined,
-      nodeId: row.node_id || undefined,
-      proxyMode: (row.proxy_mode || 'process') as any,
-      routingRules: row.routing_rules ? parseStringArray(row.routing_rules) : undefined,
-      chainProxy: Boolean(row.chain_proxy)
-    }))
+    return rows.map(row => {
+      const categoryIds = (() => {
+        const fromColumn = parseStringArray(String(row.category_ids || '')).map((id) =>
+          id === 'other' ? (otherCategoryId || id) : id
+        )
+        if (fromColumn.length > 0) return fromColumn
+        if (row.category_id) return [row.category_id === 'other' ? (otherCategoryId || row.category_id) : row.category_id]
+        return []
+      })()
+
+      return {
+        // category_id 保留为兼容字段；category_ids 提供多分类能力
+        category: row.category_id === 'other' ? (otherCategoryId || row.category_id) : row.category_id,
+        categories: categoryIds,
+        id: row.id,
+        name: row.name,
+        iconUrl: row.icon && isIconUrl(row.icon) ? row.icon : undefined,
+        processName: parseStringArray(row.process_name),
+        tags: (() => {
+          const normalizedTags = this.normalizeTagList(safeJsonParse(row.tags || '[]', []))
+          return normalizedTags.length > 0 ? normalizedTags : undefined
+        })(),
+        profileId: row.profile_id || undefined,
+        lastPlayed: row.last_played || undefined,
+        status: row.status || undefined,
+        latency: row.latency || undefined,
+        nodeId: row.node_id || undefined,
+        proxyMode: (row.proxy_mode || 'process') as any,
+        routingRules: row.routing_rules ? parseStringArray(row.routing_rules) : undefined,
+        chainProxy: Boolean(row.chain_proxy)
+      }
+    })
   }
 
   /**
@@ -398,17 +558,21 @@ export class DatabaseService {
     const otherCategoryId = await this.resolveOtherCategoryId()
     const iconValue = game.iconUrl || game.icon || ''
     const icon = typeof iconValue === 'string' && iconValue.trim() && isIconUrl(iconValue) ? iconValue.trim() : null
-    const categoryId =
-      game.category && game.category !== 'other'
-        ? game.category
-        : (otherCategoryId || 'other')
+    const { categoryId, categoryIds } = this.normalizeGameCategoryPayload(game, otherCategoryId || 'other')
+    const normalizedTags = this.normalizeTagList(game.tags)
+    const categories = await this.db.selectFrom('categories').select(['id', 'name']).execute()
+    const categoryNameToId = new Map(categories.map((c) => [String(c.name || '').toLowerCase(), c.id]))
+    const fromTags = this.splitCategoryLikeTags(normalizedTags, categoryNameToId)
+    const mergedCategoryIds = this.mergeCategoryIds(categoryIds, fromTags.categoryIds)
+    const primaryCategoryId = mergedCategoryIds[0] || categoryId
     const gameData = {
       id: game.id || generateId(),
       name: game.name,
       icon,
       process_name: JSON.stringify(Array.isArray(game.processName) ? game.processName : [game.processName]),
-      category_id: categoryId,
-      tags: game.tags ? JSON.stringify(game.tags) : null,
+      category_id: primaryCategoryId,
+      category_ids: JSON.stringify(mergedCategoryIds.length > 0 ? mergedCategoryIds : [primaryCategoryId]),
+      tags: fromTags.tags.length > 0 ? JSON.stringify(fromTags.tags) : null,
       profile_id: game.profileId || null,
       last_played: game.lastPlayed || 0,
       status: game.status || 'idle',
@@ -481,6 +645,10 @@ export class DatabaseService {
    * @param id - 分类 ID
    */
   async deleteCategory(id: string) {
+    const categories = await this.getAllCategories()
+    if (categories.length <= 1) {
+      throw new Error('At least one category must remain.')
+    }
     await this.db.deleteFrom('categories').where('id', '=', id).execute()
     return this.getAllCategories()
   }
@@ -589,18 +757,22 @@ export class DatabaseService {
       }
 
       if (data.games) {
+        const categories = await trx.selectFrom('categories').select(['id', 'name']).execute()
+        const categoryNameToId = new Map(categories.map((c) => [String(c.name || '').toLowerCase(), c.id]))
         for (const game of data.games) {
-          const categoryId =
-            game.category && game.category !== 'other'
-              ? game.category
-              : (otherCategoryId || 'other')
+          const { categoryId, categoryIds } = this.normalizeGameCategoryPayload(game, otherCategoryId || 'other')
+          const normalizedTags = this.normalizeTagList(game.tags)
+          const fromTags = this.splitCategoryLikeTags(normalizedTags, categoryNameToId)
+          const mergedCategoryIds = this.mergeCategoryIds(categoryIds, fromTags.categoryIds)
+          const primaryCategoryId = mergedCategoryIds[0] || categoryId
           const gameData = {
             id: game.id || generateId(),
             name: game.name,
             icon: game.iconUrl || game.icon || null,
             process_name: JSON.stringify(Array.isArray(game.processName) ? game.processName : [game.processName]),
-            category_id: categoryId,
-            tags: game.tags ? JSON.stringify(game.tags) : null,
+            category_id: primaryCategoryId,
+            category_ids: JSON.stringify(mergedCategoryIds.length > 0 ? mergedCategoryIds : [primaryCategoryId]),
+            tags: fromTags.tags.length > 0 ? JSON.stringify(fromTags.tags) : null,
             profile_id: game.profileId || null,
             last_played: game.lastPlayed || 0,
             status: game.status || 'idle',

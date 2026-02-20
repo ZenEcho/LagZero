@@ -1,7 +1,7 @@
 import fs from 'fs-extra'
 import path from 'path'
 import { LocalGameScanResult } from './types'
-import { getWindowsDriveRoots, normalizeDisplayName, normalizeFsPath, safeReadDir } from './utils'
+import { getWindowsDriveRoots, normalizeDisplayName, normalizeFsPath, safeReadDir, pickRelatedExecutables } from './utils'
 import { runCommand } from '../../utils/command'
 import { scanFlatPlatformFolder } from './flat'
 
@@ -122,13 +122,74 @@ async function getManifestDisplayNameHints(xboxRoots: string[]): Promise<Map<str
 }
 
 /**
+ * 扫描 UWP / 已安装的 AppxPackages
+ */
+async function scanAppxPackages(): Promise<LocalGameScanResult[]> {
+  if (process.platform !== 'win32') return []
+
+  const script = "Get-AppxPackage | Where-Object { $_.InstallLocation } | Select-Object Name, InstallLocation | ConvertTo-Json -Compress"
+  const { code, output } = await runCommand('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], 15000)
+  if (code !== 0 || !output) return []
+
+  const rows = parsePowershellJson<{ Name?: string, InstallLocation?: string }>(output)
+  const results: LocalGameScanResult[] = []
+
+  // 避免并发过高
+  for (const row of rows) {
+    const packageName = String(row.Name || '').trim()
+    const location = String(row.InstallLocation || '').trim()
+    if (!packageName || !location) continue
+
+    const manifestPath = path.join(location, 'AppxManifest.xml')
+    if (!await fs.pathExists(manifestPath)) continue
+
+    try {
+      const content = await fs.readFile(manifestPath, 'utf8')
+      const isGame = content.includes('Category="public.app-category.games"') ||
+        content.includes('<Category>games</Category>') ||
+        content.includes('Executable="GameLaunchHelper.exe"') ||
+        content.includes('TargetDeviceFamily Name="Windows.Xbox"') ||
+        /(Forza|Minecraft|Halo|AgeOf|SeaOf|FlightSim|StateOfDecay|Gears)/i.test(packageName)
+
+      if (isGame) {
+        const parsedName = parseDisplayNameFromManifest(content) || packageName
+        const exes = await pickRelatedExecutables(location, parsedName)
+        if (exes && exes.length > 0) {
+          results.push({
+            name: normalizeDisplayName(parsedName),
+            processName: exes.map(e => path.basename(e)),
+            source: 'Microsoft',
+            installDir: location
+          })
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return results
+}
+
+/**
  * 扫描 Microsoft Store / Xbox 游戏
  * 结合目录扫描、注册表和 AppxManifest 信息来获取准确的游戏名称
  */
 export async function scanMicrosoftGames(): Promise<LocalGameScanResult[]> {
   const drives = await getWindowsDriveRoots()
   const roots = drives.map(root => path.join(root, 'XboxGames'))
-  const base = await scanFlatPlatformFolder('microsoft', roots)
+
+  const [base, appxBase] = await Promise.all([
+    scanFlatPlatformFolder('Microsoft', roots),
+    scanAppxPackages()
+  ])
+
+  // 去重 (相同的安装目录只保留一个)
+  const uniqueGames = new Map<string, LocalGameScanResult>()
+  for (const game of [...base, ...appxBase]) {
+    uniqueGames.set(normalizeFsPath(game.installDir), game)
+  }
+  const mergedBase = Array.from(uniqueGames.values())
 
   const [registryHints, manifestHints] = await Promise.all([
     getRegistryDisplayNameHints(),
@@ -136,7 +197,7 @@ export async function scanMicrosoftGames(): Promise<LocalGameScanResult[]> {
   ])
   const hints = new Map<string, string>([...registryHints, ...manifestHints])
 
-  return base.map(game => {
+  return mergedBase.map(game => {
     const hintName = pickBestNameFromHints(game.installDir, hints)
     return hintName ? { ...game, name: hintName } : game
   })

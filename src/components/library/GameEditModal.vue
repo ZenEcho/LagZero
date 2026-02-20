@@ -15,9 +15,12 @@
       </n-form-item>
 
       <n-form-item :label="$t('games.category')">
-        <n-radio-group v-model:value="form.category">
-          <n-radio-button v-for="cat in categories" :key="cat" :value="cat" :label="cat.toUpperCase()" />
-        </n-radio-group>
+        <n-select :value="form.categories" @update:value="updateCategories" multiple
+          :options="categoryStore.categories.map((c: any) => ({ label: c.name, value: c.id }))" />
+      </n-form-item>
+
+      <n-form-item :label="$t('games.tags')">
+        <n-dynamic-tags v-model:value="form.tags" />
       </n-form-item>
     </n-form>
 
@@ -36,7 +39,8 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import type { Game } from '@/types'
-import { GAME_CATEGORIES } from '@/constants'
+import { useCategoryStore } from '@/stores/categories'
+import { useMessage } from 'naive-ui'
 import IconSelector from '@/components/common/IconSelector.vue'
 import ProcessSelector from '@/components/common/ProcessSelector.vue'
 
@@ -51,14 +55,16 @@ const emit = defineEmits<{
 }>()
 
 const isEdit = computed(() => !!props.editingGame)
-
-const categories = GAME_CATEGORIES
+const categoryStore = useCategoryStore()
+const message = useMessage()
 
 const form = ref<Omit<Game, 'id'>>({
   name: '',
   iconUrl: '',
   processName: '',
   category: 'other',
+  categories: [],
+  tags: [],
   lastPlayed: 0
 })
 
@@ -79,12 +85,21 @@ watch(() => props.modelValue, (val) => {
   if (val) {
     if (props.editingGame) {
       form.value = JSON.parse(JSON.stringify(props.editingGame))
+      if (!Array.isArray(form.value.categories) || form.value.categories.length === 0) {
+        form.value.categories = form.value.category ? [String(form.value.category)] : []
+      }
+      if (!Array.isArray(form.value.tags)) {
+        form.value.tags = []
+      }
     } else {
+      const defaultCategory = categoryStore.categories[0]?.id || 'other'
       form.value = {
         name: '',
         iconUrl: '',
         processName: '',
-        category: 'other',
+        category: defaultCategory,
+        categories: defaultCategory ? [defaultCategory] : [],
+        tags: [],
         lastPlayed: 0
       }
     }
@@ -95,13 +110,35 @@ function close() {
   emit('update:modelValue', false)
 }
 
+function updateCategories(value: string[]) {
+  const clean = Array.isArray(value) ? value.map(v => String(v).trim()).filter(Boolean) : []
+  if (clean.length === 0) {
+    message.warning('至少保留一个标签')
+    return
+  }
+  form.value.categories = clean
+  form.value.category = clean[0] || 'other'
+}
+
 function save() {
   if (!form.value.name) return
+  const cleanCategories = Array.isArray(form.value.categories)
+    ? form.value.categories.map((c) => String(c).trim()).filter(Boolean)
+    : []
+  if (cleanCategories.length === 0) {
+    message.warning('请至少选择一个标签')
+    return
+  }
+  const payload = {
+    ...form.value,
+    category: cleanCategories[0] || 'other',
+    categories: cleanCategories
+  }
 
   if (props.editingGame) {
-    emit('save', { ...form.value, id: props.editingGame.id })
+    emit('save', { ...payload, id: props.editingGame.id })
   } else {
-    emit('save', form.value)
+    emit('save', payload)
   }
   close()
 }

@@ -1,13 +1,15 @@
+export type Platform = 'Steam' | 'Microsoft' | 'Epic' | 'EA'
+
 /**
  * 本地游戏扫描结果接口
  */
 export type LocalGameScanResult = {
   /** 游戏显示名称 */
   name: string
-  /** 游戏主进程名 (如 dota2.exe) */
-  processName: string
+  /** 游戏主进程名 (如 dota2.exe, 支持多个) */
+  processName: string[]
   /** 来源平台 */
-  source: 'steam' | 'microsoft' | 'epic' | 'ea'
+  source: Platform
   /** 安装目录绝对路径 */
   installDir: string
 }

@@ -29,7 +29,7 @@
               <div class="i-carbon-radar"></div>
             </template>
             <span class="hidden xs:inline ">{{ isScanning ? $t('games.scanning') : $t('games.scan_local') }}</span>
-            <span class="xs:hidden">{{ isScanning ? '...' : '扫描' }}</span>
+            <span class="xs:hidden">{{ isScanning ? '...' : $t('games.scan') }}</span>
           </n-button>
 
           <n-button type="primary" round @click="openAddModal" class="shadow-lg shadow-primary/20">
@@ -37,10 +37,10 @@
               <div class="i-carbon-add"></div>
             </template>
             <span class="hidden xs:inline ">{{ $t('games.add_game') }}</span>
-            <span class="xs:hidden">添加</span>
+            <span class="xs:hidden">{{ $t('common.add') }}</span>
           </n-button>
 
-          <n-button quaternary circle @click="showCategoryManager = true" :title="$t('common.manage_categories')">
+          <n-button quaternary circle @click="showCategoryManager = true" :title="$t('common.categories')">
             <template #icon>
               <div class="i-carbon-categories"></div>
             </template>
@@ -66,18 +66,20 @@
           <div class="i-carbon-rocket text-xl animate-pulse"></div>
         </div>
         <div>
-          <div class="text-xs text-success/80 font-bold uppercase tracking-wider mb-0.5 ">当前正在加速</div>
+          <div class="text-xs text-success/80 font-bold uppercase tracking-wider mb-0.5 ">{{
+            $t('games.accelerating_now') }}
+          </div>
           <div class="text-lg font-bold text-on-surface flex items-center gap-2 ">
             {{ acceleratingGame.name }}
             <n-tag size="small" type="success" :bordered="false" class="text-xs ">
-              {{ acceleratingGame.latency ? acceleratingGame.latency + ' ms' : '已连接' }}
+              {{ acceleratingGame.latency ? acceleratingGame.latency + ' ms' : $t('common.connected') }}
             </n-tag>
           </div>
         </div>
       </div>
       <n-button type="error" size="small" secondary round @click="stopAcceleration(acceleratingGame.id!)"
         :loading="gameStore.operationState === 'stopping'" :disabled="isActionPending">
-        停止加速
+        {{ $t('common.stop_acceleration') }}
       </n-button>
     </div>
 
@@ -123,24 +125,24 @@
               <template v-if="game.status !== 'accelerating'">
                 <button
                   class="w-10 h-10 rounded-full bg-primary text-on-primary flex items-center justify-center hover:scale-110 transition shadow-lg shadow-primary/40"
-                  @click.stop="tryStartGame(game)" title="开始加速" :disabled="isActionPending">
+                  @click.stop="tryStartGame(game)" :title="$t('common.start_acceleration')" :disabled="isActionPending">
                   <div class="i-carbon-play-filled text-xl"></div>
                 </button>
                 <button
                   class="w-8 h-8 rounded-full bg-surface text-on-surface hover:text-primary flex items-center justify-center hover:scale-110 transition"
-                  @click.stop="editGame(game)" title="设置">
+                  @click.stop="editGame(game)" :title="$t('common.settings')">
                   <div class="i-carbon-settings"></div>
                 </button>
                 <button
                   class="w-8 h-8 rounded-full bg-surface text-on-surface hover:text-error flex items-center justify-center hover:scale-110 transition"
-                  @click.stop="deleteGame(game)" title="删除">
+                  @click.stop="deleteGame(game)" :title="$t('common.delete')">
                   <div class="i-carbon-trash-can"></div>
                 </button>
               </template>
               <template v-else>
                 <n-button type="error" round class="shadow-lg font-bold px-6" @click.stop="stopAcceleration(game.id!)"
                   :disabled="isActionPending" :loading="gameStore.operationState === 'stopping'">
-                  停止加速
+                  {{ $t('common.stop_acceleration') }}
                 </n-button>
               </template>
             </div>
@@ -150,11 +152,11 @@
               <div v-if="game.status === 'accelerating'"
                 class="px-2 py-0.5 rounded text-[10px] font-bold bg-success text-on-success shadow-sm flex items-center gap-1">
                 <div class="w-1.5 h-1.5 bg-white rounded-full animate-pulse "></div>
-                加速中
+                {{ $t('games.accelerating') }}
               </div>
               <div class="px-2 py-0.5 rounded text-[10px] font-bold shadow-sm uppercase backdrop-blur-md"
                 :class="game.proxyMode === 'routing' ? 'bg-info/20 text-info border border-info/30' : 'bg-warning/20 text-warning border border-warning/30'">
-                {{ game.proxyMode === 'routing' ? '路由模式' : '进程模式' }}
+                {{ game.proxyMode === 'routing' ? $t('games.mode_routing') : $t('games.mode_process') }}
               </div>
             </div>
           </div>
@@ -180,19 +182,49 @@
               <div v-if="viewMode === 'list'" class="flex gap-2">
                 <n-tag size="small" :type="game.proxyMode === 'routing' ? 'info' : 'warning'" :bordered="false"
                   class="text-[10px] h-5">
-                  {{ game.proxyMode === 'routing' ? '路由模式' : '进程模式' }}
+                  {{ game.proxyMode === 'routing' ? $t('games.mode_routing') : $t('games.mode_process') }}
                 </n-tag>
                 <n-tag v-if="game.status === 'accelerating'" type="success" size="small" :bordered="false" class="h-5">
-                  加速中
+                  {{ $t('games.accelerating') }}
                 </n-tag>
               </div>
             </div>
 
-            <div class="flex items-center justify-between text-xs text-on-surface-muted">
-              <div class="flex items-center gap-2">
-                <span class="bg-surface-variant px-1.5 py-0.5 rounded text-[10px] ">{{ getCategoryLabel(game.category)
-                  }}</span>
-                <span v-if="game.lastPlayed" class="">{{ formatTime(game.lastPlayed) }}</span>
+            <div class="flex items-center justify-between text-xs text-on-surface-muted gap-2">
+              <div class="flex items-center gap-2 min-w-0 overflow-hidden ">
+                <template v-for="tag in getVisibleTags(game)" :key="`${game.id || game.name}-tag-${tag}`">
+                  <n-popover v-if="shouldUseTagPopover(tag)" trigger="hover" placement="top">
+                    <template #trigger>
+                      <span class="px-1.5 py-0.5 rounded text-[10px] font-medium max-w-[120px] truncate cursor-help"
+                        :class="isPlatformTag(tag) ? 'bg-primary/20 text-primary' : 'bg-surface-variant text-on-surface-muted'">
+                        {{ tag }}
+                      </span>
+                    </template>
+                    <span>{{ tag }}</span>
+                  </n-popover>
+                  <span v-else class="px-1.5 py-0.5 rounded text-[10px] font-medium max-w-[120px] truncate"
+                    :class="isPlatformTag(tag) ? 'bg-primary/20 text-primary' : 'bg-surface-variant text-on-surface-muted'">
+                    {{ tag }}
+                  </span>
+                </template>
+                <n-popover v-if="getHiddenTagCount(game) > 0" trigger="hover" placement="top">
+                  <template #trigger>
+                    <span
+                      class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface-variant text-on-surface-muted cursor-help">
+                      +{{ getHiddenTagCount(game) }}
+                    </span>
+                  </template>
+                  <div class="max-w-64 flex flex-wrap gap-1.5">
+                    <span v-for="tag in getDisplayTags(game)" :key="`${game.id || game.name}-all-tag-${tag}`"
+                      class="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                      :class="isPlatformTag(tag) ? 'bg-primary/20 text-primary' : 'bg-surface-variant text-on-surface-muted'">
+                      {{ tag }}
+                    </span>
+                  </div>
+                </n-popover>
+                <span v-if="game.lastPlayed" class="truncate"
+                  :class="viewMode === 'grid' ? ' absolute bottom-[56px]  right-2' : ''">
+                  <n-time :time="game.lastPlayed" format="yy-MM-dd hh:mm" /></span>
               </div>
 
               <div v-if="game.status === 'accelerating' && game.latency !== undefined"
@@ -211,12 +243,12 @@
                   <div class="i-carbon-play-filled"></div>
                 </template>
               </n-button>
-              <n-button circle quaternary size="small" @click.stop="editGame(game)" title="设置">
+              <n-button circle quaternary size="small" @click.stop="editGame(game)" :title="$t('common.settings')">
                 <template #icon>
                   <div class="i-carbon-settings"></div>
                 </template>
               </n-button>
-              <n-button circle quaternary size="small" @click.stop="deleteGame(game)" title="删除">
+              <n-button circle quaternary size="small" @click.stop="deleteGame(game)" :title="$t('common.delete')">
                 <template #icon>
                   <div class="i-carbon-trash-can"></div>
                 </template>
@@ -224,7 +256,7 @@
             </template>
             <n-button v-else type="error" size="small" round @click.stop="stopAcceleration(game.id!)"
               :loading="gameStore.operationState === 'stopping'" :disabled="isActionPending">
-              停止加速
+              {{ $t('common.stop_acceleration') }}
             </n-button>
           </div>
 
@@ -244,8 +276,8 @@ import { useRouter } from 'vue-router'
 import { useGameStore, type Game } from '@/stores/games'
 import { useCategoryStore } from '@/stores/categories'
 import { useI18n } from 'vue-i18n'
-import { useTimeAgo } from '@vueuse/core'
 import { useMessage, useDialog } from 'naive-ui'
+import type { LocalScanGame } from '@/types'
 import AdvancedConfigEditor from '@/components/library/AdvancedConfigEditor.vue'
 import CategoryManager from '@/components/library/CategoryManager.vue'
 import { useGameScanner } from '@/composables/useGameScanner'
@@ -298,6 +330,17 @@ const isActionPending = computed(() => gameStore.operationState !== 'idle')
 const showEditModal = ref(false)
 const showCategoryManager = ref(false)
 const editingGame = ref<Game | null>(null)
+const platformTags = new Set<LocalScanGame['source']>(['Steam', 'Microsoft', 'Epic', 'EA'])
+const maxTagDisplayWidth = 200
+const tagMaxWidth = 120
+const tagTextFont = '500 10px sans-serif'
+const tagPaddingX = 12
+const tagGap = 8
+const tagPopoverThreshold = 72
+
+const tagMeasureContext = typeof document !== 'undefined'
+  ? document.createElement('canvas').getContext('2d')
+  : null
 
 onMounted(() => {
   categoryStore.loadCategories()
@@ -308,18 +351,80 @@ const categories = computed(() => {
     label: c.name,
     value: c.id
   }))
-  return [{ label: '全部', value: 'all' }, ...list]
+  return [{ label: t('common.all'), value: 'all' }, ...list]
 })
 
-function getCategoryLabel(id: string) {
-  const cat = categoryStore.categories.find((c: any) => c.id === id)
-  return cat?.name || '未分类'
+const categoryNameMap = computed(() => {
+  const map = new Map<string, string>()
+  for (const c of categoryStore.categories) {
+    map.set(String(c.id), String(c.name || '').trim())
+  }
+  return map
+})
+
+function getGameCategoryIds(game: Game): string[] {
+  if (Array.isArray(game.categories) && game.categories.length > 0) {
+    return game.categories.map(c => String(c)).filter(Boolean)
+  }
+  return game.category ? [String(game.category)] : []
+}
+
+function isPlatformTag(tag: string): boolean {
+  return platformTags.has(tag as LocalScanGame['source'])
+}
+
+function getDisplayTags(game: Game): string[] {
+  const categoryTags = getGameCategoryIds(game)
+    .map((id) => categoryNameMap.value.get(String(id)) || '')
+    .map((name) => String(name || '').trim())
+    .filter(Boolean)
+  const customTags = Array.isArray(game.tags) ? game.tags.map(t => String(t || '').trim()).filter(Boolean) : []
+  return Array.from(new Set([...categoryTags, ...customTags]))
+}
+
+function getVisibleTags(game: Game): string[] {
+  const tags = getDisplayTags(game)
+  let usedWidth = 0
+  const visible: string[] = []
+
+  for (const tag of tags) {
+    const tagWidth = getTagWidth(tag)
+    const nextWidth = usedWidth + (visible.length > 0 ? tagGap : 0) + tagWidth
+    if (nextWidth > maxTagDisplayWidth) break
+    visible.push(tag)
+    usedWidth = nextWidth
+  }
+
+  if (visible.length === 0 && tags.length > 0 && tags[0]) {
+    return [tags[0]!]
+  }
+
+  return visible
+}
+
+function getHiddenTagCount(game: Game): number {
+  return Math.max(getDisplayTags(game).length - getVisibleTags(game).length, 0)
+}
+
+function shouldUseTagPopover(tag: string): boolean {
+  return getTagWidth(tag) > tagPopoverThreshold
+}
+
+function getTagWidth(tag: string): number {
+  const text = String(tag || '')
+  if (tagMeasureContext) {
+    tagMeasureContext.font = tagTextFont
+    const measured = Math.ceil(tagMeasureContext.measureText(text).width)
+    return Math.min(measured + tagPaddingX, tagMaxWidth)
+  }
+  const estimated = Math.ceil(text.length * 6)
+  return Math.min(estimated + tagPaddingX, tagMaxWidth)
 }
 
 const filteredGames = computed(() => {
   return gameStore.gameLibrary.filter((game: Game) => {
     const matchSearch = game.name.toLowerCase().includes(searchQuery.value.toLowerCase())
-    const matchCat = activeCategory.value === 'all' || game.category === activeCategory.value
+    const matchCat = activeCategory.value === 'all' || getGameCategoryIds(game).includes(activeCategory.value)
     return matchSearch && matchCat
   }).sort((a: Game, b: Game) => {
     const aAccelerating = a.status === 'accelerating'
@@ -339,8 +444,8 @@ const filteredGames = computed(() => {
 function selectGame(id: string) {
   const ok = gameStore.setCurrentGame(id)
   if (!ok) {
-    const name = acceleratingGame.value?.name || '当前游戏'
-    message.warning(`正在加速「${name}」，请先停止加速后再切换。`)
+    const name = acceleratingGame.value?.name || t('games.current_game')
+    message.warning(t('games.switching_warning', { name }))
     return
   }
   router.push('/dashboard')
@@ -363,9 +468,9 @@ async function stopAcceleration(id: string) {
   if (isActionPending.value) return
   try {
     await gameStore.stopGame(id)
-    message.success('已停止加速')
+    message.success(t('games.stopped_acceleration'))
   } catch (e) {
-    message.error('停止失败')
+    message.error(t('games.stop_failed'))
   }
 }
 
@@ -374,9 +479,6 @@ function isAccelerationLockedFor(game: Game) {
   return !!active && game.id !== active.id
 }
 
-function formatTime(timestamp: number) {
-  return useTimeAgo(timestamp).value
-}
 
 function openAddModal() {
   editingGame.value = null
@@ -390,16 +492,16 @@ function editGame(game: Game) {
 
 async function deleteGame(game: Game) {
   dialog.warning({
-    title: t('common.delete') || '确认删除',
-    content: t('games.delete_confirm') || '您确定要删除这个游戏吗？',
-    positiveText: t('common.delete') || '删除',
-    negativeText: t('common.cancel') || '取消',
+    title: t('common.delete'),
+    content: t('games.delete_confirm'),
+    positiveText: t('common.delete'),
+    negativeText: t('common.cancel'),
     positiveButtonProps: {
       type: 'error'
     },
     onPositiveClick: async () => {
       if (game.id) await gameStore.removeGame(game.id)
-      message.success(t('common.deleted') || '已删除')
+      message.success(t('common.deleted'))
     }
   })
 }

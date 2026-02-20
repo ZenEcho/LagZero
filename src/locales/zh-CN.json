@@ -29,7 +29,7 @@
     "sort_by": "排序方式：",
     "network_stability": "网络稳定性",
     "live": "实时",
-    "uncategorized": "未分类",
+    "uncategorized": "未打标签",
     "search": "搜索",
     "paste_link": "在此粘贴链接 (支持批量/订阅)",
     "no_nodes": "暂无节点，请添加或导入！",
@@ -41,7 +41,7 @@
     "deleted": "已删除",
     "edit": "编辑",
     "add": "添加",
-    "categories": "分类管理",
+    "categories": "标签管理",
     "optional": "可选",
     "more": "更多",
     "fill_required": "请填写必填项",
@@ -50,7 +50,8 @@
     "enabled": "已开启",
     "disabled": "已关闭",
     "add_node_hint": "点击右上角添加按钮导入或创建节点",
-    "no_data": "无数据"
+    "no_data": "无数据",
+    "all": "全部"
   },
   "nodes": {
     "add_node": "添加节点",
@@ -162,11 +163,22 @@
     "process_name_tip": "多个进程名请用逗号分隔",
     "icon": "图标类名",
     "category": "分类",
+    "tags": "平台/其他标签",
     "delete_confirm": "确定要删除这个游戏吗？",
     "advanced_config": "高级配置",
     "chain_proxy": "启用链式代理检测",
     "chain_proxy_desc": "自动检测并代理游戏启动的子进程。",
-    "add_process": "添加进程"
+    "add_process": "添加进程",
+    "scan": "扫描",
+    "scan_complete_added": "扫描完成：新增 {added} 个游戏，当前运行匹配 {matched} 个。",
+    "scan_complete_no_added": "扫描完成：未新增游戏，当前运行匹配 {matched} 个。",
+    "scan_complete_none": "扫描完成：未发现可新增的本地游戏。",
+    "scan_failed": "扫描失败，请重试。",
+    "accelerating_now": "当前正在加速",
+    "current_game": "当前游戏",
+    "switching_warning": "正在加速「{name}」，请先停止加速后再切换。",
+    "stopped_acceleration": "已停止加速",
+    "stop_failed": "停止失败"
   },
   "rules": {
     "routing": "路由模式",
@@ -258,7 +270,15 @@
     "session_network_tuning_apply_failed": "应用网络优化参数失败"
   },
   "categories": {
-    "new_category_placeholder": "输入新分类名称..."
+    "new_category_placeholder": "输入新标签名称...",
+    "added": "标签已添加",
+    "updated": "标签已保存",
+    "deleted": "标签已删除",
+    "delete_title": "删除标签",
+    "delete_confirm": "确定要删除“{name}”吗？",
+    "delete_failed": "删除失败",
+    "keep_one": "至少保留一个标签，不能删除最后一个标签。",
+    "name_required": "标签名称不能为空"
   },
   "dashboard": {
     "hint": "温馨提示：开启加速后，建议重启游戏以确保所有流量正确经过虚拟网卡。",

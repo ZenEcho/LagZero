@@ -541,14 +541,17 @@ function toIpcGame(game: Game): Game {
     : String(raw.processName ?? '')
 
   const tags = Array.isArray(raw.tags) ? raw.tags.map((t: any) => String(t)) : undefined
+  const categories = Array.isArray(raw.categories) ? raw.categories.map((c: any) => String(c).trim()).filter(Boolean) : undefined
   const routingRules = Array.isArray(raw.routingRules) ? raw.routingRules.map((r: any) => String(r)) : undefined
+  const primaryCategory = categories?.[0] || String(raw.category ?? '')
 
   return {
     id: String(raw.id ?? ''),
     name: String(raw.name ?? ''),
     iconUrl: raw.iconUrl != null ? String(raw.iconUrl) : undefined,
     processName,
-    category: String(raw.category ?? ''),
+    category: primaryCategory,
+    categories,
     tags,
     profileId: raw.profileId != null ? String(raw.profileId) : undefined,
     lastPlayed: typeof raw.lastPlayed === 'number' ? raw.lastPlayed : undefined,

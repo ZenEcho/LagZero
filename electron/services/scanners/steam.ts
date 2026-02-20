@@ -1,7 +1,8 @@
 import fs from 'fs-extra'
 import path from 'path'
 import { LocalGameScanResult } from './types'
-import { getWindowsDriveRoots, normalizeDisplayName, pickBestExecutable, safeReadDir } from './utils'
+import { getWindowsDriveRoots, normalizeDisplayName, pickRelatedExecutables, safeReadDir } from './utils'
+import { runCommand } from '../../utils/command'
 
 /**
  * 读取 Steam 库文件夹路径
@@ -9,13 +10,29 @@ import { getWindowsDriveRoots, normalizeDisplayName, pickBestExecutable, safeRea
  */
 async function readSteamLibraryRoots(): Promise<string[]> {
   const drives = await getWindowsDriveRoots()
-  const candidateSteamRoots = Array.from(new Set(
-    drives.flatMap(root => [
+  const candidateSteamRoots = Array.from(new Set([
+    ...drives.flatMap(root => [
+      root,
       path.join(root, 'Program Files (x86)', 'Steam'),
       path.join(root, 'Program Files', 'Steam'),
-      path.join(root, 'Steam')
+      path.join(root, 'Steam'),
+      path.join(root, 'SteamLibrary'),
+      path.join(root, 'Games', 'Steam'),
+      path.join(root, 'Games', 'SteamLibrary'),
+      path.join(root, 'Game', 'Steam')
     ])
-  ))
+  ]))
+
+  // 尝试从注册表获取真实 Steam 安装目录
+  try {
+    const { code, output } = await runCommand('powershell', ['-NoProfile', '-Command', '(Get-ItemProperty "HKCU:\\Software\\Valve\\Steam" -ErrorAction SilentlyContinue).SteamPath'], 5000)
+    if (code === 0 && output) {
+      const p = output.trim()
+      if (p) candidateSteamRoots.unshift(path.normalize(p))
+    }
+  } catch (e) {
+    // ignore
+  }
   const libs = new Set<string>()
 
   for (const steamRoot of candidateSteamRoots) {
@@ -56,12 +73,12 @@ export async function scanSteamGames(): Promise<LocalGameScanResult[]> {
     for (const entry of games) {
       if (!entry.isDirectory()) continue
       const installDir = path.join(commonDir, entry.name)
-      const exe = await pickBestExecutable(installDir, entry.name)
-      if (!exe) continue
+      const exes = await pickRelatedExecutables(installDir, entry.name)
+      if (!exes || exes.length === 0) continue
       results.push({
         name: normalizeDisplayName(entry.name),
-        processName: path.basename(exe),
-        source: 'steam',
+        processName: exes.map(e => path.basename(e)),
+        source: 'Steam',
         installDir
       })
     }

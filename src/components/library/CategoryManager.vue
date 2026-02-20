@@ -5,9 +5,6 @@
       <n-input v-model:value="newCategoryName" :placeholder="$t('categories.new_category_placeholder')"
         @keyup.enter="addCategory" />
       <n-button type="primary" @click="addCategory" :disabled="!newCategoryName">
-        <template #icon>
-          <div class="i-material-symbols-add"></div>
-        </template>
         {{ $t('common.add') }}
       </n-button>
     </div>
@@ -18,14 +15,12 @@
         <template #item="{ element }">
           <div
             class="flex items-center gap-3 p-3 bg-surface rounded border border-border group hover:border-primary/50 transition">
-            <div
-              class="drag-handle text-on-surface-muted i-material-symbols-drag-indicator hover:text-on-surface cursor-grab active:cursor-grabbing">
-            </div>
+            <div class="drag-handle text-on-surface-muted hover:text-on-surface cursor-grab active:cursor-grabbing">⋮⋮</div>
 
             <div class="flex-1 flex items-center gap-2">
               <div v-if="editingId === element.id" class="flex-1">
-                <n-input v-model:value="element.name" size="small" @blur="finishEdit(element)"
-                  @keyup.enter="finishEdit(element)" ref="editInput" v-focus />
+                <n-input v-model:value="editingDraftName" size="small" @keyup.enter="finishEdit(element)"
+                  @keyup.esc="cancelEdit" ref="editInput" v-focus />
               </div>
               <div v-else class="flex-1 font-bold text-on-surface" @dblclick="startEdit(element)">
                 {{ element.name }}
@@ -33,16 +28,22 @@
             </div>
 
             <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <n-button size="small" quaternary circle @click="startEdit(element)">
-                <template #icon>
-                  <div class="i-material-symbols-edit"></div>
-                </template>
-              </n-button>
-              <n-button size="small" quaternary circle type="error" @click="deleteCategory(element)">
-                <template #icon>
-                  <div class="i-material-symbols-delete"></div>
-                </template>
-              </n-button>
+              <template v-if="editingId === element.id">
+                <n-button size="small" quaternary type="primary" @click="finishEdit(element)" :title="$t('common.save')">
+                  {{ $t('common.save') }}
+                </n-button>
+                <n-button size="small" quaternary @click="cancelEdit" :title="$t('common.cancel')">
+                  {{ $t('common.cancel') }}
+                </n-button>
+              </template>
+              <template v-else>
+                <n-button size="small" quaternary @click="startEdit(element)">
+                  {{ $t('common.edit') }}
+                </n-button>
+                <n-button size="small" quaternary type="error" @click="deleteCategory(element)">
+                  {{ $t('common.delete') }}
+                </n-button>
+              </template>
             </div>
           </div>
         </template>
@@ -73,6 +74,8 @@ const dialog = useDialog()
 const categoryStore = useCategoryStore()
 const newCategoryName = ref('')
 const editingId = ref<string | null>(null)
+const editingDraftName = ref('')
+const editingOriginalName = ref('')
 
 // Custom directive for focus
 const vFocus = {
@@ -86,38 +89,66 @@ const vFocus = {
 
 
 async function addCategory() {
-  if (!newCategoryName.value) return
+  const name = newCategoryName.value.trim()
+  if (!name) return
 
   await categoryStore.addCategory({
     id: Date.now().toString(36),
-    name: newCategoryName.value,
+    name,
     order: categoryStore.categories.length
   })
 
   newCategoryName.value = ''
-  message.success('Category added')
+  message.success(t('categories.added'))
 }
 
 function startEdit(category: Category) {
   editingId.value = category.id
+  editingDraftName.value = category.name
+  editingOriginalName.value = category.name
+}
+
+function cancelEdit() {
+  editingId.value = null
+  editingDraftName.value = ''
+  editingOriginalName.value = ''
 }
 
 async function finishEdit(category: Category) {
   if (!editingId.value) return
+  const nextName = editingDraftName.value.trim()
+  if (!nextName) {
+    message.warning(t('categories.name_required'))
+    return
+  }
+  if (nextName === editingOriginalName.value) {
+    cancelEdit()
+    return
+  }
 
-  await categoryStore.updateCategory(category)
-  editingId.value = null
+  await categoryStore.updateCategory({ ...category, name: nextName })
+  message.success(t('categories.updated'))
+  cancelEdit()
 }
 
 function deleteCategory(category: Category) {
+  if ((categoryStore.categories || []).length <= 1) {
+    message.warning(t('categories.keep_one'))
+    return
+  }
+
   dialog.warning({
-    title: 'Delete Category',
-    content: `Are you sure you want to delete "${category.name}"?`,
+    title: t('categories.delete_title'),
+    content: t('categories.delete_confirm', { name: category.name }),
     positiveText: t('common.delete'),
     negativeText: t('common.cancel'),
     onPositiveClick: async () => {
-      await categoryStore.removeCategory(category.id)
-      message.success('Category deleted')
+      try {
+        await categoryStore.removeCategory(category.id)
+        message.success(t('categories.deleted'))
+      } catch (e: any) {
+        message.error(String(e?.message || t('categories.delete_failed')))
+      }
     }
   })
 }

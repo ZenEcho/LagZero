@@ -7,7 +7,7 @@
           <n-input v-model:value="form.name" placeholder="例如：英雄联盟" />
         </n-form-item>
         <n-form-item :label="$t('games.category')">
-          <n-select v-model:value="form.category"
+          <n-select :value="form.categories" @update:value="updateCategories" multiple
             :options="categoryStore.categories.map((c: any) => ({ label: c.name, value: c.id }))" />
         </n-form-item>
       </div>
@@ -89,6 +89,7 @@ const form = ref<Partial<Game>>({
   iconUrl: '',
   processName: [],
   category: '',
+  categories: [],
   proxyMode: 'process',
   routingRules: []
 })
@@ -100,6 +101,9 @@ watch(() => props.modelValue, (val) => {
   if (val) {
     if (props.editingGame) {
       form.value = JSON.parse(JSON.stringify(props.editingGame))
+      if (!Array.isArray(form.value.categories) || form.value.categories.length === 0) {
+        form.value.categories = form.value.category ? [String(form.value.category)] : []
+      }
 
       if (Array.isArray(props.editingGame.processName)) {
         processList.value = [...props.editingGame.processName]
@@ -115,11 +119,13 @@ watch(() => props.modelValue, (val) => {
         routingRulesText.value = ''
       }
     } else {
+      const defaultCategory = categoryStore.categories[0]?.id || ''
       form.value = {
         name: '',
         iconUrl: '',
         processName: [],
-        category: categoryStore.categories[0]?.id || '',
+        category: defaultCategory,
+        categories: defaultCategory ? [defaultCategory] : [],
         proxyMode: 'process',
         routingRules: []
       }
@@ -133,12 +139,25 @@ function close() {
   emit('update:modelValue', false)
 }
 
+function updateCategories(value: string[]) {
+  const clean = Array.isArray(value) ? value.map(v => String(v).trim()).filter(Boolean) : []
+  if (clean.length === 0) {
+    message.warning('至少保留一个标签')
+    return
+  }
+  form.value.categories = clean
+  form.value.category = clean[0]
+}
+
 function save() {
   if (!form.value.name) return
 
   const mode = form.value.proxyMode === 'routing' ? 'routing' : 'process'
   const cleanProcesses = processList.value.map(p => p.trim()).filter(Boolean)
   const cleanRules = routingRulesText.value.split('\n').map(r => r.trim()).filter(Boolean)
+  const cleanCategories = Array.isArray(form.value.categories)
+    ? form.value.categories.map(c => String(c).trim()).filter(Boolean)
+    : []
 
   if (mode === 'process' && cleanProcesses.length === 0) {
     message.warning('进程模式需要至少填写一个进程名')
@@ -149,9 +168,15 @@ function save() {
     message.warning('路由模式需要至少填写一条 IP/CIDR 规则')
     return
   }
+  if (cleanCategories.length === 0) {
+    message.warning('请至少选择一个标签')
+    return
+  }
 
   const gameData: Game = {
     ...form.value,
+    category: cleanCategories[0] || '',
+    categories: cleanCategories,
     proxyMode: mode,
     iconUrl: form.value.iconUrl ? String(form.value.iconUrl).trim() : undefined,
     processName: cleanProcesses,
