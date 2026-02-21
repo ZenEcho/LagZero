@@ -15,21 +15,18 @@
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
-    "prepare:singbox-core": "node electron/scripts/prepare-singbox-core.mjs",
     "rebuild:native": "electron-builder install-app-deps",
     "rebuild:sqlite": "pnpm rebuild better-sqlite3",
+    "prepack": "pnpm build",
     "pack": "electron-builder --dir",
+    "predist": "pnpm build",
     "dist": "electron-builder",
-    "predist:win:x64:nsis": "pnpm prepare:singbox-core",
-    "predist:win:arm64:nsis": "pnpm prepare:singbox-core",
-    "predist:win:x64:portable": "pnpm prepare:singbox-core",
-    "predist:win:arm64:portable": "pnpm prepare:singbox-core",
-    "predist:win:all": "pnpm prepare:singbox-core",
     "dist:win:x64:nsis": "electron-builder --win nsis --x64",
     "dist:win:arm64:nsis": "electron-builder --win nsis --arm64",
     "dist:win:x64:portable": "electron-builder --win portable --x64",
     "dist:win:arm64:portable": "electron-builder --win portable --arm64",
     "dist:win:all": "electron-builder --win nsis portable --x64 --arm64",
+    "postdist:win:all": "pnpm run rebuild:native",
     "test": "vitest run --coverage"
   },
   "build": {
@@ -48,15 +45,6 @@
       "!**/node_modules/better-sqlite3/build/**/obj/**",
       "!**/node_modules/better-sqlite3/build/**/obj.target/**"
     ],
-    "extraResources": [
-      {
-        "from": "electron/resources/singbox",
-        "to": "singbox",
-        "filter": [
-          "**/*"
-        ]
-      }
-    ],
     "asar": true,
     "electronLanguages": [
       "en-US",
@@ -64,7 +52,6 @@
     ],
     "win": {
       "icon": "public/logo.ico",
-      "signAndEditExecutable": false,
       "target": [
         {
           "target": "nsis",
@@ -128,10 +115,10 @@
     "fs-extra": "^11.3.3",
     "kysely": "^0.28.11",
     "tar": "^7.5.7",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "workerpool": "^10.0.1"
   },
   "devDependencies": {
-    "@vueuse/core": "^14.2.0",
     "@iconify-json/carbon": "^1.2.18",
     "@iconify-json/material-symbols": "^1.2.54",
     "@types/adm-zip": "^0.5.7",
@@ -140,13 +127,16 @@
     "@types/node": "^24.10.1",
     "@types/tar": "^6.1.13",
     "@types/uuid": "^11.0.0",
+    "@types/workerpool": "^9.0.0",
     "@unocss/reset": "^66.6.0",
     "@vitejs/plugin-vue": "^6.0.1",
     "@vitest/coverage-v8": "^4.0.18",
     "@vue/tsconfig": "^0.8.1",
+    "@vueuse/core": "^14.2.0",
     "echarts": "^6.0.0",
     "electron": "^40.2.1",
     "electron-builder": "^26.7.0",
+    "esbuild": "^0.27.3",
     "happy-dom": "^20.5.3",
     "js-base64": "^3.7.8",
     "naive-ui": "^2.43.2",
@@ -165,7 +155,7 @@
     "vue": "^3.5.24",
     "vue-i18n": "^11.2.8",
     "vue-router": "^5.0.2",
-    "vuedraggable": "^4.1.0",
-    "vue-tsc": "^3.1.4"
+    "vue-tsc": "^3.1.4",
+    "vuedraggable": "^4.1.0"
   }
 }

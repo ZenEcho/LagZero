@@ -32,7 +32,7 @@ export class WindowManager {
       path.join(__dirname, 'preload.mjs'),
     ]
     const preloadPath = preloadCandidates.find(p => fs.existsSync(p)) || preloadCandidates[0]
-    console.info('[Main] preload selected:', preloadPath)
+    console.info('[Main] 已选择 preload 脚本:', preloadPath)
 
     this.win = new BrowserWindow({
       width: 1200,

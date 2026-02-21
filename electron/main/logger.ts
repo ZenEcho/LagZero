@@ -190,7 +190,13 @@ function pushAppLog(entry: Omit<AppLogEntry, 'id' | 'timestamp'>, win?: BrowserW
   }
   appLogs.push(row)
   if (appLogs.length > MAX_LOG_ENTRIES) appLogs.shift()
-  win?.webContents.send('app-log:new', row)
+  try {
+    if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
+      win.webContents.send('app-log:new', row)
+    }
+  } catch {
+    // Ignore IPC emit failures during shutdown/restart.
+  }
   appendLogToFile(row)
 }
 
@@ -233,12 +239,12 @@ export function setupLogger(getWin: () => BrowserWindow | null) {
       const text = truncateLogText(args.map(stringifyConsoleArg).join(' ').trim())
       pushAppLog({
         level,
-        category: inferLogCategory(text),
-        source: 'main',
-        message: text || '(empty)'
-      }, getWin())
-    }
+      category: inferLogCategory(text),
+      source: 'main',
+      message: text || '(空)'
+    }, getWin())
   }
+}
 
   install('debug', 'debug')
   install('info', 'info')
@@ -251,7 +257,7 @@ export function setupLogger(getWin: () => BrowserWindow | null) {
     level: 'info',
     category: 'backend',
     source: 'logger',
-    message: `App log file: ${getAppLogFilePath()}`
+    message: `应用日志文件: ${getAppLogFilePath()}`
   }, getWin())
 
   ipcMain.handle('logs:get-all', () => appLogs)

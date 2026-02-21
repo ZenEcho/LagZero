@@ -50,7 +50,7 @@ export class CategoryService {
     try {
         this.categoriesCache = await this.db.getAllCategories()
     } catch (e) {
-        console.error('Failed to refresh categories cache:', e)
+        console.error('刷新分类缓存失败:', e)
     }
   }
 

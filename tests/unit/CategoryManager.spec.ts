@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { CategoryManager, type Category } from '../../electron/categories/manager'
+import { CategoryService, type Category } from '../../electron/services/category'
 
 vi.mock('electron', () => ({
   ipcMain: {
@@ -8,7 +8,7 @@ vi.mock('electron', () => ({
 }))
 
 describe('CategoryManager', () => {
-  let manager: CategoryManager
+  let manager: CategoryService
   let categories: Category[]
   let db: any
 
@@ -35,7 +35,7 @@ describe('CategoryManager', () => {
       })
     }
 
-    manager = new CategoryManager(db)
+    manager = new CategoryService(db)
     await manager.getAll()
   })
 

@@ -4,7 +4,10 @@
     <div class="flex flex-col gap-4 mb-6">
       <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div class="flex items-center gap-4">
-          <h1 class="text-xl md:text-2xl font-bold text-on-surface ">{{ $t('games.library') }}</h1>
+          <h1 class="text-xl md:text-2xl font-bold text-on-surface flex items-center gap-3">
+            {{ $t('games.library') }}
+            <span class="text-sm font-normal text-on-surface-muted bg-surface-overlay px-2 py-0.5 rounded-full border border-border/50 font-mono">{{ gameStore.gameLibrary.length }}</span>
+          </h1>
           <div class="bg-surface rounded-lg p-1 flex border border-border">
             <button @click="viewMode = 'grid'" class="p-1.5 md:p-2  rounded transition"
               :class="viewMode === 'grid' ? 'bg-primary text-on-primary' : 'text-on-surface-muted hover:text-on-surface'">
@@ -22,6 +25,11 @@
             <input v-model="searchQuery" type="text" :placeholder="$t('games.search_placeholder')"
               class="bg-surface border border-border rounded-full py-1.5 pl-9 pr-4 text-xs md:text-sm text-on-surface w-full sm:w-48 lg:w-64 outline-none focus:border-primary placeholder:text-on-surface-muted" />
             <div class="i-carbon-search absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-muted text-sm"></div>
+          </div>
+
+          <div v-if="isScanning" class="text-xs text-on-surface-muted italic truncate absolute top-0 max-w-sm"
+            :title="scanProgressText">
+            {{ scanProgressText }}
           </div>
 
           <n-button round @click="scanGames" :loading="isScanning" class="shadow-sm">
@@ -264,8 +272,7 @@
       </div>
     </div>
 
-    <AdvancedConfigEditor v-model="showEditModal" :editing-game="editingGame" @save="handleSaveGame" />
-
+    <GameEditModal v-model="showEditModal" :editing-game="editingGame" @save="handleSaveGame" />
     <CategoryManager v-model="showCategoryManager" />
   </div>
 </template>
@@ -278,7 +285,8 @@ import { useCategoryStore } from '@/stores/categories'
 import { useI18n } from 'vue-i18n'
 import { useMessage, useDialog } from 'naive-ui'
 import type { LocalScanGame } from '@/types'
-import AdvancedConfigEditor from '@/components/library/AdvancedConfigEditor.vue'
+import { PLATFORMS } from '@/constants'
+import GameEditModal from '@/components/library/GameEditModal.vue'
 import CategoryManager from '@/components/library/CategoryManager.vue'
 import { useGameScanner } from '@/composables/useGameScanner'
 
@@ -322,7 +330,7 @@ const categoryStore = useCategoryStore()
 const viewMode = ref<'grid' | 'list'>('grid')
 const searchQuery = ref('')
 const activeCategory = ref('all')
-const { isScanning, scanGames } = useGameScanner()
+const { isScanning, scanProgressText, scanGames } = useGameScanner()
 const runningGames = computed(() => gameStore.runningGames)
 const acceleratingGame = computed(() => gameStore.getAcceleratingGame())
 const isActionPending = computed(() => gameStore.operationState !== 'idle')
@@ -330,7 +338,7 @@ const isActionPending = computed(() => gameStore.operationState !== 'idle')
 const showEditModal = ref(false)
 const showCategoryManager = ref(false)
 const editingGame = ref<Game | null>(null)
-const platformTags = new Set<LocalScanGame['source']>(['Steam', 'Microsoft', 'Epic', 'EA'])
+const platformTags = new Set<LocalScanGame['source']>(PLATFORMS)
 const maxTagDisplayWidth = 200
 const tagMaxWidth = 120
 const tagTextFont = '500 10px sans-serif'
@@ -401,7 +409,7 @@ function getVisibleTags(game: Game): string[] {
 
   return visible
 }
-
+/** */
 function getHiddenTagCount(game: Game): number {
   return Math.max(getDisplayTags(game).length - getVisibleTags(game).length, 0)
 }

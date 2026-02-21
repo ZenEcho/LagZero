@@ -31,7 +31,7 @@ export function runCommand(command: string, args: string[], timeoutMs: number = 
       clearTimeout(timer)
       const output = Buffer.concat(chunks).toString('utf8').trim()
       if (timedOut) {
-        resolve({ code: -1, output: output || 'Command timeout' })
+        resolve({ code: -1, output: output || '命令执行超时' })
         return
       }
       resolve({ code: typeof code === 'number' ? code : -1, output })

@@ -89,6 +89,10 @@ export function useAppUpdater() {
   function openProjectUrl() {
     appApi.openUrl('https://github.com/ZenEcho/LagZero')
   }
+  /** 打开核心文件夹 */
+  function openInstallDir() {
+   
+  }
 
   return {
     appVersion,
@@ -97,6 +101,7 @@ export function useAppUpdater() {
     getVersion,
     checkUpdate,
     openReleasesUrl,
-    openProjectUrl
+    openProjectUrl,
+    openInstallDir
   }
 }

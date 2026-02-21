@@ -29,7 +29,7 @@ export async function findAvailablePort(startPort: number, count: number = 1): P
 
         port++
         if (port > 65535) {
-            throw new Error('No available ports found')
+            throw new Error('未找到可用端口')
         }
     }
 }

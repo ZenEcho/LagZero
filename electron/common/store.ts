@@ -44,7 +44,7 @@ export class JsonStore<T> {
         this.save()
       }
     } catch (e) {
-      console.error(`Failed to load store ${this.options.name}:`, e)
+      console.error(`加载存储 ${this.options.name} 失败:`, e)
       // Attempt to load latest backup if main file is corrupted?
     }
   }
@@ -63,7 +63,7 @@ export class JsonStore<T> {
       await this.backup()
       await fs.writeJson(this.filePath, this.data, { spaces: 2 })
     } catch (e) {
-      console.error(`Failed to save store ${this.options.name}:`, e)
+      console.error(`保存存储 ${this.options.name} 失败:`, e)
     }
   }
 
@@ -91,7 +91,7 @@ export class JsonStore<T> {
         await Promise.all(toDelete.map(f => fs.remove(f)))
       }
     } catch (e) {
-      console.error(`Backup failed for ${this.options.name}:`, e)
+      console.error(`备份 ${this.options.name} 失败:`, e)
     }
   }
 }

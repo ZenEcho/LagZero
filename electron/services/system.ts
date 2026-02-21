@@ -393,7 +393,7 @@ $result | ConvertTo-Json -Compress
         const result = await ping(host)
         return typeof result?.latency === 'number' ? result.latency : -1
       } catch (e: any) {
-        console.warn('[SystemService] system:ping failed', host, e)
+        console.warn('[系统服务] Ping 失败:', host, e)
         return -1
       }
     }) // 测试 ICMP 代理连接
@@ -402,7 +402,7 @@ $result | ConvertTo-Json -Compress
         const result = await tcpPing(host, port)
         return typeof result?.latency === 'number' ? result.latency : -1
       } catch (e: any) {
-        console.warn('[SystemService] system:tcp-ping failed', host, port, e)
+        console.warn('[系统服务] TCP Ping 失败:', host, port, e)
         return -1
       }
     }) // 测试 TCP 代理连接

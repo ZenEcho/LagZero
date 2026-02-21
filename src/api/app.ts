@@ -4,6 +4,9 @@ export const appApi = {
   getVersion: (): Promise<string> => window.app.getVersion(),
   checkUpdate: () => window.app.checkUpdate(),
   openUrl: (url: string) => window.app.openUrl(url),
+  openDir: (dir: string) => window.app.openDir(dir),
+  restart: () => window.app.restart(),
+  reset: () => window.app.reset(),
 }
 
 export const logsApi = {

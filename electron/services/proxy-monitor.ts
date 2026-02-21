@@ -4,6 +4,32 @@ import { SingBoxService } from './singbox';
 import { normalizeProcessNames, normalizeProcessName } from '../utils/process-helper';
 
 /**
+ * 从进程树中找出“已代理父进程”派生出的所有子进程名称
+ */
+export function findChainProxyChildren(nodes: ProcessNode[], monitoredProcessNames: Set<string>): string[] {
+  const found: string[] = []
+
+  const traverse = (node: ProcessNode, isProxiedParent: boolean) => {
+    const normalizedName = normalizeProcessName(node.name)
+    if (!normalizedName) return
+
+    const isMonitored = monitoredProcessNames.has(normalizedName)
+    const shouldProxy = isProxiedParent || isMonitored
+
+    if (shouldProxy && !isMonitored) {
+      found.push(normalizedName)
+    }
+
+    if (node.children) {
+      node.children.forEach((child) => traverse(child, shouldProxy))
+    }
+  }
+
+  nodes.forEach((node) => traverse(node, false))
+  return found
+}
+
+/**
  * 代理监控服务
  * 
  * 负责监控指定游戏的进程启动情况。
@@ -53,7 +79,7 @@ export class ProxyMonitorService {
     this.monitoredProcessNames = new Set(normalizeProcessNames(processNames));
     this.detectedChildProcesses.clear();
 
-    console.log(`[ProxyMonitor] Started monitoring for game ${gameId} with processes:`, [...this.monitoredProcessNames]);
+    console.log(`[代理监控] 开始监控游戏 ${gameId}，进程:`, [...this.monitoredProcessNames]);
 
     // Start polling
     this.interval = setInterval(() => this.checkChainProxy(), 3000);
@@ -74,7 +100,7 @@ export class ProxyMonitorService {
     this.monitoredProcessNames.clear();
     this.detectedChildProcesses.clear();
     this.mainWindow.webContents.send('proxy-monitor:status', { status: 'idle' });
-    console.log('[ProxyMonitor] Stopped monitoring');
+    console.log('[代理监控] 停止监控');
   }
 
   /**
@@ -102,32 +128,11 @@ export class ProxyMonitorService {
         await this.singboxService.updateProcessNames([...this.monitoredProcessNames]);
       }
     } catch (error) {
-      console.error('Proxy monitor error:', error);
+      console.error('代理监控错误:', error);
     }
   }
 
   private findNewChildren(nodes: ProcessNode[]): string[] {
-    const found: string[] = [];
-    
-    // Recursive traversal to find children of monitored processes
-    const traverse = (node: ProcessNode, isProxiedParent: boolean) => {
-      const normalizedName = normalizeProcessName(node.name);
-      if (!normalizedName) return;
-
-      const isMonitored = this.monitoredProcessNames.has(normalizedName);
-      // If parent is proxied, child should be proxied (Chain Proxy)
-      const shouldProxy = isProxiedParent || isMonitored;
-
-      if (shouldProxy && !isMonitored) {
-        found.push(normalizedName);
-      }
-
-      if (node.children) {
-        node.children.forEach(child => traverse(child, shouldProxy));
-      }
-    };
-
-    nodes.forEach(node => traverse(node, false));
-    return found;
+    return findChainProxyChildren(nodes, this.monitoredProcessNames)
   }
 }

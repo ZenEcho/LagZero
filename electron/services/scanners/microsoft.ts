@@ -1,6 +1,6 @@
 import fs from 'fs-extra'
 import path from 'path'
-import { LocalGameScanResult } from './types'
+import { LocalGameScanResult, ScanProgressCallback } from './types'
 import { getWindowsDriveRoots, normalizeDisplayName, normalizeFsPath, safeReadDir, pickRelatedExecutables } from './utils'
 import { runCommand } from '../../utils/command'
 import { scanFlatPlatformFolder } from './flat'
@@ -124,7 +124,7 @@ async function getManifestDisplayNameHints(xboxRoots: string[]): Promise<Map<str
 /**
  * 扫描 UWP / 已安装的 AppxPackages
  */
-async function scanAppxPackages(): Promise<LocalGameScanResult[]> {
+async function scanAppxPackages(progressCallback?: ScanProgressCallback): Promise<LocalGameScanResult[]> {
   if (process.platform !== 'win32') return []
 
   const script = "Get-AppxPackage | Where-Object { $_.InstallLocation } | Select-Object Name, InstallLocation | ConvertTo-Json -Compress"
@@ -142,6 +142,7 @@ async function scanAppxPackages(): Promise<LocalGameScanResult[]> {
 
     const manifestPath = path.join(location, 'AppxManifest.xml')
     if (!await fs.pathExists(manifestPath)) continue
+    progressCallback?.('scanning_dir', location)
 
     try {
       const content = await fs.readFile(manifestPath, 'utf8')
@@ -153,7 +154,7 @@ async function scanAppxPackages(): Promise<LocalGameScanResult[]> {
 
       if (isGame) {
         const parsedName = parseDisplayNameFromManifest(content) || packageName
-        const exes = await pickRelatedExecutables(location, parsedName)
+        const exes = await pickRelatedExecutables(location, parsedName, progressCallback)
         if (exes && exes.length > 0) {
           results.push({
             name: normalizeDisplayName(parsedName),
@@ -175,13 +176,14 @@ async function scanAppxPackages(): Promise<LocalGameScanResult[]> {
  * 扫描 Microsoft Store / Xbox 游戏
  * 结合目录扫描、注册表和 AppxManifest 信息来获取准确的游戏名称
  */
-export async function scanMicrosoftGames(): Promise<LocalGameScanResult[]> {
+export async function scanMicrosoftGames(progressCallback?: ScanProgressCallback): Promise<LocalGameScanResult[]> {
+  progressCallback?.('scanning_platform', 'Microsoft')
   const drives = await getWindowsDriveRoots()
   const roots = drives.map(root => path.join(root, 'XboxGames'))
 
   const [base, appxBase] = await Promise.all([
-    scanFlatPlatformFolder('Microsoft', roots),
-    scanAppxPackages()
+    scanFlatPlatformFolder('Microsoft', roots, progressCallback),
+    scanAppxPackages(progressCallback)
   ])
 
   // 去重 (相同的安装目录只保留一个)

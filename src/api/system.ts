@@ -52,4 +52,16 @@ export const systemApi = {
     }
     return fn()
   },
+  onScanProgress: (callback: (data: { status: string, details?: string }) => void) => {
+    const fn = (window.system as any)?.onScanProgress
+    if (typeof fn === 'function') {
+      fn(callback)
+    }
+  },
+  offScanProgress: (callback: (data: { status: string, details?: string }) => void) => {
+    const fn = (window.system as any)?.offScanProgress
+    if (typeof fn === 'function') {
+      fn(callback)
+    }
+  }
 }

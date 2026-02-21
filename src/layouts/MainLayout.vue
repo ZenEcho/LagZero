@@ -39,7 +39,7 @@
       <!-- Sidebar -->
       <aside
         class="bg-surface-panel flex flex-col pt-4 z-40 border-r border-border transition-all duration-300 ease-in-out"
-        :class="isCollapsed ? 'w-16 items-center' : 'w-64'" @wheel="handleSidebarWheel">
+        :class="isCollapsed ? 'w-16 items-center' : ' w-48'" @wheel="handleSidebarWheel">
         <div class="flex-1 flex flex-col gap-2 px-2 w-full">
           <!-- Navigation Items -->
           <router-link to="/dashboard" active-class="bg-primary/10 text-primary"

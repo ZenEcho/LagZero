@@ -65,14 +65,22 @@
           <div class="space-y-2">
             <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">{{
               $t('settings.dns_primary') }}</label>
-            <n-input v-model:value="settingsStore.dnsPrimary" placeholder="https://dns.google/dns-query"
+            <n-input v-model:value="settingsStore.dnsPrimary" placeholder="https://cloudflare-dns.com/dns-query"
               class="glass-input" />
           </div>
           <div class="space-y-2">
             <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">{{
               $t('settings.dns_secondary') }}</label>
-            <n-input v-model:value="settingsStore.dnsSecondary" placeholder="https://1.1.1.1/dns-query"
+            <n-input v-model:value="settingsStore.dnsSecondary" placeholder="https://dns.alidns.com/resolve"
               class="glass-input" />
+          </div>
+          <div class="space-y-2">
+            <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">{{
+              $t('settings.dns_bootstrap') }}</label>
+            <n-input v-model:value="settingsStore.dnsBootstrap" placeholder="223.5.5.5" class="glass-input" />
+            <p class="text-xs text-on-surface-muted">
+              {{ $t('settings.dns_bootstrap_hint') }}
+            </p>
           </div>
         </div>
       </div>
@@ -164,6 +172,17 @@
             {{ $t('settings.system_proxy_info') }}
           </p>
         </div>
+        <div class="space-y-2">
+          <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
+            {{ $t('settings.proxy_bypass') }}
+          </label>
+          <n-input v-model:value="settingsStore.systemProxyBypass" type="textarea"
+            :autosize="{ minRows: 3, maxRows: 8 }" :placeholder="$t('settings.proxy_bypass_placeholder')"
+            class="glass-input" />
+          <p class="text-xs text-on-surface-muted mt-1">
+            {{ $t('settings.proxy_bypass_info') }}
+          </p>
+        </div>
       </div>
     </section>
 
@@ -175,18 +194,23 @@
         <div class="i-material-symbols-joystick text-primary"></div>
         {{ $t('settings.game_network_tuning') }}
       </h2>
-      <div class="bg-surface-panel/50 border border-border/50 rounded-2xl p-6 backdrop-blur-sm space-y-4">
+      <div
+        class="bg-surface-panel/50 border border-border/50 rounded-2xl p-6 backdrop-blur-sm space-y-4 transition-opacity duration-300"
+        :class="{ 'opacity-60': !isTunNetworkMode }">
         <p class="text-xs text-on-surface-muted">
           {{ $t('settings.game_network_tuning_hint') }}
+        </p>
+        <p v-if="!isTunNetworkMode" class="text-xs text-warning">
+          {{ $t('settings.game_network_tuning_tun_only') }}
         </p>
         <div class="flex items-center justify-between">
           <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
             {{ $t('common.enabled') }}
           </label>
-          <n-switch v-model:value="settingsStore.sessionNetworkTuning.enabled" />
+          <n-switch v-model:value="settingsStore.sessionNetworkTuning.enabled" :disabled="!isTunNetworkMode" />
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4"
-          :class="{ 'opacity-50 pointer-events-none': !settingsStore.sessionNetworkTuning.enabled }">
+          :class="{ 'opacity-50 pointer-events-none': !settingsStore.sessionNetworkTuning.enabled || !isTunNetworkMode }">
           <div class="space-y-2 md:col-span-2">
             <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
               {{ $t('settings.network_profile') }}
@@ -248,10 +272,11 @@
           <p class="text-xs text-on-surface-muted">
             {{ $t('settings.high_loss_hint_only') }}
           </p>
-          <n-switch v-model:value="settingsStore.sessionNetworkTuning.highLossHintOnly" />
+          <n-switch v-model:value="settingsStore.sessionNetworkTuning.highLossHintOnly" :disabled="!isTunNetworkMode" />
         </div>
         <div class="pt-1">
-          <n-button secondary @click="settingsStore.resetSessionNetworkTuning()" class="glass-button">
+          <n-button secondary @click="settingsStore.resetSessionNetworkTuning()" class="glass-button"
+            :disabled="!isTunNetworkMode">
             {{ $t('settings.reset_session_network_tuning') }}
           </n-button>
         </div>
@@ -324,6 +349,7 @@ const opOk = ref(true)
 const intervalOptions = [
   { label: '1s', value: 1000 },
   { label: '2s', value: 2000 },
+  { label: '3s', value: 3000 },
   { label: '5s', value: 5000 },
   { label: '10s', value: 10000 },
   { label: '30s', value: 30000 },
@@ -342,6 +368,7 @@ const vlessEncodingOptions = computed(() => ([
   { label: t('settings.vless_packet_encoding_off'), value: 'off' },
   { label: 'xudp', value: 'xudp' }
 ]))
+const isTunNetworkMode = computed(() => settingsStore.accelNetworkMode === 'tun')
 
 function setCheckMethod(method: string) {
   // @ts-ignore
@@ -423,6 +450,7 @@ watch(
   async (_next, prev) => {
     if (_next === prev) return
     if (applyingSessionTuning.value) return
+    if (!isTunNetworkMode.value) return
     const active = gameStore.getAcceleratingGame()
     if (!active?.id) return
     if (!gameStore.isUsingGlobalSessionNetworkTuning(active.id)) return

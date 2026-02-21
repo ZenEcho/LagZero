@@ -2,7 +2,7 @@
 import { defineStore } from 'pinia'
 import { reactive } from 'vue'
 import { useLocalStorage } from '@vueuse/core'
-import { DEFAULT_DNS_PRIMARY, DEFAULT_DNS_SECONDARY } from '@/constants'
+import { SYSTEM_PROXY_PORT, LOCAL_PROXY_PORT, DEFAULT_DNS_PRIMARY, DEFAULT_DNS_SECONDARY, BOOTSTRAP_DNS } from '@/constants'
 import type { CheckMethod, DnsMode, Theme, ThemeColor, SessionNetworkTuningOptions, NetworkProfile } from '@/types'
 
 function createDefaultSessionNetworkTuning(): SessionNetworkTuningOptions {
@@ -49,19 +49,24 @@ export const useSettingsStore = defineStore('settings', () => {
     const themeColor = useLocalStorage<ThemeColor>('settings-theme-color', 'green') // 主题色 默认green
 
     // Network & Proxy
-    const checkInterval = useLocalStorage('settings-check-interval', 5000) // 检测间隔 默认5000ms
+    const checkInterval = useLocalStorage('settings-check-interval', 3000) // 检测间隔 默认5000ms
     const checkMethod = useLocalStorage<CheckMethod>('settings-check-method', 'ping') // 检测模式 默认ping
     // 检测URL
-    const checkUrl = useLocalStorage('settings-check-url', 'http://www.gstatic.com/generate_204') 
+    const checkUrl = useLocalStorage('settings-check-url', 'http://www.gstatic.com/generate_204')
     const dnsMode = useLocalStorage<DnsMode>('settings-dns-mode', 'secure') // DNS模式 默认secure
     const dnsPrimary = useLocalStorage('settings-dns-primary', DEFAULT_DNS_PRIMARY) // DNS主服务器 默认
     const dnsSecondary = useLocalStorage('settings-dns-secondary', DEFAULT_DNS_SECONDARY) // DNS次服务器 默认
+    const dnsBootstrap = useLocalStorage('settings-dns-bootstrap', BOOTSTRAP_DNS) // Bootstrap DNS 默认223.5.5.5
     const localProxyEnabled = useLocalStorage('settings-local-proxy-enabled', true) // 本地代理是否启用 默认true
-    const localProxyPort = useLocalStorage('settings-local-proxy-port', 10860) // 本地代理端口 默认10860
+    const localProxyPort = useLocalStorage('settings-local-proxy-port', LOCAL_PROXY_PORT) // 本地代理端口 默认10860
     const localProxyNodeRecursiveTest = useLocalStorage('settings-local-proxy-node-recursive-test', true) // 本地代理节点递归测试 默认true
     const localProxyFixedNodeIndex = useLocalStorage('settings-local-proxy-fixed-node-index', 1) // 本地代理固定节点索引 默认1
     const accelNetworkMode = useLocalStorage<'tun' | 'system_proxy'>('settings-accel-network-mode', 'tun') // 加速网络模式 默认tun
-    const systemProxyPort = useLocalStorage('settings-system-proxy-port', 10808) // 系统代理端口 默认10808
+    const systemProxyPort = useLocalStorage('settings-system-proxy-port', SYSTEM_PROXY_PORT) // 系统代理端口 默认10808
+    const systemProxyBypass = useLocalStorage(
+        'settings-system-proxy-bypass',
+        '<local>\nlocalhost\n127.0.0.1\n::1\n192.168.*\n10.*\n*.local'
+    ) // 系统代理绕过列表
     const tunInterfaceName = useLocalStorage('settings-tun-interface-name', 'LagZero') // TUN接口名称 默认LagZero
     if (tunInterfaceName.value === 'singbox-tun') {
         tunInterfaceName.value = 'LagZero'
@@ -91,12 +96,14 @@ export const useSettingsStore = defineStore('settings', () => {
         dnsMode,
         dnsPrimary,
         dnsSecondary,
+        dnsBootstrap,
         localProxyEnabled,
         localProxyPort,
         localProxyNodeRecursiveTest,
         localProxyFixedNodeIndex,
         accelNetworkMode,
         systemProxyPort,
+        systemProxyBypass,
         tunInterfaceName,
         sessionNetworkTuning,
         resetSessionNetworkTuning,

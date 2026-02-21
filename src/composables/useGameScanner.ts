@@ -5,8 +5,11 @@ import { categoryApi, systemApi } from '@/api'
 import { useGameStore } from '@/stores/games'
 import { useCategoryStore } from '@/stores/categories'
 import type { Category, Game, LocalScanGame } from '@/types'
+import { PLATFORMS } from '@/constants'
 
-const PLATFORM_CATEGORY_NAMES = ['Steam', 'Microsoft', 'Epic', 'EA'] as const
+// 将 isScanning 和 scanProgressText 提升到模块级别
+const isScanning = ref(false)
+const scanProgressText = ref('')
 
 /**
  * 游戏扫描器 Composable
@@ -14,7 +17,6 @@ const PLATFORM_CATEGORY_NAMES = ['Steam', 'Microsoft', 'Epic', 'EA'] as const
  */
 export function useGameScanner() {
   const { t } = useI18n()
-  const isScanning = ref(false)
   const message = useMessage()
   const gameStore = useGameStore()
   const categoryStore = useCategoryStore()
@@ -62,7 +64,7 @@ export function useGameScanner() {
    * @param source 游戏来源平台
    */
   async function ensurePlatformCategoryId(source: LocalScanGame['source']): Promise<string> {
-    const platformName = PLATFORM_CATEGORY_NAMES.find((name) => name === source) || source
+    const platformName = PLATFORMS.find((name) => name === source) || source
     return ensureCategoryByName(platformName)
   }
 
@@ -71,8 +73,27 @@ export function useGameScanner() {
    * 包括：扫描本地游戏库、自动添加新游戏、扫描运行进程、匹配运行状态
    */
   async function scanGames() {
+    if (isScanning.value) {
+      message.warning(t('games.scan_in_progress') || '正在扫描中，请稍后再试')
+      return
+    }
     isScanning.value = true
+    scanProgressText.value = t('games.scanning_local') || '正在扫描本地游戏，请耐心等待...'
+
+    const handleProgress = (data: { status: string, details?: string }) => {
+      if (data.status === 'scanning_platform') {
+        scanProgressText.value = `正在扫描游戏平台: ${data.details}`
+      } else if (data.status === 'scanning_dir' && data.details) {
+        // 防止路径过长导致 UI 不美观，进行截断
+        const shortPath = data.details.length > 50 ? '...' + data.details.slice(-50) : data.details
+        scanProgressText.value = `正在检索: ${shortPath}`
+      }
+      // 可以在控制台打印详细日志
+      // console.log('[Scan Progress]', data.status, data.details)
+    }
+
     try {
+      systemApi.onScanProgress(handleProgress)
       const localGames = await systemApi.scanLocalGames()
       const added = await autoAddGamesFromLibraryScan(localGames)
       const processes = await systemApi.scanProcesses()
@@ -89,6 +110,8 @@ export function useGameScanner() {
       console.error('Failed to scan games:', error)
       message.error(t('games.scan_failed'))
     } finally {
+      systemApi.offScanProgress(handleProgress)
+      scanProgressText.value = ''
       setTimeout(() => { isScanning.value = false }, 500)
     }
   }
@@ -99,7 +122,7 @@ export function useGameScanner() {
    * @returns 新增的游戏数量
    */
   async function autoAddGamesFromLibraryScan(localGames: LocalScanGame[]) {
-    for (const platform of PLATFORM_CATEGORY_NAMES) {
+    for (const platform of PLATFORMS) {
       const hasPlatformGame = localGames.some(g => g.source === platform)
       if (!hasPlatformGame) continue
       await ensureCategoryByName(platform)
@@ -156,6 +179,7 @@ export function useGameScanner() {
 
   return {
     isScanning,
+    scanProgressText,
     scanGames
   }
 }

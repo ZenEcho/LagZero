@@ -81,19 +81,14 @@ export function ensureAdminAtStartup() {
     process.exit(0)
   }
 
-  console.warn('[Main] Failed to relaunch as administrator. Continuing without elevation.')
+  console.warn('[Main] 无法以管理员身份重启，将继续以普通权限运行。')
 }
 
-/**
- * 加载应用图标
- * 依次尝试加载 logo.png, logo.ico, logo.svg
- * @returns NativeImage 对象或 null
- */
 export function loadAppIcon(): NativeImage | null {
   const baseDir = process.env.VITE_PUBLIC || ''
   const candidates = [
-    path.join(baseDir, 'logo.png'),
     path.join(baseDir, 'logo.ico'),
+    path.join(baseDir, 'logo.png'),
     path.join(baseDir, 'logo.svg'),
   ]
 
@@ -109,37 +104,7 @@ export function loadAppIcon(): NativeImage | null {
     if (image) return image
   }
 
-  const svgPath = path.join(baseDir, 'logo.svg')
-  if (!fs.existsSync(svgPath)) {
-    console.warn('[Main] Icon file not found:', svgPath)
-    return null
-  }
-
-  const svg = fs.readFileSync(svgPath, 'utf-8')
-  const toImage = (content: string) => {
-    const svgBase64 = Buffer.from(content, 'utf-8').toString('base64')
-    return nativeImage.createFromDataURL(`data:image/svg+xml;base64,${svgBase64}`)
-  }
-
-  const sanitized = svg
-    .replace(/<filter[\s\S]*?<\/filter>/gi, '')
-    .replace(/\sfilter="url\(#.*?\)"/gi, '')
-
-  const image = toImage(sanitized)
-  if (!image.isEmpty()) return image
-
-  const fallbackSvg = `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
-  <rect width="256" height="256" rx="48" fill="#0f172a"/>
-  <path d="M145 20 L78 131 L136 131 L118 236 L202 111 L141 111 L168 20 Z"
-        fill="#22c55e" stroke="#ffffff" stroke-width="6" stroke-linejoin="round" />
-</svg>`
-  const fallbackImage = toImage(fallbackSvg)
-  if (!fallbackImage.isEmpty()) {
-    console.warn('[Main] logo.svg decode failed, using built-in fallback icon')
-    return fallbackImage
-  }
-
+  console.warn('[Main] 未找到图标文件。')
   return null
 }
 
@@ -158,7 +123,8 @@ export function formatStartupError(error: unknown) {
       'Failed to load better-sqlite3 native module due to architecture mismatch.',
       '',
       `Current runtime arch: ${process.arch}`,
-      'Fix command: pnpm rebuild better-sqlite3',
+      'Fix command: pnpm run rebuild:native',
+      'Fallback command: pnpm run rebuild:sqlite',
       '',
       'Details:',
       raw
@@ -188,7 +154,7 @@ export function formatStartupError(error: unknown) {
  */
 export function handleStartupError(error: unknown) {
   const message = formatStartupError(error)
-  console.error('[Main] App startup failed:', message)
-  dialog.showErrorBox('LagZero startup failed', message)
+  console.error('[Main] 应用启动失败:', message)
+  dialog.showErrorBox('LagZero 启动失败', message)
   app.quit()
 }

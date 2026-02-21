@@ -27,7 +27,7 @@ contextBridge.exposeInMainWorld('electron', {
   pickProcess: () => ipcRenderer.invoke('dialog:pick-process'),
   /** 选择并扫描文件夹中的可执行文件 */
   pickProcessFolder: (maxDepth?: number) => ipcRenderer.invoke('dialog:pick-process-folder', maxDepth),
-  
+
   /** 
    * 注册 IPC 事件监听器 
    * @param channel 频道名称
@@ -40,7 +40,7 @@ contextBridge.exposeInMainWorld('electron', {
     ipcListenerMap.set(channel, channelMap)
     ipcRenderer.on(channel, wrapped)
   },
-  
+
   /**
    * 移除 IPC 事件监听器
    * @param channel 频道名称
@@ -63,6 +63,10 @@ contextBridge.exposeInMainWorld('singbox', {
   stop: () => ipcRenderer.invoke('singbox-stop'),
   /** 重启内核 */
   restart: (config: string) => ipcRenderer.invoke('singbox-restart', config),
+  /** 确保核心已安装 */
+  ensureCoreInstalled: () => ipcRenderer.invoke('singbox-ensure-core'),
+  /** 获取核心安装状态 */
+  getInstallInfo: () => ipcRenderer.invoke('singbox-get-install-info'),
 })
 
 // 系统底层功能
@@ -88,10 +92,26 @@ contextBridge.exposeInMainWorld('system', {
     ipcRenderer.invoke('system:test-http-proxy-connect', proxyPort, targetHost, targetPort, timeoutMs),
   /** 设置系统代理 */
   setSystemProxy: (port: number, bypass?: string) => ipcRenderer.invoke('system:set-system-proxy', port, bypass),
-  /** 清除系统代理 */
+  /** 清楚系统代理 */
   clearSystemProxy: (snapshot?: any) => ipcRenderer.invoke('system:clear-system-proxy', snapshot),
   /** 获取当前系统代理状态 */
   getSystemProxyState: () => ipcRenderer.invoke('system:get-system-proxy-state'),
+  /** 监听游戏扫描进度 */
+  onScanProgress: (callback: (data: { status: string, details?: string }) => void) => {
+    const wrapped = (_event: any, data: any) => callback(data)
+    const channelMap = ipcListenerMap.get('system:scan-progress') || new Map()
+    channelMap.set(callback, wrapped)
+    ipcListenerMap.set('system:scan-progress', channelMap)
+    ipcRenderer.on('system:scan-progress', wrapped)
+  },
+  /** 移除游戏扫描进度监听 */
+  offScanProgress: (callback: (data: { status: string, details?: string }) => void) => {
+    const channelMap = ipcListenerMap.get('system:scan-progress')
+    const wrapped = channelMap?.get(callback)
+    if (!wrapped) return
+    ipcRenderer.removeListener('system:scan-progress', wrapped)
+    channelMap?.delete(callback)
+  }
 })
 
 // 进程代理监控
@@ -130,6 +150,10 @@ contextBridge.exposeInMainWorld('app', {
   getVersion: () => ipcRenderer.invoke('app:get-version'),
   checkUpdate: () => ipcRenderer.invoke('app:check-update'),
   openUrl: (url: string) => ipcRenderer.invoke('app:open-url', url),
+  /** 打开目录 */
+  openDir: (dir: string) => ipcRenderer.invoke('app:open-dir', dir),
+  restart: () => ipcRenderer.invoke('app:restart'),
+  reset: () => ipcRenderer.invoke('app:reset'),
 })
 
 // 日志系统

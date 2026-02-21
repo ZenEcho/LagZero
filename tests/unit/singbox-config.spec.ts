@@ -85,7 +85,8 @@ describe('generateSingboxConfig', () => {
     // Process mode: default final should be 'direct' (implied by not being 'proxy' or explicit final)
     // Actually in my impl: final: isRoutingMode ? 'proxy' : 'direct'
     expect(config.route.final).toBe('direct')
-    
+    expect(config.dns.final).toBe('remote-primary')
+
     // Should have rule for game process -> proxy
     const gameRule = config.route.rules.find((r: any) => r.process_name && r.process_name.includes('game.exe'))
     expect(gameRule).toBeDefined()
@@ -95,7 +96,7 @@ describe('generateSingboxConfig', () => {
   it('should configure routing mode correctly', () => {
     const routingGame = { ...mockGame, proxyMode: 'routing' as const }
     const config = JSON.parse(generateSingboxConfig(routingGame, mockNode))
-    
+
     expect(config.route.final).toBe('direct')
 
     expect(config.dns.final).toBe('remote-primary')
@@ -103,6 +104,15 @@ describe('generateSingboxConfig', () => {
     const tunInbound = config.inbounds.find((i: any) => i.tag === 'tun-in')
     expect(tunInbound).toBeDefined()
     expect(tunInbound.inet4_address).toBeDefined()
+    expect(tunInbound.inet6_address).toBeUndefined()
+  })
+
+  it('should prefer ipv4-only DNS strategy in tun secure mode', () => {
+    const config = JSON.parse(generateSingboxConfig(mockGame, mockNode, { mode: 'secure' }))
+    const remotePrimary = config.dns.servers.find((s: any) => s.tag === 'remote-primary')
+    const localDns = config.dns.servers.find((s: any) => s.tag === 'local')
+    expect(remotePrimary?.strategy).toBe('ipv4_only')
+    expect(localDns?.strategy).toBe('ipv4_only')
   })
 
   it('should only proxy configured CIDR rules in routing mode', () => {
@@ -139,6 +149,7 @@ describe('generateSingboxConfig', () => {
     expect(Array.isArray(cidrRule.process_name)).toBe(true)
     expect(cidrRule.process_name).toContain('chrome.exe')
     expect(cidrRule.process_name).toContain('msedge.exe')
+    expect(config.dns.final).toBe('remote-primary')
   })
 
   it('should include exe alias for bare process names in routing mode', () => {
@@ -155,6 +166,25 @@ describe('generateSingboxConfig', () => {
     expect(cidrRule).toBeDefined()
     expect(Array.isArray(cidrRule.process_name)).toBe(true)
     expect(cidrRule.process_name).toContain('chrome')
+    expect(cidrRule.process_name).toContain('chrome.exe')
+  })
+
+  it('should parse comma-separated routing ip rules and keep process scope', () => {
+    const routingGame = {
+      ...mockGame,
+      proxyMode: 'routing' as const,
+      processName: ['chrome.exe'],
+      routingRules: ['1.1.1.1,8.8.8.8/32']
+    }
+    const config = JSON.parse(generateSingboxConfig(routingGame, mockNode))
+
+    expect(config.route.final).toBe('direct')
+    const cidrRule = config.route.rules.find((r: any) =>
+      Array.isArray(r?.ip_cidr) && r.ip_cidr.includes('1.1.1.1/32') && r.ip_cidr.includes('8.8.8.8/32')
+    )
+    expect(cidrRule).toBeDefined()
+    expect(cidrRule.outbound).toBe('proxy')
+    expect(Array.isArray(cidrRule.process_name)).toBe(true)
     expect(cidrRule.process_name).toContain('chrome.exe')
   })
 
@@ -239,6 +269,7 @@ describe('generateSingboxConfig', () => {
     }
     const config = JSON.parse(generateSingboxConfig(routingGame, mockNode))
     expect(config.route.final).toBe('proxy')
+    expect(config.dns.final).toBe('remote-primary')
   })
 
   it('should include node outbound', () => {
@@ -306,5 +337,58 @@ describe('generateSingboxConfig', () => {
     )
     expect(bootstrapRule).toBeDefined()
     expect(bootstrapRule.server).toBe('local')
+  })
+
+  it('should use configured bootstrap DNS server for domain bootstrap rules', () => {
+    const domainNode: NodeConfig = {
+      ...mockNode,
+      server: 'm.cnmjin.net',
+      tls: {
+        enabled: false
+      }
+    }
+    const config = JSON.parse(generateSingboxConfig(mockGame, domainNode, {
+      mode: 'secure',
+      primary: 'https://cloudflare-dns.com/dns-query',
+      secondary: 'https://cloudflare-dns.com/dns-query',
+      bootstrap: '223.5.5.5'
+    }))
+
+    const bootstrapServer = config.dns.servers.find((s: any) => s.tag === 'bootstrap')
+    expect(bootstrapServer).toBeDefined()
+    expect(bootstrapServer.address).toBe('223.5.5.5')
+    expect(bootstrapServer.detour).toBe('direct')
+
+    const bootstrapRule = config.dns.rules.find((r: any) =>
+      Array.isArray(r?.domain) && r.domain.includes('cloudflare-dns.com')
+    )
+    expect(bootstrapRule).toBeDefined()
+    expect(bootstrapRule.server).toBe('bootstrap')
+    expect(bootstrapRule.domain).toContain('cloudflare-dns.com')
+    expect(bootstrapRule.domain).toContain('m.cnmjin.net')
+  })
+
+  it('should add custom bypass direct rules from proxy bypass list', () => {
+    const config = JSON.parse(generateSingboxConfig(mockGame, mockNode, {
+      proxyBypassList: 'localhost,192.168.*,10.0.0.0/8,*.lan'
+    }))
+
+    const ipBypassRule = config.route.rules.find((r: any) =>
+      Array.isArray(r?.ip_cidr)
+      && r.ip_cidr.includes('192.168.0.0/16')
+      && r.ip_cidr.includes('10.0.0.0/8')
+      && r.outbound === 'direct'
+    )
+    expect(ipBypassRule).toBeDefined()
+
+    const localhostRule = config.route.rules.find((r: any) =>
+      Array.isArray(r?.domain) && r.domain.includes('localhost') && r.outbound === 'direct'
+    )
+    expect(localhostRule).toBeDefined()
+
+    const lanSuffixRule = config.route.rules.find((r: any) =>
+      Array.isArray(r?.domain_suffix) && r.domain_suffix.includes('lan') && r.outbound === 'direct'
+    )
+    expect(lanSuffixRule).toBeDefined()
   })
 })

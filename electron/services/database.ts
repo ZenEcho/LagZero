@@ -16,6 +16,7 @@ import { isIconUrl, normalizeNodeType, parseStringArray, safeJsonParse } from '.
 export class DatabaseService {
   private db: Kysely<Database>
   private sqlite: DatabaseConstructor.Database
+  private isClosed = false
   /** 缓存 "Other/其他" 分类的 ID，避免频繁查询 */
   private otherCategoryId: string | null | undefined
   private readonly platformCategoryNames = ['Steam', 'Microsoft', 'Epic', 'EA'] as const
@@ -292,7 +293,7 @@ export class DatabaseService {
         node_id TEXT,
         proxy_mode TEXT,
         routing_rules TEXT,
-        chain_proxy INTEGER DEFAULT 0,
+        chain_proxy INTEGER DEFAULT 1,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       );
@@ -320,7 +321,7 @@ export class DatabaseService {
         this.sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
       }
     } catch (e) {
-      console.error(`Failed to ensure column ${table}.${column}:`, e)
+      console.error(`确保字段 ${table}.${column} 失败:`, e)
     }
   }
 
@@ -580,7 +581,7 @@ export class DatabaseService {
       node_id: game.nodeId || null,
       proxy_mode: game.proxyMode || 'process',
       routing_rules: game.routingRules ? JSON.stringify(game.routingRules) : null,
-      chain_proxy: game.chainProxy ? 1 : 0,
+      chain_proxy: game.chainProxy === false ? 0 : 1,
       updated_at: new Date().toISOString()
     }
 
@@ -647,7 +648,7 @@ export class DatabaseService {
   async deleteCategory(id: string) {
     const categories = await this.getAllCategories()
     if (categories.length <= 1) {
-      throw new Error('At least one category must remain.')
+      throw new Error('至少需要保留一个分类。')
     }
     await this.db.deleteFrom('categories').where('id', '=', id).execute()
     return this.getAllCategories()
@@ -780,7 +781,7 @@ export class DatabaseService {
             node_id: game.nodeId || null,
             proxy_mode: game.proxyMode || 'process',
             routing_rules: game.routingRules ? JSON.stringify(game.routingRules) : null,
-            chain_proxy: game.chainProxy ? 1 : 0,
+            chain_proxy: game.chainProxy === false ? 0 : 1,
             updated_at: new Date().toISOString()
           }
           await trx.insertInto('games').values(gameData).onConflict(oc => oc.column('id').doUpdateSet(gameData)).execute()
@@ -803,5 +804,23 @@ export class DatabaseService {
     })
 
     return true
+  }
+
+  /**
+   * 关闭数据库连接，供应用重置/退出时释放文件句柄。
+   */
+  async close() {
+    if (this.isClosed) return
+    this.isClosed = true
+    try {
+      await this.db.destroy()
+    } catch (e) {
+      console.warn('销毁 Kysely 实例失败:', e)
+    }
+    try {
+      this.sqlite.close()
+    } catch (e) {
+      console.warn('关闭 SQLite 连接失败:', e)
+    }
   }
 }

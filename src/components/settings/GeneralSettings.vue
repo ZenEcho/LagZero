@@ -18,6 +18,26 @@
 
     <div class="w-full h-px bg-border/30"></div>
 
+    <!-- Theme Mode Section -->
+    <section>
+      <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
+        <div class="i-material-symbols-brightness-6-outline text-primary"></div>
+        {{ $t('settings.theme_mode') }}
+      </h2>
+      <div class="bg-surface/50 border border-border/50 rounded-2xl p-1 flex gap-2 w-fit backdrop-blur-sm">
+        <button v-for="mode in themeModes" :key="mode.value" @click="setTheme(mode.value)"
+          class="px-6 py-2.5 rounded-xl transition-all duration-200 font-medium relative overflow-hidden flex items-center gap-2"
+          :class="theme === mode.value
+            ? 'bg-surface text-primary shadow-sm ring-1 ring-border/50'
+            : 'text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay/50'">
+          <div :class="mode.icon" class="text-lg"></div>
+          {{ mode.label }}
+        </button>
+      </div>
+    </section>
+
+    <div class="w-full h-px bg-border/30"></div>
+
     <!-- Theme Section -->
     <section>
       <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
@@ -48,11 +68,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useTheme, type ThemeColor } from '@/composables/useTheme'
+import { useTheme, type ThemeColor, type Theme } from '@/composables/useTheme'
 import { useSettingsStore } from '@/stores/settings'
 
-const { locale } = useI18n()
-const { themeColor, setThemeColor } = useTheme()
+const { locale, t } = useI18n()
+const { theme, setTheme, themeColor, setThemeColor } = useTheme()
 const settingsStore = useSettingsStore()
 
 const currentLocale = computed(() => settingsStore.language)
@@ -60,6 +80,12 @@ const availableLocales = [
   { code: 'zh-CN', name: '简体中文' },
   { code: 'en-US', name: 'English' }
 ]
+
+const themeModes = computed<{ value: Theme, label: string, icon: string }[]>(() => [
+  { value: 'light', label: t('settings.theme_light'), icon: 'i-material-symbols-light-mode-outline' },
+  { value: 'dark', label: t('settings.theme_dark'), icon: 'i-material-symbols-dark-mode-outline' },
+  { value: 'auto', label: t('settings.theme_auto'), icon: 'i-material-symbols-hdr-auto' }
+])
 
 const themeColors: { value: ThemeColor, label: string, bg: string }[] = [
   { value: 'green', label: 'Green', bg: 'bg-[#10b981]' },
@@ -74,5 +100,3 @@ function setLanguage(lang: string) {
   locale.value = lang
 }
 </script>
-
-

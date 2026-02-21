@@ -5,6 +5,7 @@
         <n-notification-provider>
           <n-modal-provider>
             <router-view />
+            <SingboxInstallerGuard />
           </n-modal-provider>
         </n-notification-provider>
       </n-dialog-provider>
@@ -16,6 +17,7 @@
 import { computed } from 'vue'
 import { darkTheme, type GlobalThemeOverrides } from 'naive-ui'
 import { useTheme, type ThemeColor } from './composables/useTheme'
+import SingboxInstallerGuard from '@/components/singbox/SingboxInstallerGuard.vue'
 
 const { isDark, themeColor } = useTheme()
 

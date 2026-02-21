@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { JsonStore } from '../../electron/config/store';
+import { JsonStore } from '../../electron/common/store';
 import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';

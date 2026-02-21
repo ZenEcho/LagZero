@@ -1,3 +1,7 @@
+import { PLATFORMS } from '@/constants'
+
+export type Platform = typeof PLATFORMS[number]
+
 export interface Game {
   id?: string
   name: string
@@ -91,7 +95,9 @@ export interface DnsConfigOptions {
   mode?: 'secure' | 'system'   // DNS 模式：安全模式 (DoH/DoT) 或 系统解析
   primary?: string            // 主 DNS 服务器地址
   secondary?: string          // 备用 DNS 服务器地址
+  bootstrap?: string          // Bootstrap DNS（用于解析 DNS 服务器域名）
   tunInterfaceName?: string
+  proxyBypassList?: string
   accelNetworkMode?: AccelNetworkMode
   disableTun?: boolean
   localProxyNode?: NodeConfig
@@ -152,7 +158,7 @@ export interface SingboxConfig {
 export type LocalScanGame = {
   name: string
   processName: string[]
-  source: 'Steam' | 'Microsoft' | 'Epic' | 'EA'
+  source: Platform
   installDir: string
 }
 

@@ -1,4 +1,4 @@
-import type { Game, Category, NodeConfig } from './index'
+import type { Game, Category, NodeConfig, Platform } from './index'
 
 export interface ElectronAPI {
   minimize: () => Promise<void>
@@ -15,6 +15,12 @@ export interface SingboxAPI {
   start: (config: string) => Promise<void>
   stop: () => Promise<void>
   restart: (config: string) => Promise<void>
+  ensureCoreInstalled: () => Promise<void>
+  getInstallInfo: () => Promise<{
+    exists: boolean
+    installDir: string
+    binaryPath: string
+  }>
 }
 
 export interface SystemAPI {
@@ -22,7 +28,7 @@ export interface SystemAPI {
   scanLocalGames: () => Promise<Array<{
     name: string
     processName: string[]
-    source: 'Steam' | 'Microsoft' | 'Epic' | 'EA'
+    source: Platform
     installDir: string
   }>>
   getProcessTree: () => Promise<any>
@@ -77,6 +83,9 @@ export interface AppAPI {
     error?: string
   }>
   openUrl: (url: string) => Promise<void>
+  openDir: (dir: string) => Promise<void>
+  restart: () => Promise<boolean>
+  reset: () => Promise<boolean>
 }
 
 export interface LogEntry {

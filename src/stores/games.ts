@@ -39,6 +39,30 @@ function normalizeProxyModeForPreset(game: Game): Game {
   return { ...game, proxyMode: 'routing' }
 }
 
+function buildSystemProxyBypassValue(raw: string): string {
+  const parts = String(raw || '')
+    .split(/[\r\n,;]+/g)
+    .map(v => String(v).trim())
+    .filter(Boolean)
+
+  if (!parts.some(v => v.toLowerCase() === '<local>')) {
+    parts.unshift('<local>')
+  }
+
+  return parts.join(';')
+}
+
+function sanitizeSessionNetworkTuningForMode(
+  tuning: SessionNetworkTuningOptions,
+  accelNetworkMode: 'tun' | 'system_proxy'
+): SessionNetworkTuningOptions {
+  if (accelNetworkMode === 'tun') return tuning
+  return {
+    ...tuning,
+    enabled: false
+  }
+}
+
 /**
  * 游戏仓库：
  * - 管理游戏库与当前选中项
@@ -378,13 +402,19 @@ export const useGameStore = defineStore('games', () => {
 
       const rawGame = toRaw(game) as Game
       const rawNode = toRaw(node) as any
+      const effectiveSessionTuning = sanitizeSessionNetworkTuningForMode(
+        { ...getEffectiveSessionNetworkTuning(rawGame.id) },
+        settingsStore.accelNetworkMode
+      )
       const config = String(generateSingboxConfig(rawGame, rawNode, {
         mode: settingsStore.dnsMode,
         primary: settingsStore.dnsPrimary,
         secondary: settingsStore.dnsSecondary,
+        bootstrap: settingsStore.dnsBootstrap,
         tunInterfaceName: settingsStore.tunInterfaceName,
+        proxyBypassList: settingsStore.systemProxyBypass,
         accelNetworkMode: settingsStore.accelNetworkMode,
-        sessionTuning: { ...getEffectiveSessionNetworkTuning(rawGame.id) },
+        sessionTuning: effectiveSessionTuning,
         localProxyNode,
         localProxy: {
           enabled: settingsStore.localProxyEnabled,
@@ -398,7 +428,10 @@ export const useGameStore = defineStore('games', () => {
       await singboxApi.restart(config)
 
       if (useSystemProxy) {
-        const proxyResult = await systemApi.setSystemProxy(systemProxyPortToUse, '<local>')
+        const proxyResult = await systemApi.setSystemProxy(
+          systemProxyPortToUse,
+          buildSystemProxyBypassValue(settingsStore.systemProxyBypass)
+        )
         if (!proxyResult?.ok) {
           await singboxApi.stop()
           const rollbackResult = await systemApi.clearSystemProxy(proxyResult?.snapshot || previousSystemProxySnapshot || undefined)
@@ -417,8 +450,11 @@ export const useGameStore = defineStore('games', () => {
         systemProxySnapshot.value = null
       }
 
-      const procs = Array.isArray(rawGame.processName) ? rawGame.processName.map(p => String(p)) : [String(rawGame.processName)]
-      const shouldEnableChainProxy = rawGame.proxyMode === 'process' && rawGame.chainProxy !== false
+      const procs = (Array.isArray(rawGame.processName) ? rawGame.processName : [rawGame.processName])
+        .map(p => String(p).trim())
+        .filter(Boolean)
+      // Chain proxy is available for both process/routing modes, but requires process names.
+      const shouldEnableChainProxy = rawGame.chainProxy !== false && procs.length > 0
       if (shouldEnableChainProxy) await proxyMonitorApi.start(String(rawGame.id), procs)
       else await proxyMonitorApi.stop()
 
@@ -487,6 +523,8 @@ export const useGameStore = defineStore('games', () => {
     const active = getAcceleratingGame()
     if (!active?.id) return false
     if (operationState.value !== 'idle') return false
+    const settingsStore = useSettingsStore()
+    if (settingsStore.accelNetworkMode !== 'tun') return false
 
     await stopGame(active.id)
     await startGame(active.id)
@@ -560,6 +598,6 @@ function toIpcGame(game: Game): Game {
     nodeId: raw.nodeId != null ? String(raw.nodeId) : undefined,
     proxyMode: raw.proxyMode === 'routing' ? 'routing' : 'process',
     routingRules,
-    chainProxy: !!raw.chainProxy
+    chainProxy: raw.chainProxy !== false
   }
 }
