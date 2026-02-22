@@ -239,7 +239,7 @@
     "dns_bootstrap": "Bootstrap DNS",
     "dns_bootstrap_hint": "Used to resolve remote DNS domains (e.g. dns.google). Prefer a directly reachable DNS IP such as 223.5.5.5.",
     "download_update": "Download Update Now",
-    "tagline": "Cross-platform Game Accelerator",
+    "tagline": "A game accelerator specially designed for enhancing gaming experience",
     "preferences": "Preferences",
     "theme_desc": "Choose an accent color that matches your style.",
     "dns_flush_failed": "Failed to flush DNS cache",

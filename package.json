@@ -6,7 +6,7 @@
   "main": "dist-electron/index.js",
   "type": "module",
   "author": "LagZero Team",
-  "description": "是一款专为极致游戏体验打造的、高性能游戏加速器桌面客户端",
+  "description": "一款专为游戏体验打造的游戏加速器",
   "repository": {
     "type": "git",
     "url": "https://github.com/ZenEcho/LagZero.git"

@@ -69,18 +69,18 @@ describe('Protocol Parsing', () => {
     expect(result).not.toBeNull()
     expect(result?.type).toBe('vmess')
     expect(result?.server).toBe('planb.mojcn.com')
-    expect(result?.server_port).toBe(16617)
+    expect(result?.server_port).toBe(1617)
     expect(result?.network).toBe('ws')
     expect(result?.host).toContain('mobgslb.tbcache.com')
   })
 
   it('should parse VLESS reality link with pbk/sid/sni/fp', () => {
-    const link = 'vless://13a3abd8-6315-4735-b3a2-39f38a2e4f3d@156.246.93.26:38073?encryption=none&security=reality&flow=xtls-rprx-vision&type=tcp&sni=www.paypal.com&pbk=DrpIgSOtaEHqJywmydYjljWB9FD_1PlFjQIAlbHiOgk&fp=chrome#233boy-reality-156.246.93.26'
+    const link = 'vless://13a3abd8-6315-4735-b3a2-39f38a2e4f3d@156.246.93.1:38073?encryption=none&security=reality&flow=xtls-rprx-vision&type=tcp&sni=www.paypal.com&pbk=DrpIgSOtaEHqJywmydYjljWB9FD_1PlFjQIAlbHiOgk&fp=chrome#233boy-reality-156.246.1.26'
     const result = parseShareLink(link)
 
     expect(result).not.toBeNull()
     expect(result?.type).toBe('vless')
-    expect(result?.server).toBe('156.246.93.26')
+    expect(result?.server).toBe('156.246.93.1')
     expect(result?.server_port).toBe(38073)
     expect(result?.security).toBe('reality')
     expect(result?.flow).toBe('xtls-rprx-vision')

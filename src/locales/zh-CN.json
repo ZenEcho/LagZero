@@ -239,7 +239,7 @@
     "dns_bootstrap": "Bootstrap DNS",
     "dns_bootstrap_hint": "用于解析远端 DNS 域名（例如 dns.google）。推荐填写可直连的 DNS IP，如 223.5.5.5。",
     "download_update": "立即下载更新",
-    "tagline": "跨平台游戏加速器",
+    "tagline": "一款专为游戏体验打造的游戏加速器",
     "preferences": "偏好设置",
     "theme_desc": "选择符合您风格的主题色。",
     "dns_flush_failed": "清理 DNS 缓存失败",

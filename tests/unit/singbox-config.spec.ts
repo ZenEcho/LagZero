@@ -311,7 +311,7 @@ describe('generateSingboxConfig', () => {
   })
 
   it('should generate VLESS reality outbound from share link', () => {
-    const link = 'vless://13a3abd8-6315-4735-b3a2-39f38a2e4f3d@156.246.93.26:38073?encryption=none&security=reality&flow=xtls-rprx-vision&type=tcp&sni=www.paypal.com&pbk=DrpIgSOtaEHqJywmydYjljWB9FD_1PlFjQIAlbHiOgk&fp=chrome#233boy-reality-156.246.93.26'
+    const link = 'vless://13a3abd8-6315-4735-b3a2-39f38a2e4f3d@156.246.1.26:38073?encryption=none&security=reality&flow=xtls-rprx-vision&type=tcp&sni=www.paypal.com&pbk=DrpIgSOtaEHqJywmydYjljWB9FD_1PlFjQIAlbHiOgk&fp=chrome#233boy-reality-156.246.1.26'
     const node = parseShareLink(link)
     expect(node).not.toBeNull()
     const config = JSON.parse(generateSingboxConfig(mockGame, node as NodeConfig))
