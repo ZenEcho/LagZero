@@ -36,6 +36,7 @@ describe('generateSingboxConfig session tuning', () => {
     expect(tun.mtu).toBe(1280)
     expect(tun.inet6_address).toBeUndefined()
     expect(tun.strict_route).toBe(false)
+    expect(tun.endpoint_independent_nat).toBe(true)
     expect(tun.stack).toBe('system')
     const remotePrimary = cfg.dns.servers.find((s: any) => s.tag === 'remote-primary')
     expect(remotePrimary?.strategy).toBe('ipv4_only')
@@ -65,6 +66,7 @@ describe('generateSingboxConfig session tuning', () => {
     const tun = cfg.inbounds.find((i: any) => i.tag === 'tun-in')
     expect(tun.mtu).toBe(1360)
     expect(tun.strict_route).toBe(true)
+    expect(tun.endpoint_independent_nat).toBe(true)
     expect(tun.stack).toBe('mixed')
 
     const nodeOut = cfg.outbounds.find((o: any) => o.tag === 'node-out')

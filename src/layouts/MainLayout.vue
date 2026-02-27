@@ -38,11 +38,11 @@
     <div class="flex-1 flex overflow-hidden">
       <!-- Sidebar -->
       <aside
-        class="bg-surface-panel flex flex-col pt-4 z-40 border-r border-border transition-all duration-300 ease-in-out"
-        :class="isCollapsed ? 'w-16 items-center' : ' w-48'" @wheel="handleSidebarWheel">
+        class="bg-surface-panel flex flex-col pt-4 z-40 border-r border-border transition-all duration-300 ease-in-out select-none"
+        :class="isCollapsed ? 'w-16 items-center' : ' w-48'" @wheel="handleSidebarWheel" draggable="false">
         <div class="flex-1 flex flex-col gap-2 px-2 w-full">
           <!-- Navigation Items -->
-          <router-link to="/dashboard" active-class="bg-primary/10 text-primary"
+          <router-link to="/dashboard" active-class="bg-primary/10 text-primary" draggable="false"
             class="flex items-center gap-3 p-2 rounded-lg text-on-surface-muted hover:bg-surface hover:text-on-surface transition-colors h-10"
             :class="[
               isCollapsed ? 'justify-center w-10 mx-auto' : 'w-full',
@@ -54,7 +54,7 @@
                 $t('common.dashboard') }}</span>
           </router-link>
 
-          <router-link to="/games" active-class="bg-primary/10 text-primary"
+          <router-link to="/games" active-class="bg-primary/10 text-primary" draggable="false"
             class="flex items-center gap-3 p-2 rounded-lg text-on-surface-muted hover:bg-surface hover:text-on-surface transition-colors h-10"
             :class="[
               isCollapsed ? 'justify-center w-10 mx-auto' : 'w-full',
@@ -66,7 +66,7 @@
                 $t('games.library') }}</span>
           </router-link>
 
-          <router-link to="/nodes" active-class="bg-primary/10 text-primary"
+          <router-link to="/nodes" active-class="bg-primary/10 text-primary" draggable="false"
             class="flex items-center gap-3 p-2 rounded-lg text-on-surface-muted hover:bg-surface hover:text-on-surface transition-colors h-10"
             :class="[
               isCollapsed ? 'justify-center w-10 mx-auto' : 'w-full',
@@ -78,7 +78,7 @@
                 $t('common.nodes') }}</span>
           </router-link>
 
-          <router-link to="/settings" active-class="bg-primary/10 text-primary"
+          <router-link to="/settings" active-class="bg-primary/10 text-primary" draggable="false"
             class="flex items-center gap-3 p-2 rounded-lg text-on-surface-muted hover:bg-surface hover:text-on-surface transition-colors h-10"
             :class="[
               isCollapsed ? 'justify-center w-10 mx-auto' : 'w-full',
@@ -93,7 +93,7 @@
 
         <!-- Bottom Toggle Button -->
         <div class="p-2 w-full border-t border-border mt-auto">
-          <button @click="toggleSidebar"
+          <button @click="toggleSidebar" draggable="false"
             class="flex items-center gap-3 p-2 rounded-lg text-on-surface-muted hover:bg-surface hover:text-on-surface transition-colors w-full h-10"
             :class="isCollapsed ? 'justify-center w-10 mx-auto' : ''" :title="$t('common.collapse')">
             <div class="i-material-symbols-menu-open text-xl transform transition-transform duration-300"

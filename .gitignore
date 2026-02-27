@@ -22,7 +22,7 @@ release
 
 # App runtime data
 .lagzero-dev
-
+LinuxScript
 # Editor directories and files
 .vscode/*
 .idea

@@ -105,6 +105,7 @@ describe('generateSingboxConfig', () => {
     expect(tunInbound).toBeDefined()
     expect(tunInbound.inet4_address).toBeDefined()
     expect(tunInbound.inet6_address).toBeUndefined()
+    expect(tunInbound.endpoint_independent_nat).toBe(true)
   })
 
   it('should prefer ipv4-only DNS strategy in tun secure mode', () => {

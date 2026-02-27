@@ -195,6 +195,9 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
       mtu: sessionTuning.tunMtu,
       auto_route: true,
       strict_route: sessionTuning.strictRoute,
+      // 尽量启用 Endpoint-Independent NAT，提升 UDP 打洞成功率。
+      // 说明：NAT1 取决于公网直连能力，客户端侧只能做“更开放映射”的优化，无法绝对保证。
+      endpoint_independent_nat: true,
       stack: sessionTuning.tunStack,
       sniff: true // 开启流量嗅探，用于域名解析
     })
