@@ -330,6 +330,9 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
 
     if (hasBypassCn) {
       // -- 绕过大陆模式 (Bypass CN) --
+      console.info(
+        `[GeoBypass] bypass_cn 已命中: proxyMode=${game.proxyMode}, processScope=${hasRoutingProcessScope ? 'on' : 'off'}, processes=${processes.join(',') || '(none)'}`
+      )
 
       // 私有 IP 直连
       const privateRule: Record<string, any> = {
@@ -349,6 +352,7 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
         url: LOYALSOLDIER_GEOIP_CN_SRS_URL,
         download_detour: 'proxy' // 规则集下载走代理
       })
+      console.info(`[GeoBypass] 已注入规则集: tag=${GEOIP_CN_RULE_SET_TAG}, url=${LOYALSOLDIER_GEOIP_CN_SRS_URL}, download_detour=proxy`)
 
       // 下载并配置 CN 域名规则集
       ensureRemoteRuleSet(config, {
@@ -358,6 +362,7 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
         url: SAGERNET_GEOSITE_CN_SRS_URL,
         download_detour: 'proxy'
       })
+      console.info(`[GeoBypass] 已注入规则集: tag=${GEOSITE_CN_RULE_SET_TAG}, url=${SAGERNET_GEOSITE_CN_SRS_URL}, download_detour=proxy`)
 
       // CN IP 直连规则
       const geoipRule: Record<string, any> = {
@@ -378,6 +383,7 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
         geositeRule.process_name = processes
       }
       config.route.rules.push(geositeRule)
+      console.info('[GeoBypass] 已注入直连规则: geoip-cn + geosite-cn -> direct')
 
       // 如果有进程限制，则剩下的流量中，只有该进程走代理
       // (全局 final 默认为 direct)

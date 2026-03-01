@@ -106,6 +106,7 @@ export class SingBoxService {
       this.safeSend('singbox-error', e.message)
       throw e
     }
+    await this.logGeoBypassConfigSummary(configPath)
 
     this.log('正在启动 sing-box...')
     this.lastLogs = []
@@ -122,12 +123,14 @@ export class SingBoxService {
       const text = data.toString().trim()
       pushLog(text)
       this.log(stripAnsi(text))
+      this.inspectGeoBypassRuntimeLine(text)
     })
 
     this.process.stderr?.on('data', (data) => {
       const text = data.toString().trim()
       pushLog(text)
       this.log(stripAnsi(text), 'error')
+      this.inspectGeoBypassRuntimeLine(text)
     })
 
     const started = await new Promise<void>((resolve, reject) => {
@@ -227,6 +230,55 @@ export class SingBoxService {
   private log(message: string, type: 'info' | 'error' = 'info') {
     console.log(`[SingBox] ${message}`)
     this.safeSend('singbox-log', { message, type, timestamp: Date.now() })
+  }
+
+  private async logGeoBypassConfigSummary(configPath: string): Promise<void> {
+    try {
+      const raw = await fs.readFile(configPath, 'utf8')
+      const parsed = JSON.parse(raw) as any
+      const routeRuleSet = Array.isArray(parsed?.route?.rule_set) ? parsed.route.rule_set : []
+      const geoip = routeRuleSet.find((item: any) => String(item?.tag || '') === 'geoip-cn')
+      const geosite = routeRuleSet.find((item: any) => String(item?.tag || '') === 'geosite-cn')
+      const enabled = !!(geoip || geosite)
+      this.log(
+        `[GeoBypass] 启动前配置检测: enabled=${enabled}, geoipUrl=${String(geoip?.url || '(none)')}, geositeUrl=${String(geosite?.url || '(none)')}`
+      )
+    } catch (e: any) {
+      this.log(`[GeoBypass] 启动前配置检测失败: ${String(e?.message || e)}`, 'error')
+    }
+  }
+
+  private inspectGeoBypassRuntimeLine(rawLine: string): void {
+    const line = stripAnsi(String(rawLine || '').trim())
+    if (!line) return
+    const lower = line.toLowerCase()
+    const related = lower.includes('geoip-cn')
+      || lower.includes('geosite-cn')
+      || lower.includes('cn.srs')
+      || lower.includes('rule-set')
+    if (!related) return
+
+    const failed = lower.includes('fail')
+      || lower.includes('error')
+      || lower.includes('timeout')
+      || lower.includes('refused')
+      || lower.includes('not found')
+      || lower.includes('forbidden')
+    if (failed) {
+      this.log(`[GeoBypass] 规则下载失败迹象: ${line}`, 'error')
+      return
+    }
+
+    const downloaded = lower.includes('download')
+      || lower.includes('update')
+      || lower.includes('fetch')
+      || lower.includes('loaded')
+    if (downloaded) {
+      this.log(`[GeoBypass] 规则下载日志: ${line}`)
+      return
+    }
+
+    this.log(`[GeoBypass] 规则相关日志: ${line}`)
   }
 
   private sendStatus(status: 'running' | 'stopped') {

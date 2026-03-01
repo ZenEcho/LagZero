@@ -419,6 +419,18 @@ export const useGameStore = defineStore('games', () => {
           port: systemProxyPortToUse
         }
       }))
+      try {
+        const parsed = JSON.parse(config) as any
+        const routeRuleSet = Array.isArray(parsed?.route?.rule_set) ? parsed.route.rule_set : []
+        const geoip = routeRuleSet.find((item: any) => String(item?.tag || '') === 'geoip-cn')
+        const geosite = routeRuleSet.find((item: any) => String(item?.tag || '') === 'geosite-cn')
+        const enabled = !!(geoip || geosite)
+        console.info(
+          `[GeoBypass] 启动配置摘要 game=${rawGame.name || rawGame.id}: enabled=${enabled}, geoipUrl=${String(geoip?.url || '(none)')}, geositeUrl=${String(geosite?.url || '(none)')}`
+        )
+      } catch (e) {
+        console.warn('[GeoBypass] 启动前解析 config 摘要失败:', e)
+      }
       await singboxApi.restart(config)
 
       if (useSystemProxy) {
