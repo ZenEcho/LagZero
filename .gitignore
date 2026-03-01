@@ -25,6 +25,10 @@ release
 LinuxScript
 # Editor directories and files
 .vscode/*
+.codex/*
+.agent/*
+.agents/*
+.trae/*
 .idea
 .DS_Store
 *.suo

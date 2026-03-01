@@ -2,7 +2,7 @@
   "name": "lagzero",
   "productName": "LagZero",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "main": "dist-electron/index.js",
   "type": "module",
   "author": "LagZero Team",

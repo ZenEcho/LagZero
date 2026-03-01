@@ -21,6 +21,15 @@ contextBridge.exposeInMainWorld('electron', {
   maximize: () => ipcRenderer.invoke('window-maximize'),
   /** 关闭窗口 */
   close: () => ipcRenderer.invoke('window-close'),
+  /** 获取窗口关闭行为偏好 */
+  getWindowCloseAction: () => ipcRenderer.invoke('window-get-close-action'),
+  /** 设置窗口关闭行为偏好 */
+  setWindowCloseAction: (action: 'ask' | 'minimize' | 'quit') => ipcRenderer.invoke('window-set-close-action', action),
+  /** 提交关闭确认结果 */
+  submitWindowCloseDecision: (payload: { action: 'minimize' | 'quit' | 'cancel', remember?: boolean }) =>
+    ipcRenderer.invoke('window-submit-close-decision', payload),
+  /** 打开开发者工具 */
+  openDevTools: () => ipcRenderer.invoke('window-open-devtools'),
   /** 选择图片文件 */
   pickImage: () => ipcRenderer.invoke('dialog:pick-image'),
   /** 选择可执行文件 (.exe) */
@@ -52,7 +61,14 @@ contextBridge.exposeInMainWorld('electron', {
     if (!wrapped) return
     ipcRenderer.removeListener(channel, wrapped)
     channelMap?.delete(callback)
-  }
+  },
+
+  // 托盘相关 API
+  traySyncState: (state: any) => ipcRenderer.send('tray:sync-state', state),
+  trayGetState: () => ipcRenderer.invoke('tray:get-state'),
+  trayActionToggle: () => ipcRenderer.send('tray:action-toggle'),
+  trayShowMain: () => ipcRenderer.invoke('tray:show-main'),
+  trayQuit: () => ipcRenderer.invoke('tray:quit'),
 })
 
 // Sing-box 内核控制
@@ -96,6 +112,8 @@ contextBridge.exposeInMainWorld('system', {
   clearSystemProxy: (snapshot?: any) => ipcRenderer.invoke('system:clear-system-proxy', snapshot),
   /** 获取当前系统代理状态 */
   getSystemProxyState: () => ipcRenderer.invoke('system:get-system-proxy-state'),
+  /** 由主进程执行 HTTP GET 请求（绕过渲染进程 CORS） */
+  fetchUrl: (url: string, timeoutMs?: number) => ipcRenderer.invoke('system:fetch-url', url, timeoutMs),
   /** 监听游戏扫描进度 */
   onScanProgress: (callback: (data: { status: string, details?: string }) => void) => {
     const wrapped = (_event: any, data: any) => callback(data)
@@ -163,6 +181,7 @@ contextBridge.exposeInMainWorld('logs', {
   getFilePath: () => ipcRenderer.invoke('logs:get-file-path'),
   getDirPath: () => ipcRenderer.invoke('logs:get-dir-path'),
   pushFrontend: (entry: any) => ipcRenderer.invoke('logs:push-frontend', entry),
+  pushFrontendBatch: (entries: any[]) => ipcRenderer.invoke('logs:push-frontend-batch', entries),
   onNew: (callback: (entry: any) => void) => {
     const wrapped = (_event: any, entry: any) => callback(entry)
     appLogListenerMap.set(callback, wrapped)

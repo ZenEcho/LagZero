@@ -5,7 +5,7 @@ import path from 'path'
 import fs from 'fs-extra'
 import { Database } from '../db/schema'
 import { generateId } from '../utils/id'
-import { isIconUrl, normalizeNodeType, parseStringArray, safeJsonParse } from '../utils/format'
+import { isIconUrl, normalizeNodeType, parseStringArray, safeJsonParse } from '@shared/utils'
 
 /**
  * 数据库服务类

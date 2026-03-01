@@ -15,7 +15,8 @@ const router = createRouter({
         { path: 'nodes', component: () => import('@/views/nodes/index.vue') },
         { path: 'settings', component: () => import('@/views/settings/index.vue') },
       ]
-    }
+    },
+    { path: '/tray', component: () => import('@/views/tray/index.vue') }
   ]
 })
 

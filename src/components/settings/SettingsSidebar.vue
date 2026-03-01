@@ -21,24 +21,13 @@
       </button>
     </nav>
 
-    <!-- App Info Small -->
-    <div class="mt-auto px-4 py-4 rounded-xl bg-surface-overlay/30 border border-border/50">
-      <div class="flex items-center gap-3">
-        <img src="/logo.svg" class="w-6 h-6 opacity-80" alt="Logo" />
-        <div class="min-w-0">
-          <div class="text-[13px] font-bold truncate">{{ pkg.productName }}</div>
-          <div class="text-[10px] text-on-surface-muted font-mono truncate">v{{ appVersion }}</div>
-        </div>
-      </div>
-    </div>
+
   </aside>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import pkg from '../../../package.json'
-import { useAppUpdater } from '@/composables/useAppUpdater'
 
 defineProps<{
   modelValue: string
@@ -49,7 +38,7 @@ defineEmits<{
 }>()
 
 const { t } = useI18n()
-const { appVersion } = useAppUpdater()
+
 
 const tabs = computed(() => [
   { name: 'general', label: t('settings.general'), icon: 'i-material-symbols-tune' },

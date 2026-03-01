@@ -1,11 +1,13 @@
 import { defineStore } from 'pinia'
 import { ref, reactive, computed } from 'vue'
-import { parseShareLink, parseBatchLinks, normalizeNodeType } from '@/utils/protocol'
+import { parseShareLink, parseBatchLinks } from '@/utils/protocol'
+import { normalizeNodeType } from '@shared/utils'
 import type { NodeConfig, CheckMethod, CheckRecordContext } from '@/types'
 import { useSettingsStore } from './settings'
 import { useGameStore } from './games'
 import { nodeApi, systemApi } from '@/api'
 import { useLocalStorage } from '@vueuse/core'
+import { nodeKeyOf } from '@shared/utils'
 import {
   appendLatencyRecord,
   getGameLatencyStats,
@@ -15,6 +17,20 @@ import {
 
 export type NodeSubscriptionSchedule = 'startup' | 'daily' | 'monthly'
 export const DEFAULT_NODE_GROUP = 'default'
+type NodeImportResultReason = 'added' | 'no-new-nodes' | 'no-valid-nodes' | 'import-failed'
+interface AddNodesResult {
+  reason: NodeImportResultReason
+  count: number
+}
+export type NodeSortType =
+  | 'default-asc'
+  | 'default-desc'
+  | 'latency-asc'
+  | 'latency-desc'
+  | 'alphabetical-asc'
+  | 'alphabetical-desc'
+
+type LegacyNodeSortType = 'default' | 'latency' | 'alphabetical'
 
 export interface NodeSubscription {
   id: string
@@ -34,17 +50,42 @@ export const useNodeStore = defineStore('nodes', () => {
   const searchQuery = useLocalStorage('nodes-search-query', '')
   const activeTypeFilter = useLocalStorage('nodes-filter-type', 'all')
   const activeGroupFilter = useLocalStorage('nodes-filter-group', 'all')
-  const activeSortType = useLocalStorage<'default' | 'latency' | 'alphabetical'>('nodes-sort-type', 'default')
+  const activeSortType = useLocalStorage<NodeSortType | LegacyNodeSortType>('nodes-sort-type', 'default-asc')
   const nodeManualTags = useLocalStorage<Record<string, string>>('nodes-manual-tags', {})
   const nodeSubscriptionGroups = useLocalStorage<Record<string, string>>('nodes-subscription-groups', {})
   const legacyNodeGroups = useLocalStorage<Record<string, string>>('nodes-group-map', {})
   const subscriptions = useLocalStorage<NodeSubscription[]>('nodes-subscriptions', [])
   const startupScheduleChecked = ref(false)
   const latencySessionReady = initLatencySessionStore().catch((e) => {
-    console.error('Failed to init latency session store:', e)
+    console.error('初始化延迟会话存储失败:', e)
   })
 
   const settingsStore = useSettingsStore()
+
+  function normalizeSortType(sortType: NodeSortType | LegacyNodeSortType | string): NodeSortType {
+    switch (sortType) {
+      case 'default':
+      case 'default-asc':
+        return 'default-asc'
+      case 'default-desc':
+        return 'default-desc'
+      case 'latency':
+      case 'latency-asc':
+        return 'latency-asc'
+      case 'latency-desc':
+        return 'latency-desc'
+      case 'alphabetical':
+      case 'alphabetical-asc':
+        return 'alphabetical-asc'
+      case 'alphabetical-desc':
+        return 'alphabetical-desc'
+      default:
+        return 'default-asc'
+    }
+  }
+
+  // Migrate legacy values persisted by old versions.
+  activeSortType.value = normalizeSortType(activeSortType.value)
 
   function normalizeNode(node: NodeConfig): NodeConfig {
     const normalizedType = normalizeNodeType(node.type)
@@ -60,13 +101,11 @@ export const useNodeStore = defineStore('nodes', () => {
       const latency = (value as { latency?: unknown }).latency
       if (typeof latency === 'number') return latency
     }
-    console.warn(`[NodeStore] Unexpected ${source} result payload:`, value)
+    console.warn(`[NodeStore] 意外的 ${source} 结果载荷:`, value)
     return -1
   }
 
-  function nodeKeyOf(node: NodeConfig): string {
-    return String(node.id || node.tag || '').trim()
-  }
+
 
   const selectedNodes = computed(() => {
     const keySet = new Set(selectedNodeKeys.value)
@@ -98,7 +137,7 @@ export const useNodeStore = defineStore('nodes', () => {
     const q = String(searchQuery.value || '').trim().toLowerCase()
     const typeFilter = String(activeTypeFilter.value || 'all')
     const groupFilter = String(activeGroupFilter.value || 'all')
-    const sortType = activeSortType.value
+    const sortType = normalizeSortType(activeSortType.value)
 
     const result = nodes.value.filter((node) => {
       if (typeFilter !== 'all' && normalizeNodeType(node.type) !== typeFilter) return false
@@ -121,15 +160,16 @@ export const useNodeStore = defineStore('nodes', () => {
       return haystack.includes(q)
     })
 
-    if (sortType === 'alphabetical') {
+    if (sortType === 'alphabetical-asc' || sortType === 'alphabetical-desc') {
       return result.sort((a, b) => {
         const nameA = String(a.tag || a.server || '').toLowerCase()
         const nameB = String(b.tag || b.server || '').toLowerCase()
-        return nameA.localeCompare(nameB)
+        const diff = nameA.localeCompare(nameB)
+        return sortType === 'alphabetical-desc' ? -diff : diff
       })
     }
 
-    if (sortType === 'latency') {
+    if (sortType === 'latency-asc' || sortType === 'latency-desc') {
       return result.sort((a, b) => {
         const keyA = nodeKeyOf(a)
         const keyB = nodeKeyOf(b)
@@ -138,18 +178,15 @@ export const useNodeStore = defineStore('nodes', () => {
         // -1 usually means timeout or error, treat as high latency
         const valA = latA < 0 ? 999999 : latA
         const valB = latB < 0 ? 999999 : latB
-        return valA - valB
+        const diff = valA - valB
+        return sortType === 'latency-desc' ? -diff : diff
       })
     }
 
     // Default (Creation Time / Insertion Order)
-    // Assuming nodes.value is already in insertion order
-    // If 'default' usually means newest first or oldest first?
-    // "Creation time" usually implies we want to see when it was added.
-    // Let's keep it as is (insertion order). 
-    // If user wants reverse insertion order, I might need another option. 
-    // But usually "Creation Time" in UI means "As added".
-    return result
+    // 'default-asc': insertion order (old -> new)
+    // 'default-desc': reverse insertion order (new -> old)
+    return sortType === 'default-desc' ? result.slice().reverse() : result
   })
 
   function isNodeSelected(node: NodeConfig): boolean {
@@ -404,7 +441,21 @@ export const useNodeStore = defineStore('nodes', () => {
   }
 
   async function fetchSubscriptionContent(url: string): Promise<string> {
-    const response = await fetch(url, { method: 'GET', cache: 'no-store' })
+    if (window.system) {
+      const response = await systemApi.fetchUrl(url, 20000)
+      if (!response.ok) {
+        if (response.status > 0) {
+          throw new Error(`HTTP ${response.status}`)
+        }
+        throw new Error(response.error || 'fetch-failed')
+      }
+      return response.body
+    }
+
+    const response = await fetch(url, {
+      method: 'GET',
+      cache: 'no-store'
+    })
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`)
     }
@@ -417,17 +468,18 @@ export const useNodeStore = defineStore('nodes', () => {
 
     try {
       const content = await fetchSubscriptionContent(sub.url)
-      const count = await addNodes(content)
+      const imported = await addNodesDetailed(content, { deduplicate: true })
       applyGroupFromContent(content, sub.name)
+      const isOk = imported.reason === 'added' || imported.reason === 'no-new-nodes'
       updateSubscription(id, {
         lastFetchedAt: Date.now(),
-        lastFetchStatus: count > 0 ? 'ok' : 'failed',
-        lastFetchMessage: count > 0 ? '' : 'no-valid-nodes'
+        lastFetchStatus: isOk ? 'ok' : 'failed',
+        lastFetchMessage: imported.reason === 'added' ? '' : imported.reason
       })
       return {
-        ok: count > 0,
-        count,
-        message: count > 0 ? undefined : 'no-valid-nodes'
+        ok: isOk,
+        count: imported.count,
+        message: imported.reason === 'added' ? undefined : imported.reason
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : 'fetch-failed'
@@ -485,7 +537,7 @@ export const useNodeStore = defineStore('nodes', () => {
         }
       }
     } catch (e) {
-      console.error('Ping failed', e)
+      console.error('Ping 失败', e)
       result = { latency: -1, loss: 100 }
     }
 
@@ -508,7 +560,7 @@ export const useNodeStore = defineStore('nodes', () => {
             sessionLossRate: context.sessionLossRate
           }))
           .catch((e) => {
-            console.error('Failed to append latency record:', e)
+            console.error('追加延迟记录失败:', e)
           })
       }
     }
@@ -563,7 +615,7 @@ export const useNodeStore = defineStore('nodes', () => {
       pruneNodeGroups()
       sanitizeSubscriptions()
     } catch (e) {
-      console.error('Failed to load nodes:', e)
+      console.error('加载节点失败:', e)
     }
   }
 
@@ -578,7 +630,7 @@ export const useNodeStore = defineStore('nodes', () => {
         pruneNodeGroups()
         return true
       } catch (e) {
-        console.error('Failed to save node:', e)
+        console.error('保存节点失败:', e)
         return false
       }
     }
@@ -594,27 +646,53 @@ export const useNodeStore = defineStore('nodes', () => {
       pruneNodeGroups()
       return true
     } catch (e) {
-      console.error('Failed to save node:', e)
+      console.error('保存节点失败:', e)
       return false
     }
   }
 
   async function addNodes(content: string): Promise<number> {
-    const newNodes = parseBatchLinks(content).map(normalizeNode)
-    if (newNodes.length === 0) return 0
+    const result = await addNodesDetailed(content)
+    return result.count
+  }
+
+  async function addNodesDetailed(
+    content: string,
+    options?: { deduplicate?: boolean }
+  ): Promise<AddNodesResult> {
+    const parsedNodes = parseBatchLinks(content).map(normalizeNode)
+    if (parsedNodes.length === 0) {
+      return { reason: 'no-valid-nodes', count: 0 }
+    }
+
+    let newNodes = parsedNodes
+
+    // 仅在订阅刷新等场景下启用去重，手动导入允许重复节点
+    if (options?.deduplicate) {
+      const existingSignatures = new Set(nodes.value.map(nodeSignatureOf))
+      const seenInBatch = new Set<string>()
+      newNodes = parsedNodes.filter((node) => {
+        const signature = nodeSignatureOf(node)
+        if (!signature || existingSignatures.has(signature) || seenInBatch.has(signature)) {
+          return false
+        }
+        seenInBatch.add(signature)
+        return true
+      })
+      if (newNodes.length === 0) {
+        return { reason: 'no-new-nodes', count: 0 }
+      }
+    }
 
     try {
       const imported = await nodeApi.import(newNodes)
       nodes.value = (imported as NodeConfig[]).map(normalizeNode)
       pruneSelectedNodeKeys()
       pruneNodeGroups()
-      // The import method on backend handles duplicates and returns all nodes
-      // We can't easily count how many were added unless backend returns that info
-      // But for now we just return parsed count
-      return newNodes.length
+      return { reason: 'added', count: newNodes.length }
     } catch (e) {
-      console.error('Failed to import nodes:', e)
-      return 0
+      console.error('导入节点失败:', e)
+      return { reason: 'import-failed', count: 0 }
     }
   }
 
@@ -624,7 +702,7 @@ export const useNodeStore = defineStore('nodes', () => {
       if (!removed) return
 
       await nodeApi.delete(id)
-      
+
       // Update local state
       nodes.value = nodes.value.filter(n => n.id !== id)
       pruneSelectedNodeKeys()
@@ -643,26 +721,26 @@ export const useNodeStore = defineStore('nodes', () => {
 
       const selectedNodeId = String(accelerating.nodeId || '').trim()
       if (!selectedNodeId || !removedKeys.has(selectedNodeId)) return
-      
+
       // Double check if it still exists (in case multiple nodes had same ID/tag which shouldn't happen but safe to check)
       const stillExists = nodes.value.some((n) => n.id === selectedNodeId || n.tag === selectedNodeId)
       if (stillExists) return
 
       await gameStore.stopGame(accelerating.id)
     } catch (e) {
-      console.error('Failed to delete node:', e)
+      console.error('删除节点失败:', e)
     }
   }
 
   async function removeNodes(ids: string[]) {
     if (!ids.length) return
-    
+
     // Process one by one for now to ensure proper cleanup and game stopping logic
     // In future this could be optimized to a batch API call if backend supports it
     for (const id of ids) {
       await removeNode(id)
     }
-    
+
     clearSelectedNodes()
   }
 

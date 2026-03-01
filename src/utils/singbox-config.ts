@@ -11,7 +11,8 @@
  */
 
 import type { Game, DnsConfigOptions, SingboxConfig, SessionNetworkTuningOptions, VlessPacketEncodingOverride } from '@/types'
-import type { NodeConfig } from '@/utils/protocol'
+import type { NodeConfig } from '@/types'
+import { normalizeProcessNames } from '@shared/utils'
 import pkg from '../../package.json'
 import {
   DEFAULT_DNS_PRIMARY,
@@ -36,35 +37,35 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
   // ---------------------------------------------------------------------------
   // 1. 配置上下文解析与预处理
   // ---------------------------------------------------------------------------
-  
+
   // 判断是否为路由模式 (Routing Mode)
   // 路由模式：基于规则分流，通常配合 TUN 模式使用
   // 进程模式：仅代理指定进程的流量
   const isRoutingMode = game.proxyMode === 'routing'
-  
+
   // 标准化进程名称：去除路径、转小写、添加 .exe 后缀等
   const processes = normalizeProcessNames(Array.isArray(game.processName) ? game.processName : [game.processName])
-  
+
   // 加速网络模式：默认为 TUN 模式，也可选系统代理模式
   const accelNetworkMode = dnsOptions?.accelNetworkMode || 'tun'
-  
+
   // 解析路由规则，判断是否包含特殊规则 (bypass_cn, global)
   const routingRules = tokenizeRoutingRules(game.routingRules) // 解析路由规则字符串为数组
   const hasBypassCn = routingRules.some(r => r.toLowerCase() === 'bypass_cn') // 是否包含 bypass_cn 规则
   const hasGlobal = routingRules.some(r => r.toLowerCase() === 'global') // 是否包含全局路由规则
   const routingIpCidrs = normalizeRoutingIpCidrs(routingRules) // 标准化路由规则中的 IP CIDR 格式
-  
+
   // 判断是否为"类全局"路由：包含 bypass_cn、global 或没有指定具体 CIDR 规则
   const isGlobalLikeRouting = hasBypassCn || hasGlobal || routingIpCidrs.length === 0
-  
+
   // 是否指定了进程
   const hasProcessScope = processes.length > 0
-  
+
   // 路由模式下的进程限定逻辑：
   // 如果在路由模式下指定了进程，则所有路由规则（包括 global/bypass_cn）仅对这些进程生效
   // 其他进程将直接直连，不走代理
   const hasRoutingProcessScope = isRoutingMode && hasProcessScope
-  
+
   // DNS 配置解析
   const dnsMode = dnsOptions?.mode || 'secure'
   const dnsPrimary = String(dnsOptions?.primary || DEFAULT_DNS_PRIMARY).trim()
@@ -73,17 +74,17 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
   const proxyBypassList = String(dnsOptions?.proxyBypassList || '').trim()
   const tunInterfaceName = String(dnsOptions?.tunInterfaceName || pkg.productName).trim() || pkg.productName
   const useSecureDns = dnsMode === 'secure'
-  
+
   // 判断是否禁用 TUN：
   // 1. 用户显式禁用
   // 2. 加速模式选择了 system_proxy
   const disableTun = !!dnsOptions?.disableTun || accelNetworkMode === 'system_proxy'
-  
+
   // DNS 地址策略：
   // Windows TUN + direct IPv6 经常会导致 "An invalid argument was supplied" 错误
   // 因此在 TUN 模式下，强制 DNS 返回 IPv4 地址以提高连接稳定性
   const dnsAddressStrategy = disableTun ? DNS_ADDRESS_STRATEGY : 'ipv4_only'
-  
+
   // 决定是否默认使用远端 DNS：
   // 在以下场景下，为了防止 DNS 污染，必须将远端加密 DNS 设为默认：
   // 1. 路由模式无进程限定（全局代理）：所有流量都走代理，DNS 也应走代理
@@ -94,11 +95,11 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
     (isRoutingMode && !hasRoutingProcessScope) ||
     (hasProcessScope && !disableTun)
   )
-  
+
   // 本地代理配置（用于让其他设备连接）
   const localProxyNode = dnsOptions?.localProxyNode
   const localProxyStrictNode = !!dnsOptions?.localProxyStrictNode
-  
+
   // 网络微调参数解析
   const sessionTuning = resolveSessionTuning(
     disableTun
@@ -187,8 +188,10 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
       type: 'tun',
       tag: 'tun-in',
       interface_name: tunInterfaceName,
-      inet4_address: '172.19.0.1/30',
-      // 关键说明：不配置 inet6_address
+      // sing-box 1.13+ 推荐统一使用 address 字段；
+      // 继续使用 inet4_address 在部分版本会触发兼容路径 panic。
+      address: ['172.19.0.1/30'],
+      // 关键说明：不配置 IPv6 地址
       // Windows TUN + direct IPv6 会报 "An invalid argument was supplied"，
       // 导致所有走 direct 出站的 IPv6 连接全部失败。
       // 去掉 IPv6 后 TUN 只捕获 IPv4 流量，IPv6 走系统原生网络栈，避免断网。
@@ -230,7 +233,7 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
 
     // 配置本地代理的流量出口
     const localProxyOutboundTag = localProxyNode ? 'local-proxy' : 'proxy'
-    
+
     // 如果指定了独立的本地代理节点
     if (localProxyNode) {
       config.outbounds.push({
@@ -324,10 +327,10 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
   // 4.6 核心路由逻辑
   if (isRoutingMode) {
     // === 路由模式 ===
-    
+
     if (hasBypassCn) {
       // -- 绕过大陆模式 (Bypass CN) --
-      
+
       // 私有 IP 直连
       const privateRule: Record<string, any> = {
         ip_is_private: true,
@@ -337,7 +340,7 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
         privateRule.process_name = processes
       }
       config.route.rules.push(privateRule)
-      
+
       // 下载并配置 CN IP 规则集
       ensureRemoteRuleSet(config, {
         tag: GEOIP_CN_RULE_SET_TAG,
@@ -346,7 +349,7 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
         url: LOYALSOLDIER_GEOIP_CN_SRS_URL,
         download_detour: 'proxy' // 规则集下载走代理
       })
-      
+
       // 下载并配置 CN 域名规则集
       ensureRemoteRuleSet(config, {
         tag: GEOSITE_CN_RULE_SET_TAG,
@@ -355,7 +358,7 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
         url: SAGERNET_GEOSITE_CN_SRS_URL,
         download_detour: 'proxy'
       })
-      
+
       // CN IP 直连规则
       const geoipRule: Record<string, any> = {
         rule_set: [GEOIP_CN_RULE_SET_TAG],
@@ -365,7 +368,7 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
         geoipRule.process_name = processes
       }
       config.route.rules.push(geoipRule)
-      
+
       // CN 域名直连规则
       const geositeRule: Record<string, any> = {
         rule_set: [GEOSITE_CN_RULE_SET_TAG],
@@ -375,7 +378,7 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
         geositeRule.process_name = processes
       }
       config.route.rules.push(geositeRule)
-      
+
       // 如果有进程限制，则剩下的流量中，只有该进程走代理
       // (全局 final 默认为 direct)
       if (hasRoutingProcessScope) {
@@ -385,10 +388,10 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
         })
       }
       // 如果没有进程限制，final 默认为 proxy (在 2. 构建基础配置结构 中设置)
-      
+
     } else if (hasGlobal) {
       // -- 全局模式 (Global) --
-      
+
       if (hasRoutingProcessScope) {
         // 仅指定进程走代理
         config.route.rules.push({
@@ -397,10 +400,10 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
         })
       }
       // 如果没有进程限制，final 默认为 proxy
-      
+
     } else if (routingIpCidrs.length > 0) {
       // -- 指定 IP CIDR 代理模式 --
-      
+
       const rule: Record<string, any> = {
         ip_cidr: routingIpCidrs,
         outbound: 'proxy'
@@ -663,55 +666,7 @@ function extractDnsAddressHostname(address: string): string {
   }
 }
 
-/**
- * 标准化进程名称列表
- * 去除路径只保留文件名，并添加小写版本以提高兼容性
- * 例如: ["C:\\Program Files\\Game\\game.exe"] -> ["game.exe", "game"]
- */
-function normalizeProcessNames(processes: string[]): string[] {
-  const items = processes
-    .map(p => toProcessBaseName(String(p ?? '').trim()))
-    .filter(Boolean)
 
-  const set = new Set<string>()
-  items.forEach(p => {
-    for (const alias of expandProcessAliases(p)) {
-      set.add(alias)
-      const lower = alias.toLowerCase()
-      if (lower !== alias) set.add(lower)
-    }
-  })
-
-  return Array.from(set)
-}
-
-/**
- * 获取进程的基础文件名（去除路径和 Windows 的反斜杠）
- */
-function toProcessBaseName(processName: string): string {
-  const value = String(processName || '').trim()
-  if (!value) return ''
-  const normalized = value.replace(/\\/g, '/')
-  const base = normalized.split('/').pop() || normalized
-  return base.trim()
-}
-
-/**
- * 扩展进程名别名
- * 例如输入 "chrome"，自动扩展为 ["chrome", "chrome.exe"]
- */
-function expandProcessAliases(processName: string): string[] {
-  const value = String(processName || '').trim()
-  if (!value) return []
-  const aliases = new Set<string>([value])
-
-  // Tolerate users entering "chrome" instead of "chrome.exe" on Windows.
-  if (!value.includes('.') && !value.includes('/') && !value.includes('\\')) {
-    aliases.add(`${value}.exe`)
-  }
-
-  return Array.from(aliases)
-}
 
 /**
  * 确保配置中包含指定的远程规则集 (Rule Set)

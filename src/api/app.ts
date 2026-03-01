@@ -15,6 +15,7 @@ export const logsApi = {
   getFilePath: () => window.logs.getFilePath(),
   getDirPath: () => window.logs.getDirPath(),
   pushFrontend: (entry: Partial<LogEntry>) => window.logs.pushFrontend(entry),
+  pushFrontendBatch: (entries: Partial<LogEntry>[]) => window.logs.pushFrontendBatch(entries),
   onNew: (callback: (entry: LogEntry) => void) => window.logs.onNew(callback),
   offNew: (callback: (entry: LogEntry) => void) => window.logs.offNew(callback),
 }

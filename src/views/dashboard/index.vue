@@ -86,8 +86,7 @@
                         {{ $t('dashboard.system_proxy_mode') }}
                      </button>
                   </div>
-                  <button @click="showSessionTuningPanel = !showSessionTuningPanel"
-                     :disabled="!isTunNetworkMode"
+                  <button @click="showSessionTuningPanel = !showSessionTuningPanel" :disabled="!isTunNetworkMode"
                      class="px-3 py-1 text-[11px] font-bold rounded-lg border border-border/60 bg-surface-overlay/60 text-on-surface-muted hover:text-on-surface transition disabled:opacity-50 disabled:cursor-not-allowed">
                      {{ $t('dashboard.session_tuning') }}
                   </button>
@@ -107,7 +106,8 @@
                </button>
             </div>
             <p class="text-xs text-on-surface-muted mb-3">{{ $t('dashboard.current_game_tuning_hint') }}</p>
-            <p v-if="!isTunNetworkMode" class="text-xs text-warning mb-3">{{ $t('dashboard.session_tuning_tun_only') }}</p>
+            <p v-if="!isTunNetworkMode" class="text-xs text-warning mb-3">{{ $t('dashboard.session_tuning_tun_only') }}
+            </p>
             <div class="flex items-center justify-between mb-3 rounded-lg border border-border/50 px-3 py-2">
                <span class="text-xs text-on-surface-muted">{{ $t('common.enabled') }}</span>
                <n-switch v-model:value="currentGameSessionTuning.enabled" size="small" :disabled="!isTunNetworkMode" />
@@ -236,7 +236,7 @@
                               </div>
                               <span class=" text-xs font-black uppercase tracking-[0.25em] transition-colors"
                                  :class="isRunning ? 'text-error' : (!isCoreInstalled ? 'text-on-surface-muted' : 'text-primary')">
-                                 {{ (!isRunning && !isCoreInstalled) ? ($t('singbox_installer.preparing') || '环境准备中') :
+                                 {{ (!isRunning && !isCoreInstalled) ? $t('singbox_installer.preparing', '环境准备中') :
                                     actionLabel }}
                               </span>
                            </div>
@@ -363,8 +363,8 @@ const isSwitchingNode = ref(false)
 const isModeSwitching = ref(false)
 const isActionPending = computed(() => isSwitchingNode.value || isModeSwitching.value || gameStore.operationState !== 'idle')
 const actionLabel = computed(() => {
-   if (gameStore.operationState === 'starting') return '启动中'
-   if (gameStore.operationState === 'stopping') return '暂停中'
+   if (gameStore.operationState === 'starting') return String(i18n.global.t('common.starting'))
+   if (gameStore.operationState === 'stopping') return String(i18n.global.t('common.stopping'))
    return isRunning.value ? String(i18n.global.t('common.stop')) : String(i18n.global.t('common.start'))
 })
 const currentLatency = ref(0)
@@ -687,6 +687,7 @@ onMounted(() => {
       electronApi.on('singbox-error', (d: any) => onSingboxEvent('singbox-error', d))
       electronApi.on('singbox-status', (d: any) => onSingboxEvent('singbox-status', d))
       electronApi.on('singbox-installer-status', onInstallerStatusChange)
+      electronApi.on('tray:do-toggle', toggleAccelerator)
       singboxApi.getInstallInfo().then((info) => {
          isCoreInstalled.value = info.exists
       }).catch(() => {
@@ -696,6 +697,8 @@ onMounted(() => {
       console.warn('Electron API events not available', e)
    }
 })
+
+// 托盘状态同步已由 MainLayout 统一处理，此处不再重复同步
 
 onActivated(() => {
    if (isRunning.value) {
@@ -742,7 +745,7 @@ onUnmounted(() => {
       // electronApi.off is defined as function in types, so no need to check existence if we trust types.
       // However, if we want to be safe at runtime:
       if (typeof electronApi.off === 'function') {
-         // ...
+         electronApi.off('tray:do-toggle', toggleAccelerator)
       }
    } catch (e) { }
 })

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { effectScope, nextTick } from 'vue'
-import { useTheme } from './useTheme'
+import { useTheme } from '../../src/composables/useTheme'
 
 const localStorageMock = (() => {
   let store: Record<string, string> = {}

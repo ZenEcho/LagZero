@@ -7,6 +7,7 @@ import { generateSingboxConfig } from '@/utils/singbox-config'
 import { useSettingsStore } from './settings'
 import { useLocalProxyStore } from './local-proxy'
 import { gameApi, singboxApi, proxyMonitorApi, systemApi } from '@/api'
+import { toIpcSafeSnapshot } from '@shared/utils'
 
 export type { Game }
 
@@ -94,14 +95,7 @@ export const useGameStore = defineStore('games', () => {
   /** 当前会话中，按游戏维度覆盖的网络优化参数。 */
   const gameSessionNetworkTuning = reactive<Record<string, SessionNetworkTuningOptions>>({})
 
-  function toPlainSnapshot(snapshot: any) {
-    if (snapshot == null) return null
-    try {
-      return JSON.parse(JSON.stringify(snapshot))
-    } catch {
-      return null
-    }
-  }
+
 
   function cloneGlobalSessionNetworkTuning(): SessionNetworkTuningOptions {
     const settingsStore = useSettingsStore()
@@ -211,7 +205,7 @@ export const useGameStore = defineStore('games', () => {
         currentGameId.value = null
       }
     } catch (e) {
-      console.error('Failed to load games:', e)
+      console.error('加载游戏列表失败:', e)
     }
   }
 
@@ -235,7 +229,7 @@ export const useGameStore = defineStore('games', () => {
       const updatedGames = await gameApi.save(toIpcGame(game))
       syncGames(updatedGames)
     } catch (e) {
-      console.error('Failed to update game:', e)
+      console.error('更新游戏失败:', e)
     }
   }
 
@@ -365,7 +359,7 @@ export const useGameStore = defineStore('games', () => {
     const node = nodeStore.nodes.find(n => n.id === selectedNodeId || n.tag === selectedNodeId)
 
     if (!node) {
-      const msg = 'Selected node not found. Please reselect a node and try again.'
+      const msg = '未找到所选节点。请重新选择节点并重试。'
       console.error(msg, { gameId: id, nodeId: selectedNodeId })
       throw new Error(msg)
     }
@@ -394,7 +388,7 @@ export const useGameStore = defineStore('games', () => {
           available = await systemApi.findAvailablePort(available + 1, 1)
         }
         if (available !== settingsStore.systemProxyPort) {
-          console.info(`[SystemProxy] system proxy port changed ${settingsStore.systemProxyPort} -> ${available}`)
+          console.info(`[SystemProxy] 系统代理端口已更改 ${settingsStore.systemProxyPort} -> ${available}`)
           settingsStore.systemProxyPort = available
         }
         systemProxyPortToUse = available
@@ -436,16 +430,16 @@ export const useGameStore = defineStore('games', () => {
           await singboxApi.stop()
           const rollbackResult = await systemApi.clearSystemProxy(proxyResult?.snapshot || previousSystemProxySnapshot || undefined)
           if (!rollbackResult?.ok) {
-            console.warn('[SystemProxy] rollback failed after setSystemProxy error:', rollbackResult?.message)
+            console.warn('[SystemProxy] 设置系统代理失败后回滚失败:', rollbackResult?.message)
           }
           systemProxySnapshot.value = previousSystemProxySnapshot || null
-          throw new Error(String(proxyResult?.message || 'Failed to set system proxy'))
+          throw new Error(String(proxyResult?.message || '设置系统代理失败'))
         }
-        systemProxySnapshot.value = toPlainSnapshot(proxyResult.snapshot) || toPlainSnapshot(previousSystemProxySnapshot)
+        systemProxySnapshot.value = toIpcSafeSnapshot(proxyResult.snapshot) || toIpcSafeSnapshot(previousSystemProxySnapshot)
       } else {
         const clearResult = await systemApi.clearSystemProxy(systemProxySnapshot.value || undefined)
         if (!clearResult?.ok && !String(clearResult?.message || '').startsWith('Unsupported platform')) {
-          console.warn('[SystemProxy] clear before tun mode failed:', clearResult?.message)
+          console.warn('[SystemProxy] TUN 模式启动前清理系统代理失败:', clearResult?.message)
         }
         systemProxySnapshot.value = null
       }
@@ -467,9 +461,9 @@ export const useGameStore = defineStore('games', () => {
         try {
           await systemApi.clearSystemProxy(previousSystemProxySnapshot || undefined)
         } catch { }
-        systemProxySnapshot.value = toPlainSnapshot(previousSystemProxySnapshot)
+        systemProxySnapshot.value = toIpcSafeSnapshot(previousSystemProxySnapshot)
       }
-      console.error('Failed to start game acceleration:', e)
+      console.error('启动游戏加速失败:', e)
       throw e
     } finally {
       operationState.value = 'idle'
@@ -494,7 +488,7 @@ export const useGameStore = defineStore('games', () => {
       try {
         const clearResult = await systemApi.clearSystemProxy(systemProxySnapshot.value || undefined)
         if (!clearResult?.ok && !String(clearResult?.message || '').startsWith('Unsupported platform')) {
-          console.warn('[SystemProxy] clear on stop failed:', clearResult?.message)
+          console.warn('[SystemProxy] 停止时清理系统代理失败:', clearResult?.message)
         }
       } finally {
         systemProxySnapshot.value = null
@@ -511,7 +505,7 @@ export const useGameStore = defineStore('games', () => {
 
       resetAllAccelerationStatus()
     } catch (e) {
-      console.error('Failed to stop game acceleration:', e)
+      console.error('停止游戏加速失败:', e)
       throw e
     } finally {
       operationState.value = 'idle'

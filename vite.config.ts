@@ -39,6 +39,11 @@ export default defineConfig({
               external: ['better-sqlite3', 'kysely'],
             },
           },
+          resolve: {
+            alias: {
+              '@shared': resolve(__dirname, 'shared'),
+            },
+          },
         },
       },
       preload: {
@@ -50,6 +55,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
+      '@shared': resolve(__dirname, 'shared'),
     },
   },
 })

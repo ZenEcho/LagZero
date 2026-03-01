@@ -8,6 +8,7 @@ import { useNodeStore } from './nodes'
 import { useSettingsStore } from './settings'
 import { systemApi, singboxApi, proxyMonitorApi } from '@/api'
 import i18n from '@/i18n'
+import { nodeKeyOf, sleep } from '@shared/utils'
 import {
   DEFAULT_DNS_PRIMARY,
   DEFAULT_DNS_SECONDARY,
@@ -19,9 +20,13 @@ import {
   LOCAL_PROXY_RECHECK_INTERVAL_MS
 } from '@/constants'
 
-function nodeKeyOf(node: NodeConfig): string {
-  return String(node.id || node.tag || '')
-}
+const NODE_CHECK_CACHE_TTL_SUCCESS_MS = 24 * 60 * 60 * 1000
+const NODE_CHECK_CACHE_TTL_FAIL_MS = 2 * 60 * 1000
+const NON_CACHEABLE_FAILURE_KEYWORDS = [
+  'ENABLE_DEPRECATED_LEGACY_DNS_SERVERS',
+  'sing-box 配置校验失败'
+]
+
 
 function nodeLabelOf(node: NodeConfig, index?: number): string {
   const order = typeof index === 'number' ? `#${index + 1}` : ''
@@ -60,10 +65,6 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
     {}
   )
   let recheckTimer: ReturnType<typeof setInterval> | null = null
-
-  function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms))
-  }
 
   function setStatus(
     text: string,
@@ -121,9 +122,28 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
     ].map((v) => String(v ?? '')).join('|')
   }
 
-  function getCachedNodeCheck(node: NodeConfig) {
+  function getCachedNodeCheck(node: NodeConfig): {
+    fingerprint: string
+    result?: { ok: boolean, detail: string, checkedAt: number }
+  } {
     const fp = buildNodeFingerprint(node)
-    return { fingerprint: fp, result: nodeCheckCache.value[fp] }
+    const result = nodeCheckCache.value[fp]
+    if (!result) return { fingerprint: fp, result: undefined }
+
+    const now = Date.now()
+    const ttl = result.ok ? NODE_CHECK_CACHE_TTL_SUCCESS_MS : NODE_CHECK_CACHE_TTL_FAIL_MS
+    const expired = !result.checkedAt || now - result.checkedAt > ttl
+    const nonCacheableFailure = !result.ok
+      && NON_CACHEABLE_FAILURE_KEYWORDS.some((kw) => String(result.detail || '').includes(kw))
+
+    if (expired || nonCacheableFailure) {
+      const next = { ...nodeCheckCache.value }
+      delete next[fp]
+      nodeCheckCache.value = next
+      return { fingerprint: fp, result: undefined }
+    }
+
+    return { fingerprint: fp, result }
   }
 
   function setCachedNodeCheck(node: NodeConfig, ok: boolean, detail: string) {
@@ -219,10 +239,10 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
     if (recheckTimer) return
     recheckTimer = setInterval(() => {
       void recheckLocalProxyHealth().catch((e) => {
-        console.error('[LocalProxy] periodic recheck failed:', e)
+        console.error('[LocalProxy] 定期检查失败:', e)
       })
     }, LOCAL_PROXY_RECHECK_INTERVAL_MS)
-    console.info(`[LocalProxy] periodic recheck enabled (${Math.floor(LOCAL_PROXY_RECHECK_INTERVAL_MS / 1000)}s)`)
+    console.info(`[LocalProxy] 定期检查已启用 (${Math.floor(LOCAL_PROXY_RECHECK_INTERVAL_MS / 1000)}秒)`)
   }
 
   function findActiveNode(nodes: NodeConfig[]): NodeConfig | null {
@@ -257,7 +277,7 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
       if (nodes.length === 0) {
         running.value = false
         activeNodeKey.value = ''
-        console.warn('[LocalProxy] startup skipped: no nodes available')
+        console.warn('[LocalProxy] 启动跳过: 无可用节点')
         setStatus(t('local_proxy.status_no_nodes'), 'warning')
         resetTestingProgress()
         return false
@@ -270,7 +290,7 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
       if (!settings.localProxyNodeRecursiveTest) {
         const fixed = resolveFixedNode(nodes, settings.localProxyFixedNodeIndex)
         if (!fixed) return false
-        console.info(`[LocalProxy] fixed node mode: ${nodeLabelOf(fixed)}`)
+        console.info(`[LocalProxy] 固定节点模式: ${nodeLabelOf(fixed)}`)
         await applyNodeConfig(fixed)
         running.value = true
         activeNodeKey.value = nodeKeyOf(fixed)
@@ -281,7 +301,7 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
       }
 
       const reasonLabel = t(`local_proxy.reason_${reason}`)
-      console.info(`[LocalProxy] ${reason}: recursive node check started (${nodes.length} node(s))`)
+      console.info(`[LocalProxy] ${reason}: 开始递归节点检查 (${nodes.length} 个节点)`)
       setStatus(t('local_proxy.status_checking', { reason: reasonLabel }), 'info')
       testingTotal.value = nodes.length
       const failures: string[] = []
@@ -292,16 +312,16 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
           const rememberedLabel = nodeLabelOf(remembered)
           testingCurrent.value = 1
           testingNodeLabel.value = rememberedLabel
-          console.info(`[LocalProxy] trying remembered node ${rememberedLabel}`)
+          console.info(`[LocalProxy] 尝试记忆的节点 ${rememberedLabel}`)
           setStatus(t('local_proxy.status_trying_remembered', { label: rememberedLabel }), 'info')
           try {
             const { result: rememberedCached } = getCachedNodeCheck(remembered)
             let rememberedCheck = rememberedCached || { ok: false, detail: 'not-tested', checkedAt: 0 }
 
             if (rememberedCached) {
-              console.info(`[LocalProxy] remembered node cache hit ${rememberedLabel} -> ${rememberedCached.ok ? 'ok' : 'fail'}`)
+              console.info(`[LocalProxy] 记忆节点缓存命中 ${rememberedLabel} -> ${rememberedCached.ok ? '成功' : '失败'}`)
               if (!rememberedCached.ok) {
-                const fail = `[LocalProxy] remembered node skipped by cache ${rememberedLabel} -> ${rememberedCached.detail}`
+                const fail = `[LocalProxy] 记忆节点因缓存跳过 ${rememberedLabel} -> ${rememberedCached.detail}`
                 failures.push(fail)
                 console.warn(fail)
                 rememberedCheck = rememberedCached
@@ -326,14 +346,14 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
               rememberSelectedNode(remembered, nodesFingerprint)
               setStatus(t('local_proxy.status_remembered_selected', { label: rememberedLabel }), 'success')
               resetTestingProgress()
-              console.info(`[LocalProxy] remembered node selected ${rememberedLabel} (${rememberedCheck.detail})`)
+              console.info(`[LocalProxy] 已选择记忆节点 ${rememberedLabel} (${rememberedCheck.detail})`)
               return true
             }
-            const fail = `[LocalProxy] remembered node unavailable ${rememberedLabel} -> ${rememberedCheck.detail}`
+            const fail = `[LocalProxy] 记忆节点不可用 ${rememberedLabel} -> ${rememberedCheck.detail}`
             failures.push(fail)
             console.warn(fail)
           } catch (e: any) {
-            const fail = `[LocalProxy] remembered node error ${rememberedLabel} -> ${String(e?.message || e)}`
+            const fail = `[LocalProxy] 记忆节点错误 ${rememberedLabel} -> ${String(e?.message || e)}`
             failures.push(fail)
             console.warn(fail)
           }
@@ -350,16 +370,16 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
         try {
           const { result: cached } = getCachedNodeCheck(node)
           if (cached) {
-            console.info(`[LocalProxy] cache hit ${label} -> ${cached.ok ? 'ok' : 'fail'}`)
+            console.info(`[LocalProxy] 缓存命中 ${label} -> ${cached.ok ? '成功' : '失败'}`)
             if (!cached.ok) {
-              const detail = `[LocalProxy] node skipped by cache ${label} -> ${cached.detail}`
+              const detail = `[LocalProxy] 节点因缓存跳过 ${label} -> ${cached.detail}`
               failures.push(detail)
               console.warn(detail)
               continue
             }
           }
 
-          console.info(`[LocalProxy] testing node ${label}`)
+          console.info(`[LocalProxy] 正在测试节点 ${label}`)
           setStatus(t('local_proxy.status_checking', { reason: `${i + 1}/${nodes.length} ${label}` }), 'info')
           await applyNodeConfig(node)
 
@@ -370,7 +390,7 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
             rememberSelectedNode(node, nodesFingerprint)
             setStatus(t('local_proxy.status_cached_selected', { label }), 'success')
             resetTestingProgress()
-            console.info(`[LocalProxy] selected cached node ${label} (${cached.detail})`)
+            console.info(`[LocalProxy] 已选择缓存节点 ${label} (${cached.detail})`)
             return true
           }
 
@@ -378,7 +398,7 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
           const check = await verifyHostsWithRetry(settings.localProxyPort)
           setCachedNodeCheck(node, check.ok, check.detail)
           if (!check.ok) {
-            const detail = `[LocalProxy] node unavailable ${label} -> ${check.detail}`
+            const detail = `[LocalProxy] 节点不可用 ${label} -> ${check.detail}`
             failures.push(detail)
             console.warn(detail)
             continue
@@ -390,10 +410,10 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
           rememberSelectedNode(node, nodesFingerprint)
           setStatus(t('local_proxy.status_selected', { label }), 'success')
           resetTestingProgress()
-          console.info(`[LocalProxy] selected node ${label} (${check.detail})`)
+          console.info(`[LocalProxy] 已选择节点 ${label} (${check.detail})`)
           return true
         } catch (e: any) {
-          const detail = `[LocalProxy] node test error ${label} -> ${String(e?.message || e)}`
+          const detail = `[LocalProxy] 节点测试错误 ${label} -> ${String(e?.message || e)}`
           setCachedNodeCheck(node, false, String(e?.message || e || 'node-test-error'))
           failures.push(detail)
           console.warn(detail)
@@ -401,7 +421,7 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
       }
 
       failures.forEach((line) => console.warn(line))
-      console.error('[LocalProxy] no available node after recursive test; local proxy will be stopped')
+      console.error('[LocalProxy] 递归测试后无可用节点; 本地代理将停止')
       setStatus(t('local_proxy.status_no_available_recursive'), 'error')
       resetTestingProgress()
       await proxyMonitorApi.stop()
@@ -425,7 +445,7 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
     currentPort.value = 0
     setStatus(t('local_proxy.status_stopped'), 'info')
     resetTestingProgress()
-    console.info('[LocalProxy] stopped')
+    console.info('[LocalProxy] 已停止')
   }
 
   async function recheckLocalProxyHealth(): Promise<void> {
@@ -443,7 +463,7 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
     if (nodes.length === 0) return
 
     if (!running.value) {
-      console.info('[LocalProxy] periodic recheck: proxy not running, trying to start')
+      console.info('[LocalProxy] 定期检查: 代理未运行, 正在尝试启动')
       await startLocalProxy('recheck')
       return
     }
@@ -453,11 +473,11 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
     const check = await verifyHostsViaLocalHttpProxy(settings.localProxyPort)
     if (check.ok) {
       setStatus(t('local_proxy.status_recheck_ok', { label: activeLabel }), 'success')
-      console.info(`[LocalProxy] periodic recheck ok: ${activeLabel}`)
+      console.info(`[LocalProxy] 定期检查正常: ${activeLabel}`)
       return
     }
 
-    console.warn(`[LocalProxy] periodic recheck failed on active node ${activeLabel}: ${check.detail}`)
+    console.warn(`[LocalProxy] 活动节点定期检查失败 ${activeLabel}: ${check.detail}`)
     setStatus(t('local_proxy.status_recheck_failed', { label: activeLabel }), 'warning')
     await startLocalProxy('recheck')
   }
@@ -472,14 +492,14 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
 
     const nodes = nodeStore.nodes.slice()
     if (nodes.length === 0) {
-      console.error('[LocalProxy] node list changed: no nodes available, stopping local proxy')
+      console.error('[LocalProxy] 节点列表已变更: 无可用节点, 停止本地代理')
       setStatus(t('local_proxy.status_no_nodes'), 'error')
       await stopLocalProxy()
       return
     }
 
     if (!running.value) {
-      console.info('[LocalProxy] node list changed: proxy not running, starting...')
+      console.info('[LocalProxy] 节点列表已变更: 代理未运行, 正在启动...')
       await startLocalProxy('settings')
       return
     }
@@ -487,7 +507,7 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
     const active = findActiveNode(nodes)
     if (active) return
 
-    console.warn('[LocalProxy] active node was removed/changed, reselecting available node')
+    console.warn('[LocalProxy] 活动节点已被移除/变更, 重新选择可用节点')
     setStatus(t('local_proxy.status_active_removed'), 'warning')
     await startLocalProxy('settings')
   }

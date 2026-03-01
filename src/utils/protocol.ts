@@ -1,15 +1,6 @@
 import { Base64 } from 'js-base64'
-import type { NodeConfig } from '../types'
-
-export type { NodeConfig }
-
-export function normalizeNodeType(type: string | null | undefined): string {
-  const t = String(type ?? '').trim().toLowerCase()
-  if (t === 'ss' || t === 'shadowsocks') return 'shadowsocks'
-  if (t === 'socks5' || t === 'socks') return 'socks'
-  if (t === 'https' || t === 'http') return 'http'
-  return t
-}
+import type { NodeConfig } from '@/types'
+import { normalizeNodeType } from '@shared/utils'
 
 export function parseShareLink(link: string): NodeConfig | null {
   link = link.trim().replace(/[\u200B-\u200D\uFEFF]/g, '')

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { generateSingboxConfig } from './singbox-config'
-import type { Game, DnsConfigOptions } from '@/types'
+import { generateSingboxConfig } from '../../src/utils/singbox-config'
+import type { Game, DnsConfigOptions } from '../../src/types'
 
 const baseGame: Game = {
   id: 'g1',
@@ -34,6 +34,8 @@ describe('generateSingboxConfig session tuning', () => {
     const cfg = buildConfig({ mode: 'secure' })
     const tun = cfg.inbounds.find((i: any) => i.tag === 'tun-in')
     expect(tun.mtu).toBe(1280)
+    expect(tun.address).toEqual(['172.19.0.1/30'])
+    expect(tun.inet4_address).toBeUndefined()
     expect(tun.inet6_address).toBeUndefined()
     expect(tun.strict_route).toBe(false)
     expect(tun.endpoint_independent_nat).toBe(true)

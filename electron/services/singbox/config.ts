@@ -1,7 +1,7 @@
 import fs from 'fs-extra'
 import path from 'path'
 import { app } from 'electron'
-import { normalizeProcessNames, areStringArraysEqual } from '../../utils/process-helper'
+import { normalizeProcessNames, areStringArraysEqual } from '@shared/utils'
 import { LogFn } from './installer'
 import { getSingboxEnv, stripAnsi } from './utils'
 import { spawn } from 'child_process'
@@ -26,14 +26,17 @@ export class SingBoxConfigManager {
     const { code, output } = await this.runCheck(binPath, configPath)
     if (code === 0) return
 
-    const lines = output
+    const allLines = output
       .split(/\r?\n/g)
       .map(l => stripAnsi(l.trim()))
       .filter(Boolean)
-      .slice(-12)
+    const lines = allLines.length > 24
+      ? [...allLines.slice(0, 8), ...allLines.slice(-16)]
+      : allLines
 
+    const summary = this.pickSummaryLine(lines)
     const detail = this.buildHelpfulErrorDetail(lines)
-    const msg = `sing-box 配置校验失败（code=${String(code)}）${lines.length ? `：${lines.at(-1)}` : ''}${detail ? `\n\n${detail}` : ''}`
+    const msg = `sing-box 配置校验失败（code=${String(code)}）${summary ? `：${summary}` : ''}${detail ? `\n\n${detail}` : ''}`
     this.log(msg, 'error')
     throw new Error(msg)
   }
@@ -55,6 +58,23 @@ export class SingBoxConfigManager {
         resolve({ code: -1, output: '无法执行 sing-box，请检查可执行文件是否完整' })
       })
     })
+  }
+
+  private pickSummaryLine(lines: string[]): string {
+    if (!lines.length) return ''
+
+    const fatal = lines.find((line) => /panic:|fatal|error/i.test(line))
+    if (fatal) return fatal
+
+    const nonStack = lines.find((line) => {
+      const lower = line.toLowerCase()
+      if (lower.startsWith('goroutine ')) return false
+      if (lower.startsWith('main.')) return false
+      if (line.includes('.go:') || line.includes('+0x')) return false
+      if (line.startsWith('github.com/')) return false
+      return true
+    })
+    return nonStack || lines.at(-1) || ''
   }
 
   /**
@@ -80,8 +100,16 @@ export class SingBoxConfigManager {
       hints.push('提示：当前 sing-box 版本要求开启兼容开关，我已在程序内自动注入环境变量 ENABLE_DEPRECATED_SPECIAL_OUTBOUNDS=true。')
     }
 
-    if (text.includes('deprecated_tun_address_x') || text.includes('deprecated tun address x') || text.includes('enable_deprecated_tun_address_x')) {
-      hints.push('提示：当前 sing-box 版本要求开启 TUN 兼容开关，我已在程序内自动注入环境变量 ENABLE_DEPRECATED_TUN_ADDRESS_X=true。')
+    if (text.includes('tun-address-x') || text.includes('invalid deprecated note: tun-address-x')) {
+      hints.push('提示：当前 sing-box 对旧版 TUN 地址字段兼容异常。请升级到包含 `tun.address` 新格式的 LagZero 版本后重试。')
+    }
+
+    if (text.includes('deprecated_legacy_dns_servers') || text.includes('deprecated legacy dns servers') || text.includes('enable_deprecated_legacy_dns_servers')) {
+      hints.push('提示：当前 sing-box 版本要求开启 DNS 兼容开关，我已在程序内自动注入环境变量 ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true。')
+    }
+
+    if (text.includes('deprecated_missing_domain_resolver') || text.includes('deprecated missing domain resolver') || text.includes('enable_deprecated_missing_domain_resolver')) {
+      hints.push('提示：当前 sing-box 版本要求开启 domain_resolver 兼容开关，我已在程序内自动注入环境变量 ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER=true。')
     }
 
     if (text.includes('mtu') || text.includes('fragment') || text.includes('message too long') || text.includes('packet too large')) {

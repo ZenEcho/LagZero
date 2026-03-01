@@ -1,325 +1,385 @@
 <template>
-  <div class="space-y-8 max-w-3xl animate-fade-in-up">
+  <div class="flex-1 space-y-6 w-full animate-fade-in-up ">
     <!-- Latency Check -->
     <section>
-      <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
-        <div class="i-material-symbols-speed text-primary"></div>
+      <h2 class="text-xs font-bold uppercase tracking-widest text-primary mb-3 pl-1">
         {{ $t('settings.network') }}
       </h2>
-      <div class="bg-surface-panel/50 border border-border/50 rounded-2xl p-6 backdrop-blur-sm space-y-6">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div class="space-y-3">
-            <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">{{
-              $t('settings.check_method') }}</label>
-            <div class="flex bg-surface-overlay/50 p-1 rounded-xl border border-border/30">
-              <button v-for="method in ['ping', 'tcp']" :key="method" @click="setCheckMethod(method)"
-                class="flex-1 py-2 text-sm rounded-lg transition-all font-bold" :class="settingsStore.checkMethod === method
-                  ? 'bg-surface shadow-sm text-primary'
-                  : 'text-on-surface-muted hover:text-on-surface'">
-                {{ method.toUpperCase() }}
-              </button>
+      <div
+        class="bg-surface-panel/50 border border-border/50 rounded-2xl flex flex-col divide-y divide-border/30 backdrop-blur-sm overflow-hidden shadow-sm">
+
+        <!-- Check Method -->
+        <div
+          class="flex flex-col sm:flex-row sm:items-center justify-between p-4 lg:p-5 gap-4 hover:bg-surface-overlay/30 transition-colors">
+          <div class="flex items-center gap-4">
+            <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+              <div class="i-material-symbols-speed-outline text-xl"></div>
+            </div>
+            <div>
+              <div class="font-bold text-sm">{{ $t('settings.check_method') }}</div>
             </div>
           </div>
+          <div
+            class="bg-surface-overlay/50 border border-border/30 rounded-xl p-1 flex gap-1 w-full sm:w-auto shrink-0">
+            <button v-for="method in ['ping', 'tcp']" :key="method" @click="setCheckMethod(method)"
+              class="flex-1 sm:flex-none px-4 py-1.5 text-xs rounded-lg transition-all font-bold" :class="settingsStore.checkMethod === method
+                ? 'bg-surface text-primary shadow-sm ring-1 ring-border/50'
+                : 'text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay/50'">
+              {{ method.toUpperCase() }}
+            </button>
+          </div>
+        </div>
 
-          <div class="space-y-3">
-            <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">{{
-              $t('settings.check_interval') }}</label>
+        <!-- Check Interval -->
+        <div
+          class="flex flex-col sm:flex-row sm:items-center justify-between p-4 lg:p-5 gap-4 hover:bg-surface-overlay/30 transition-colors">
+          <div class="flex items-center gap-4">
+            <div class="w-10 h-10 rounded-xl bg-transparent flex items-center justify-center text-primary shrink-0">
+            </div>
+            <div>
+              <div class="font-bold text-sm">{{ $t('settings.check_interval') }}</div>
+            </div>
+          </div>
+          <div class="w-full sm:w-[200px] shrink-0">
             <n-select v-model:value="settingsStore.checkInterval" :options="intervalOptions" class="glass-select" />
           </div>
         </div>
       </div>
     </section>
 
-    <div class="w-full h-px bg-border/30"></div>
-
     <!-- DNS Settings -->
     <section>
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-bold flex items-center gap-2">
-          <div class="i-material-symbols-dns-outline text-primary"></div>
-          {{ $t('settings.dns_config') }}
-        </h2>
-        <div class="flex bg-surface-overlay/50 rounded-lg p-1 border border-border/30">
-          <button @click="settingsStore.dnsMode = 'secure'" :disabled="applyingDns"
-            class="px-3 py-1 text-xs rounded-md transition font-medium" :class="settingsStore.dnsMode === 'secure'
-              ? 'bg-surface shadow-sm text-primary'
-              : 'text-on-surface-muted hover:text-on-surface'">
-            {{ $t('settings.dns_mode_secure') }}
-          </button>
-          <button @click="settingsStore.dnsMode = 'system'" :disabled="applyingDns"
-            class="px-3 py-1 text-xs rounded-md transition font-medium" :class="settingsStore.dnsMode === 'system'
-              ? 'bg-surface shadow-sm text-primary'
-              : 'text-on-surface-muted hover:text-on-surface'">
-            {{ $t('settings.dns_mode_system') }}
-          </button>
+      <h2 class="text-xs font-bold uppercase tracking-widest text-primary mb-3 pl-1">
+        {{ $t('settings.dns_config') }}
+      </h2>
+      <div
+        class="bg-surface-panel/50 border border-border/50 rounded-2xl flex flex-col divide-y divide-border/30 backdrop-blur-sm overflow-hidden shadow-sm">
+
+        <!-- DNS Mode -->
+        <div
+          class="flex flex-col sm:flex-row sm:items-center justify-between p-4 lg:p-5 gap-4 hover:bg-surface-overlay/30 transition-colors">
+          <div class="flex items-center gap-4">
+            <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+              <div class="i-material-symbols-dns-outline text-xl"></div>
+            </div>
+            <div>
+              <div class="font-bold text-sm">{{ $t('settings.dns_mode') }}</div>
+            </div>
+          </div>
+          <div
+            class="bg-surface-overlay/50 border border-border/30 rounded-xl p-1 flex gap-1 w-full sm:w-auto shrink-0">
+            <button @click="settingsStore.dnsMode = 'secure'" :disabled="applyingDns"
+              class="flex-1 sm:flex-none px-4 py-1.5 text-xs rounded-lg transition-all font-bold" :class="settingsStore.dnsMode === 'secure'
+                ? 'bg-surface text-primary shadow-sm ring-1 ring-border/50'
+                : 'text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay/50'">
+              {{ $t('settings.dns_mode_secure') }}
+            </button>
+            <button @click="settingsStore.dnsMode = 'system'" :disabled="applyingDns"
+              class="flex-1 sm:flex-none px-4 py-1.5 text-xs rounded-lg transition-all font-bold" :class="settingsStore.dnsMode === 'system'
+                ? 'bg-surface text-primary shadow-sm ring-1 ring-border/50'
+                : 'text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay/50'">
+              {{ $t('settings.dns_mode_system') }}
+            </button>
+          </div>
+        </div>
+
+        <div class="p-4 lg:p-5 space-y-4 hover:bg-surface-overlay/30 transition-colors"
+          :class="{ 'opacity-50 pointer-events-none grayscale': settingsStore.dnsMode === 'system' }">
+          <p v-if="settingsStore.dnsMode === 'system'" class="text-xs text-warning">
+            {{ $t('settings.dns_mode_system_hint') }}
+          </p>
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div class="w-full sm:w-[200px] font-bold text-sm">{{ $t('settings.dns_primary') }}</div>
+            <div class="w-full md:flex-1">
+              <n-input v-model:value="settingsStore.dnsPrimary" placeholder="https://cloudflare-dns.com/dns-query"
+                class="glass-input" />
+            </div>
+          </div>
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div class="w-full sm:w-[200px] font-bold text-sm">{{ $t('settings.dns_secondary') }}</div>
+            <div class="w-full md:flex-1">
+              <n-input v-model:value="settingsStore.dnsSecondary" placeholder="https://dns.alidns.com/resolve"
+                class="glass-input" />
+            </div>
+          </div>
+          <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+            <div class="w-full sm:w-[200px] font-bold text-sm">{{ $t('settings.dns_bootstrap') }}</div>
+            <div class="w-full md:flex-1 space-y-1">
+              <n-input v-model:value="settingsStore.dnsBootstrap" placeholder="223.5.5.5" class="glass-input" />
+              <p class="text-xs text-on-surface-muted">{{ $t('settings.dns_bootstrap_hint') }}</p>
+            </div>
+          </div>
         </div>
       </div>
+    </section>
 
+    <!-- Local Proxy -->
+    <section>
+      <h2 class="text-xs font-bold uppercase tracking-widest text-primary mb-3 pl-1">
+        {{ $t('settings.local_proxy') }}
+      </h2>
       <div
-        class="bg-surface-panel/50 border border-border/50 rounded-2xl p-6 backdrop-blur-sm transition-opacity duration-300"
-        :class="{ 'opacity-50 pointer-events-none grayscale': settingsStore.dnsMode === 'system' }">
-        <p v-if="settingsStore.dnsMode === 'system'" class="mb-3 text-xs text-warning">
-          {{ $t('settings.dns_mode_system_hint') }}
-        </p>
-        <div class="space-y-4">
-          <div class="space-y-2">
-            <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">{{
-              $t('settings.dns_primary') }}</label>
-            <n-input v-model:value="settingsStore.dnsPrimary" placeholder="https://cloudflare-dns.com/dns-query"
-              class="glass-input" />
+        class="bg-surface-panel/50 border border-border/50 rounded-2xl flex flex-col divide-y divide-border/30 backdrop-blur-sm overflow-hidden shadow-sm">
+
+        <div
+          class="flex flex-col sm:flex-row sm:items-center justify-between p-4 lg:p-5 gap-4 hover:bg-surface-overlay/30 transition-colors">
+          <div class="flex items-center gap-4">
+            <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+              <div class="i-material-symbols-lan-outline text-xl"></div>
+            </div>
+            <div>
+              <div class="font-bold text-sm">{{ $t('settings.local_proxy') }}</div>
+            </div>
           </div>
-          <div class="space-y-2">
-            <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">{{
-              $t('settings.dns_secondary') }}</label>
-            <n-input v-model:value="settingsStore.dnsSecondary" placeholder="https://dns.alidns.com/resolve"
-              class="glass-input" />
+          <div class="shrink-0 flex items-center gap-2">
+            <n-switch v-model:value="settingsStore.localProxyEnabled" />
           </div>
-          <div class="space-y-2">
-            <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">{{
-              $t('settings.dns_bootstrap') }}</label>
-            <n-input v-model:value="settingsStore.dnsBootstrap" placeholder="223.5.5.5" class="glass-input" />
-            <p class="text-xs text-on-surface-muted">
-              {{ $t('settings.dns_bootstrap_hint') }}
+        </div>
+
+        <div class="p-4 lg:p-5 space-y-4 hover:bg-surface-overlay/30 transition-colors"
+          :class="{ 'opacity-50 pointer-events-none': !settingsStore.localProxyEnabled }">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div class="w-full sm:w-[300px]">
+              <div class="font-bold text-sm">{{ $t('settings.local_proxy_port') }} (HTTP)</div>
+              <div class="text-xs text-on-surface-muted mt-0.5">{{ $t('settings.local_proxy_info', {
+                socks:
+                  settingsStore.localProxyPort + 1
+              }) }}</div>
+            </div>
+            <div class="w-full sm:w-auto md:w-[200px]">
+              <n-input-number v-model:value="settingsStore.localProxyPort" :min="1024" :max="65535" class="glass-select"
+                button-placement="both" />
+            </div>
+          </div>
+
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div class="w-full sm:w-[300px]">
+              <div class="font-bold text-sm">{{ $t('settings.local_proxy_node_strategy') }}</div>
+              <div class="text-xs text-on-surface-muted mt-0.5">{{ $t('settings.local_proxy_node_recursive') }}</div>
+            </div>
+            <div class="w-full sm:w-auto shrink-0 flex items-center justify-end">
+              <n-switch v-model:value="settingsStore.localProxyNodeRecursiveTest" />
+            </div>
+          </div>
+
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+            :class="{ 'opacity-50 pointer-events-none': settingsStore.localProxyNodeRecursiveTest }">
+            <div class="w-full sm:w-[300px] font-bold text-sm">
+              {{ $t('settings.local_proxy_fixed_node_index') }}
+            </div>
+            <div class="w-full sm:w-auto md:w-[200px]">
+              <n-input-number v-model:value="settingsStore.localProxyFixedNodeIndex" :min="1" :max="9999"
+                class="glass-select" button-placement="both" />
+            </div>
+          </div>
+
+          <div class="bg-surface-overlay/30 p-3 rounded-xl border border-border/30 space-y-1">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">{{ $t('common.status')
+              }}</span>
+              <span class="text-xs font-bold" :class="localProxyStore.statusLevel === 'error'
+                ? 'text-error' : localProxyStore.statusLevel === 'warning'
+                  ? 'text-yellow-500' : localProxyStore.statusLevel === 'success'
+                    ? 'text-success' : 'text-on-surface-muted'">
+                {{ localProxyStore.statusText || (localProxyStore.starting ? $t('common.checking') : '-') }}
+              </span>
+            </div>
+            <div v-if="localProxyStore.testingTotal > 0" class="text-xs text-on-surface-muted text-right">
+              {{ $t('common.checking') }} {{ localProxyStore.testingCurrent }}/{{ localProxyStore.testingTotal }}
+              <span v-if="localProxyStore.testingNodeLabel">- {{ localProxyStore.testingNodeLabel }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- System Proxy -->
+    <section>
+      <h2 class="text-xs font-bold uppercase tracking-widest text-primary mb-3 pl-1">
+        {{ $t('settings.system_proxy') }}
+      </h2>
+      <div
+        class="bg-surface-panel/50 border border-border/50 rounded-2xl flex flex-col divide-y divide-border/30 backdrop-blur-sm overflow-hidden shadow-sm">
+        <div class="p-4 lg:p-5 space-y-4 hover:bg-surface-overlay/30 transition-colors">
+          <div class="flex items-center gap-4 mb-2">
+            <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+              <div class="i-material-symbols-public text-xl"></div>
+            </div>
+            <div>
+              <div class="font-bold text-sm">{{ $t('settings.system_proxy') }}</div>
+              <div class="text-xs text-on-surface-muted mt-0.5 max-w-lg">{{ $t('settings.system_proxy_info') }}</div>
+            </div>
+          </div>
+
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div class="w-full sm:w-[300px] font-bold text-sm">
+              {{ $t('settings.system_proxy_port') }} (HTTP)
+            </div>
+            <div class="w-full sm:w-auto md:w-[200px]">
+              <n-input-number v-model:value="settingsStore.systemProxyPort" :min="1024" :max="65535"
+                class="glass-select" button-placement="both" />
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-2 pt-2">
+            <div class="font-bold text-sm">
+              {{ $t('settings.proxy_bypass') }}
+            </div>
+            <n-input v-model:value="settingsStore.systemProxyBypass" type="textarea"
+              :autosize="{ minRows: 3, maxRows: 8 }" :placeholder="$t('settings.proxy_bypass_placeholder')"
+              class="glass-input" />
+            <p class="text-xs text-on-surface-muted mt-1">
+              {{ $t('settings.proxy_bypass_info') }}
             </p>
           </div>
         </div>
       </div>
     </section>
 
-    <div class="w-full h-px bg-border/30"></div>
-
-    <!-- Local Proxy -->
-    <section>
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-bold flex items-center gap-2">
-          <div class="i-material-symbols-lan text-primary"></div>
-          {{ $t('settings.local_proxy') }}
-        </h2>
-        <n-switch v-model:value="settingsStore.localProxyEnabled">
-          <template #checked>{{ $t('common.enabled') }}</template>
-          <template #unchecked>{{ $t('common.disabled') }}</template>
-        </n-switch>
-      </div>
-
-      <div
-        class="bg-surface-panel/50 border border-border/50 rounded-2xl p-6 backdrop-blur-sm transition-opacity duration-300"
-        :class="{ 'opacity-50 pointer-events-none': !settingsStore.localProxyEnabled }">
-        <div class="space-y-2">
-          <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">{{
-            $t('settings.local_proxy_port') }} (HTTP)</label>
-          <n-input-number v-model:value="settingsStore.localProxyPort" :min="1024" :max="65535" class="glass-select"
-            button-placement="both" />
-          <p class="text-xs text-on-surface-muted mt-1">{{ $t('settings.local_proxy_info', {
-            socks:
-              settingsStore.localProxyPort + 1
-          }) }}</p>
-        </div>
-        <div class="space-y-2 pt-2">
-          <div class="flex items-center justify-between">
-            <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
-              {{ $t('settings.local_proxy_node_strategy') }}
-            </label>
-            <n-switch v-model:value="settingsStore.localProxyNodeRecursiveTest" size="small" />
-          </div>
-          <p class="text-xs text-on-surface-muted">
-            {{ $t('settings.local_proxy_node_recursive') }}
-          </p>
-        </div>
-        <div class="space-y-2" :class="{ 'opacity-50 pointer-events-none': settingsStore.localProxyNodeRecursiveTest }">
-          <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
-            {{ $t('settings.local_proxy_fixed_node_index') }}
-          </label>
-          <n-input-number v-model:value="settingsStore.localProxyFixedNodeIndex" :min="1" :max="9999"
-            class="glass-select" button-placement="both" />
-        </div>
-        <div class="space-y-2 pt-2">
-          <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
-            {{ $t('common.status') }}
-          </label>
-          <div class="px-3 py-2 rounded-lg border text-xs" :class="localProxyStore.statusLevel === 'error'
-            ? 'border-error/40 text-error bg-error/10'
-            : localProxyStore.statusLevel === 'warning'
-              ? 'border-yellow-500/40 text-yellow-500 bg-yellow-500/10'
-              : localProxyStore.statusLevel === 'success'
-                ? 'border-success/40 text-success bg-success/10'
-                : 'border-border/50 text-on-surface-muted bg-surface-overlay/40'">
-            {{ localProxyStore.statusText || (localProxyStore.starting ? $t('common.checking') : '-') }}
-          </div>
-          <p v-if="localProxyStore.testingTotal > 0" class="text-xs text-on-surface-muted">
-            {{ $t('common.checking') }} {{ localProxyStore.testingCurrent }}/{{ localProxyStore.testingTotal }}
-            <span v-if="localProxyStore.testingNodeLabel">- {{ localProxyStore.testingNodeLabel }}</span>
-          </p>
-        </div>
-      </div>
-    </section>
-
-    <div class="w-full h-px bg-border/30"></div>
-
-    <!-- System Proxy -->
-    <section>
-      <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
-        <div class="i-material-symbols-public text-primary"></div>
-        {{ $t('settings.system_proxy') }}
-      </h2>
-      <div class="bg-surface-panel/50 border border-border/50 rounded-2xl p-6 backdrop-blur-sm space-y-4">
-        <div class="space-y-2">
-          <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
-            {{ $t('settings.system_proxy_port') }} (HTTP)
-          </label>
-          <n-input-number v-model:value="settingsStore.systemProxyPort" :min="1024" :max="65535" class="glass-select"
-            button-placement="both" />
-          <p class="text-xs text-on-surface-muted mt-1">
-            {{ $t('settings.system_proxy_info') }}
-          </p>
-        </div>
-        <div class="space-y-2">
-          <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
-            {{ $t('settings.proxy_bypass') }}
-          </label>
-          <n-input v-model:value="settingsStore.systemProxyBypass" type="textarea"
-            :autosize="{ minRows: 3, maxRows: 8 }" :placeholder="$t('settings.proxy_bypass_placeholder')"
-            class="glass-input" />
-          <p class="text-xs text-on-surface-muted mt-1">
-            {{ $t('settings.proxy_bypass_info') }}
-          </p>
-        </div>
-      </div>
-    </section>
-
-    <div class="w-full h-px bg-border/30"></div>
-
     <!-- Game Network Tuning -->
     <section>
-      <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
-        <div class="i-material-symbols-joystick text-primary"></div>
+      <h2 class="text-xs font-bold uppercase tracking-widest text-primary mb-3 pl-1">
         {{ $t('settings.game_network_tuning') }}
       </h2>
       <div
-        class="bg-surface-panel/50 border border-border/50 rounded-2xl p-6 backdrop-blur-sm space-y-4 transition-opacity duration-300"
-        :class="{ 'opacity-60': !isTunNetworkMode }">
-        <p class="text-xs text-on-surface-muted">
-          {{ $t('settings.game_network_tuning_hint') }}
-        </p>
-        <p v-if="!isTunNetworkMode" class="text-xs text-warning">
-          {{ $t('settings.game_network_tuning_tun_only') }}
-        </p>
-        <div class="flex items-center justify-between">
-          <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
-            {{ $t('common.enabled') }}
-          </label>
-          <n-switch v-model:value="settingsStore.sessionNetworkTuning.enabled" :disabled="!isTunNetworkMode" />
+        class="bg-surface-panel/50 border border-border/50 rounded-2xl flex flex-col divide-y divide-border/30 backdrop-blur-sm overflow-hidden shadow-sm transition-opacity duration-300"
+        :class="{ 'opacity-60 grayscale': !isTunNetworkMode }">
+
+        <div
+          class="flex flex-col sm:flex-row sm:items-center justify-between p-4 lg:p-5 gap-4 hover:bg-surface-overlay/30 transition-colors">
+          <div class="flex items-center gap-4">
+            <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+              <div class="i-material-symbols-joystick-outline text-xl"></div>
+            </div>
+            <div>
+              <div class="font-bold text-sm">{{ $t('settings.game_network_tuning') }}</div>
+              <div class="text-xs text-on-surface-muted mt-0.5 line-clamp-2"
+                :title="$t('settings.game_network_tuning_hint')">
+                {{ $t('settings.game_network_tuning_hint') }}
+              </div>
+            </div>
+          </div>
+          <div class="shrink-0 flex items-center gap-2">
+            <n-switch v-model:value="settingsStore.sessionNetworkTuning.enabled" :disabled="!isTunNetworkMode" />
+          </div>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4"
+
+        <div class="p-4 lg:p-5 space-y-4 hover:bg-surface-overlay/30 transition-colors"
           :class="{ 'opacity-50 pointer-events-none': !settingsStore.sessionNetworkTuning.enabled || !isTunNetworkMode }">
-          <div class="space-y-2 md:col-span-2">
-            <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
-              {{ $t('settings.network_profile') }}
-            </label>
-            <div class="flex bg-surface-overlay/50 p-1 rounded-xl border border-border/30">
+          <p v-if="!isTunNetworkMode"
+            class="text-xs text-warning border border-warning/30 bg-warning/10 p-2 rounded-lg">
+            {{ $t('settings.game_network_tuning_tun_only') }}
+          </p>
+
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div class="w-full sm:w-[200px] font-bold text-sm">{{ $t('settings.network_profile') }}</div>
+            <div class="bg-surface-overlay/50 border border-border/30 rounded-xl p-1 flex gap-1 w-full sm:w-[350px]">
               <button @click="applyProfilePreset('stable')"
-                class="flex-1 py-2 text-sm rounded-lg transition-all font-bold" :class="settingsStore.sessionNetworkTuning.profile === 'stable'
-                  ? 'bg-surface shadow-sm text-primary'
-                  : 'text-on-surface-muted hover:text-on-surface'">
+                class="flex-1 px-4 py-1.5 text-xs rounded-lg transition-all font-bold" :class="settingsStore.sessionNetworkTuning.profile === 'stable'
+                  ? 'bg-surface text-primary shadow-sm ring-1 ring-border/50'
+                  : 'text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay/50'">
                 {{ $t('settings.network_profile_stable') }}
               </button>
               <button @click="applyProfilePreset('aggressive')"
-                class="flex-1 py-2 text-sm rounded-lg transition-all font-bold" :class="settingsStore.sessionNetworkTuning.profile === 'aggressive'
-                  ? 'bg-surface shadow-sm text-primary'
-                  : 'text-on-surface-muted hover:text-on-surface'">
+                class="flex-1 px-4 py-1.5 text-xs rounded-lg transition-all font-bold" :class="settingsStore.sessionNetworkTuning.profile === 'aggressive'
+                  ? 'bg-surface text-primary shadow-sm ring-1 ring-border/50'
+                  : 'text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay/50'">
                 {{ $t('settings.network_profile_aggressive') }}
               </button>
             </div>
           </div>
-          <div class="space-y-2">
-            <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
-              {{ $t('settings.udp_mode') }}
-            </label>
-            <n-select v-model:value="settingsStore.sessionNetworkTuning.udpMode" :options="udpModeOptions"
-              class="glass-select" />
-          </div>
-          <div class="space-y-2">
-            <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
-              MTU
-            </label>
-            <n-input-number v-model:value="settingsStore.sessionNetworkTuning.tunMtu" :min="1200" :max="1500"
-              class="glass-select" button-placement="both" />
-          </div>
-          <div class="space-y-2">
-            <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
-              {{ $t('settings.tun_stack') }}
-            </label>
-            <n-select v-model:value="settingsStore.sessionNetworkTuning.tunStack" :options="tunStackOptions"
-              class="glass-select" />
-          </div>
-          <div class="space-y-2">
-            <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
-              {{ $t('settings.vless_packet_encoding') }} ({{ $t('settings.vless_only') }})
-            </label>
-            <n-select v-model:value="settingsStore.sessionNetworkTuning.vlessPacketEncodingOverride"
-              :options="vlessEncodingOptions" class="glass-select" />
-            <p class="text-xs text-on-surface-muted">{{ $t('settings.vless_only_hint') }}</p>
-          </div>
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">
-                {{ $t('settings.strict_route') }}
-              </label>
-              <n-switch v-model:value="settingsStore.sessionNetworkTuning.strictRoute" />
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="flex flex-col gap-1.5">
+              <div class="font-bold text-sm">{{ $t('settings.udp_mode') }}</div>
+              <n-select v-model:value="settingsStore.sessionNetworkTuning.udpMode" :options="udpModeOptions"
+                class="glass-select" />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <div class="font-bold text-sm">{{ $t('settings.tun_stack') }}</div>
+              <n-select v-model:value="settingsStore.sessionNetworkTuning.tunStack" :options="tunStackOptions"
+                class="glass-select" />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <div class="font-bold text-sm">MTU</div>
+              <n-input-number v-model:value="settingsStore.sessionNetworkTuning.tunMtu" :min="1200" :max="1500"
+                class="glass-select" button-placement="both" />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <div class="font-bold text-sm">{{ $t('settings.vless_packet_encoding') }} <span
+                  class="text-xs font-normal text-on-surface-muted">({{ $t('settings.vless_only') }})</span></div>
+              <n-select v-model:value="settingsStore.sessionNetworkTuning.vlessPacketEncodingOverride"
+                :options="vlessEncodingOptions" class="glass-select" />
             </div>
           </div>
-        </div>
-        <div class="flex items-center justify-between gap-3">
-          <p class="text-xs text-on-surface-muted">
-            {{ $t('settings.high_loss_hint_only') }}
-          </p>
-          <n-switch v-model:value="settingsStore.sessionNetworkTuning.highLossHintOnly" :disabled="!isTunNetworkMode" />
-        </div>
-        <div class="pt-1">
-          <n-button secondary @click="settingsStore.resetSessionNetworkTuning()" class="glass-button"
-            :disabled="!isTunNetworkMode">
-            {{ $t('settings.reset_session_network_tuning') }}
-          </n-button>
+
+          <p class="text-xs text-on-surface-muted mt-0">{{ $t('settings.vless_only_hint') }}</p>
+
+          <div class="flex items-center justify-between pt-2">
+            <div class="font-bold text-sm">{{ $t('settings.strict_route') }}</div>
+            <n-switch v-model:value="settingsStore.sessionNetworkTuning.strictRoute" />
+          </div>
+          <div class="flex items-center justify-between">
+            <div class="font-bold text-sm">{{ $t('settings.high_loss_hint_only') }}</div>
+            <n-switch v-model:value="settingsStore.sessionNetworkTuning.highLossHintOnly"
+              :disabled="!isTunNetworkMode" />
+          </div>
+
+          <div class="pt-2">
+            <n-button secondary @click="settingsStore.resetSessionNetworkTuning()" class="glass-button w-full sm:w-auto"
+              :disabled="!isTunNetworkMode">
+              {{ $t('settings.reset_session_network_tuning') }}
+            </n-button>
+          </div>
         </div>
       </div>
     </section>
 
-    <div class="w-full h-px bg-border/30"></div>
-
     <!-- Advanced Network -->
     <section>
-      <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
-        <div class="i-material-symbols-settings-ethernet text-primary"></div>
+      <h2 class="text-xs font-bold uppercase tracking-widest text-primary mb-3 pl-1">
         {{ $t('common.more') }}
       </h2>
-      <div class="bg-surface-panel/50 border border-border/50 rounded-2xl p-6 backdrop-blur-sm space-y-6">
-        <div class="space-y-2">
-          <label class="text-xs font-bold uppercase tracking-widest text-on-surface-muted">{{
-            $t('settings.tun_interface') }}</label>
-          <n-input v-model:value="settingsStore.tunInterfaceName" placeholder="LagZero" class="glass-input" />
-        </div>
-
-        <div class="flex flex-wrap gap-4 pt-2">
-          <n-button secondary type="warning" @click="handleReinstallTun" :loading="working" :disabled="working"
-            class="glass-button">
-            <template #icon>
-              <div class="i-material-symbols-refresh"></div>
-            </template>
-            {{ $t('settings.tun_reinstall') }}
-          </n-button>
-          <n-button secondary type="info" @click="handleFlushDns" :loading="working" :disabled="working"
-            class="glass-button">
-            <template #icon>
-              <div class="i-material-symbols-cleaning-services"></div>
-            </template>
-            {{ $t('settings.dns_flush') }}
-          </n-button>
-        </div>
-
-        <div v-if="opMessage" class="px-4 py-3 rounded-xl text-sm flex items-center gap-3 border animate-scale-in"
-          :class="opOk ? 'bg-success/10 text-success border-success/20' : 'bg-error/10 text-error border-error/20'">
-          <div :class="opOk ? 'i-material-symbols-check-circle text-lg' : 'i-material-symbols-error text-lg'">
+      <div
+        class="bg-surface-panel/50 border border-border/50 rounded-2xl flex flex-col divide-y divide-border/30 backdrop-blur-sm overflow-hidden shadow-sm">
+        <div class="p-4 lg:p-5 space-y-4 hover:bg-surface-overlay/30 transition-colors">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-2">
+            <div class="flex items-center gap-4">
+              <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                <div class="i-material-symbols-settings-ethernet text-xl"></div>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="font-bold text-sm">{{ $t('settings.tun_interface') }}</div>
+              </div>
+            </div>
+            <div class="w-full sm:w-auto md:w-[200px] shrink-0">
+              <n-input v-model:value="settingsStore.tunInterfaceName" placeholder="LagZero" class="glass-input" />
+            </div>
           </div>
-          {{ opMessage }}
+
+          <div class="flex flex-wrap gap-3">
+            <n-button secondary type="warning" @click="handleReinstallTun" :loading="working" :disabled="working"
+              class="glass-button">
+              <template #icon>
+                <div class="i-material-symbols-refresh"></div>
+              </template>
+              {{ $t('settings.tun_reinstall') }}
+            </n-button>
+            <n-button secondary type="info" @click="handleFlushDns" :loading="working" :disabled="working"
+              class="glass-button">
+              <template #icon>
+                <div class="i-material-symbols-cleaning-services"></div>
+              </template>
+              {{ $t('settings.dns_flush') }}
+            </n-button>
+          </div>
+
+          <div v-if="opMessage" class="px-3 py-2 rounded-xl text-sm flex items-center gap-2 border animate-scale-in"
+            :class="opOk ? 'bg-success/10 text-success border-success/20' : 'bg-error/10 text-error border-error/20'">
+            <div :class="opOk ? 'i-material-symbols-check-circle text-base' : 'i-material-symbols-error text-base'">
+            </div>
+            {{ opMessage }}
+          </div>
         </div>
       </div>
     </section>

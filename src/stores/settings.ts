@@ -4,6 +4,7 @@ import { reactive } from 'vue'
 import { useLocalStorage } from '@vueuse/core'
 import { SYSTEM_PROXY_PORT, LOCAL_PROXY_PORT, DEFAULT_DNS_PRIMARY, DEFAULT_DNS_SECONDARY, BOOTSTRAP_DNS } from '@/constants'
 import type { CheckMethod, DnsMode, Theme, ThemeColor, SessionNetworkTuningOptions, NetworkProfile } from '@/types'
+export type WindowCloseAction = 'ask' | 'minimize' | 'quit'
 
 function createDefaultSessionNetworkTuning(): SessionNetworkTuningOptions {
     return {
@@ -47,6 +48,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const language = useLocalStorage('settings-language', 'zh-CN') // 语言 默认zh-CN
     const theme = useLocalStorage<Theme>('settings-theme', 'auto') // 主题 默认auto
     const themeColor = useLocalStorage<ThemeColor>('settings-theme-color', 'green') // 主题色 默认green
+    const windowCloseAction = useLocalStorage<WindowCloseAction>('settings-window-close-action', 'ask') // 关闭按钮行为
 
     // Network & Proxy
     const checkInterval = useLocalStorage('settings-check-interval', 3000) // 检测间隔 默认5000ms
@@ -90,6 +92,7 @@ export const useSettingsStore = defineStore('settings', () => {
         language,
         theme,
         themeColor,
+        windowCloseAction,
         checkInterval,
         checkMethod,
         checkUrl,

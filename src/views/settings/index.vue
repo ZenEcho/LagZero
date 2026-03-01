@@ -1,44 +1,58 @@
 <template>
   <div class="h-full relative overflow-hidden bg-background text-on-surface flex transition-colors duration-300">
     <!-- Main Layout Container -->
-    <div class="relative z-10 flex w-full h-full max-w-7xl mx-auto p-4 md:p-8 gap-8">
+    <div class="relative z-10 flex w-full h-full max-w-[1400px] mx-auto py-6 px-4 md:p-8 lg:p-10 gap-6 lg:gap-8">
 
       <!-- Sidebar Navigation -->
-      <SettingsSidebar v-model="activeTab" />
+      <SettingsSidebar v-model="activeTab" class="w-48 lg:w-60 shrink-0" />
 
       <!-- Main Content Area -->
       <main
-        class="flex-1 min-w-0 flex flex-col h-full overflow-hidden bg-surface-panel/40 backdrop-blur-xl border border-border/50 rounded-3xl shadow-2xl relative">
-        <div class="absolute inset-0 overflow-y-auto custom-scrollbar p-8">
-          <Transition name="fade-slide" mode="out-in">
-            <!-- General Settings -->
-            <GeneralSettings v-if="activeTab === 'general'" />
+        class="flex-1 min-w-0 flex flex-col h-full overflow-hidden bg-surface-panel/40 backdrop-blur-xl border border-border/50 rounded-[2rem] shadow-xl relative">
+        <div class="absolute inset-0 overflow-y-auto custom-scrollbar p-6 md:p-10 lg:p-12">
+          <div class="mx-auto w-full max-w-[860px] min-h-full flex flex-col">
+            <Transition name="fade-slide" mode="out-in">
+              <!-- General Settings -->
+              <GeneralSettings v-if="activeTab === 'general'" />
 
-            <!-- Network Settings -->
-            <NetworkSettings v-else-if="activeTab === 'network'" />
+              <!-- Network Settings -->
+              <NetworkSettings v-else-if="activeTab === 'network'" />
 
-            <!-- Logs -->
-            <LogsSettings v-else-if="activeTab === 'logs'" />
+              <!-- Logs -->
+              <LogsSettings v-else-if="activeTab === 'logs'" />
 
-            <!-- About Tab -->
-            <AboutSettings v-else-if="activeTab === 'about'" />
-          </Transition>
+              <!-- About Tab -->
+              <AboutSettings v-else-if="activeTab === 'about'" />
+            </Transition>
 
-          <section v-if="activeTab === 'general'"
-            class="mt-8 rounded-2xl border border-error/40 bg-error/8 p-5 backdrop-blur-sm">
-            <h3 class="text-lg font-bold flex items-center gap-2 text-error">
-              <div class="i-material-symbols-warning-outline-rounded"></div>
-              {{ $t('settings.danger_zone') }}
-            </h3>
-            <p class="mt-2 text-sm text-on-surface-muted">
-              {{ $t('settings.reset_app_desc') }}
-            </p>
-            <div class="mt-4">
-              <n-button type="error" strong @click="openResetDialog">
-                {{ $t('settings.reset_app') }}
-              </n-button>
-            </div>
-          </section>
+            <section v-if="activeTab === 'general'" class="mt-8">
+              <h2 class="text-xs font-bold uppercase tracking-widest text-error mb-3 pl-1">
+                {{ $t('settings.danger_zone') }}
+              </h2>
+              <div
+                class="bg-error/5 border border-error/20 rounded-2xl flex flex-col divide-y divide-error/10 backdrop-blur-sm overflow-hidden shadow-sm">
+                <div
+                  class="flex flex-col sm:flex-row sm:items-center justify-between p-4 lg:p-5 gap-4 hover:bg-error/10 transition-colors">
+                  <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-xl bg-error/10 flex items-center justify-center text-error shrink-0">
+                      <div class="i-material-symbols-warning-outline-rounded text-xl"></div>
+                    </div>
+                    <div>
+                      <div class="font-bold text-sm text-error">{{ $t('settings.reset_app') }}</div>
+                      <div class="text-xs text-error/70 mt-0.5 line-clamp-2 max-w-sm">{{ $t('settings.reset_app_desc')
+                        }}
+                      </div>
+                    </div>
+                  </div>
+                  <div class="shrink-0 flex items-center">
+                    <n-button type="error" strong @click="openResetDialog" class="w-full sm:w-auto">
+                      {{ $t('settings.reset_app') }}
+                    </n-button>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
         </div>
       </main>
     </div>

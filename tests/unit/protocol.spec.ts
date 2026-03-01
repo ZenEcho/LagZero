@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseShareLink } from './protocol'
+import { parseShareLink } from '../../src/utils/protocol'
 import { Base64 } from 'js-base64'
 
 describe('Protocol Parsing', () => {

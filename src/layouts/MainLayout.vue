@@ -111,19 +111,47 @@
             <component :is="Component" class="h-full overflow-hidden" />
           </transition>
         </router-view>
+        <SingboxInstallerGuard />
       </main>
     </div>
+
+    <n-modal :show="showCloseConfirmModal" :mask-closable="true" :close-on-esc="true"
+      @update:show="onCloseConfirmModalUpdate" preset="card" :title="$t('settings.close_confirm_title')"
+      class="w-[460px] max-w-[92vw]">
+      <div class="space-y-4">
+        <p class="text-sm text-on-surface-muted leading-6">
+          {{ $t('settings.close_confirm_desc') }}
+        </p>
+        <n-checkbox v-model:checked="closeRememberChoice">
+          {{ $t('settings.close_confirm_remember') }}
+        </n-checkbox>
+      </div>
+      <template #footer>
+        <div class="flex items-center justify-end gap-2">
+          <n-button @click="submitCloseDecision('cancel')">
+            {{ $t('common.cancel') }}
+          </n-button>
+          <n-button @click="submitCloseDecision('minimize')">
+            {{ $t('settings.close_confirm_minimize') }}
+          </n-button>
+          <n-button type="error" @click="submitCloseDecision('quit')">
+            {{ $t('settings.close_confirm_quit') }}
+          </n-button>
+        </div>
+      </template>
+    </n-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watchEffect, onMounted, computed } from 'vue'
+import { ref, watchEffect, watch, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useIntervalFn, useWindowSize } from '@vueuse/core'
 import ThemeToggle from '@/components/common/ThemeToggle.vue'
 import LanguageToggle from '@/components/common/LanguageToggle.vue'
+import SingboxInstallerGuard from '@/components/singbox/SingboxInstallerGuard.vue'
 import pkg from '../../package.json'
-import { electronApi } from '@/api'
+import { electronApi, singboxApi } from '@/api'
 import { useAppUpdater } from '@/composables/useAppUpdater'
 import { useGameStore } from '@/stores/games'
 import { useNodeStore } from '@/stores/nodes'
@@ -138,15 +166,77 @@ const gameStore = useGameStore()
 const nodeStore = useNodeStore()
 const settingsStore = useSettingsStore()
 const { checkInterval } = storeToRefs(settingsStore)
+const trayCoreInstalled = ref(true)
+const trayDurationTick = ref(Date.now())
+const traySessionLoss = ref(0)
+const showCloseConfirmModal = ref(false)
+const closeRememberChoice = ref(false)
+const activeGame = computed(() => gameStore.getAcceleratingGame())
+const trayDisplayGame = computed(() => activeGame.value || gameStore.currentGame)
 
 const { appVersion, updateInfo, checkUpdate, getVersion } = useAppUpdater()
 const hasUpdate = computed(() => !!updateInfo.value?.available)
+
+function toDurationString(totalSeconds: number): string {
+  const secs = Math.max(0, Math.floor(totalSeconds))
+  const h = Math.floor(secs / 3600)
+  const m = Math.floor((secs % 3600) / 60)
+  const s = secs % 60
+  return [h, m, s].map(v => String(v).padStart(2, '0')).join(':')
+}
+
+function syncTrayState() {
+  try {
+    if (typeof electronApi.traySyncState !== 'function') return
+
+    const running = activeGame.value
+    const runningId = running?.id || ''
+    const startedAt = runningId ? gameStore.getAccelerationStartedAt(runningId) : 0
+    const durationSeconds = startedAt > 0
+      ? Math.floor((trayDurationTick.value - startedAt) / 1000)
+      : 0
+
+    electronApi.traySyncState({
+      gameName: trayDisplayGame.value?.name || '',
+      gameIconUrl: trayDisplayGame.value?.iconUrl || null,
+      isRunning: !!running,
+      isCoreInstalled: trayCoreInstalled.value,
+      isActionPending: gameStore.operationState !== 'idle',
+      operationState: gameStore.operationState,
+      latency: running?.latency || 0,
+      loss: traySessionLoss.value,
+      duration: toDurationString(durationSeconds)
+    })
+  } catch {
+    // ignore
+  }
+}
+
+function onInstallerStatusChange(d: any) {
+  if (d && (d.phase === 'ready' || d.phase === 'completed')) {
+    trayCoreInstalled.value = true
+  } else if (d && (d.phase === 'missing' || d.phase === 'resolving' || d.phase === 'downloading' || d.phase === 'extracting' || d.phase === 'failed')) {
+    trayCoreInstalled.value = false
+  }
+}
 
 onMounted(async () => {
   await getVersion()
   void checkUpdate()
   void sampleLatencyForBackgroundPages()
   resumeGlobalSampling()
+  try {
+    if (typeof electronApi.on === 'function') {
+      electronApi.on('singbox-installer-status', onInstallerStatusChange)
+    }
+    singboxApi.getInstallInfo().then((info) => {
+      trayCoreInstalled.value = !!info?.exists
+    }).catch(() => {
+      trayCoreInstalled.value = false
+    })
+  } catch {
+    // ignore
+  }
 })
 
 async function sampleLatencyForBackgroundPages() {
@@ -174,11 +264,33 @@ async function sampleLatencyForBackgroundPages() {
   })
   if (!stats) return
   gameStore.updateLatency(game.id, stats.latency)
+  traySessionLoss.value = sessionLossRate
 }
 
 const { resume: resumeGlobalSampling } = useIntervalFn(() => {
   void sampleLatencyForBackgroundPages()
 }, checkInterval, { immediate: false })
+
+const { resume: resumeTrayDurationTicker, pause: pauseTrayDurationTicker } = useIntervalFn(() => {
+  trayDurationTick.value = Date.now()
+}, 1000, { immediate: false })
+
+watch(
+  () => activeGame.value?.id || '',
+  (id) => {
+    if (id) {
+      trayDurationTick.value = Date.now()
+      resumeTrayDurationTicker()
+      return
+    }
+    pauseTrayDurationTicker()
+    trayDurationTick.value = Date.now()
+    traySessionLoss.value = 0
+  },
+  { immediate: true }
+)
+
+watchEffect(syncTrayState)
 
 // 屏幕宽度小于 1024px 时自动收起侧边栏
 watchEffect(() => {
@@ -212,9 +324,62 @@ function handleSidebarWheel(e: WheelEvent) {
   }
 }
 
+function onCloseConfirmRequired() {
+  closeRememberChoice.value = false
+  showCloseConfirmModal.value = true
+}
+
+async function submitCloseDecision(action: 'minimize' | 'quit' | 'cancel') {
+  try {
+    await electronApi.submitWindowCloseDecision({
+      action,
+      remember: action === 'cancel' ? false : closeRememberChoice.value
+    })
+
+    if (action !== 'cancel' && closeRememberChoice.value) {
+      settingsStore.windowCloseAction = action
+    }
+  } catch {
+    // ignore
+  } finally {
+    showCloseConfirmModal.value = false
+    closeRememberChoice.value = false
+  }
+}
+
+function onCloseConfirmModalUpdate(show: boolean) {
+  if (show) {
+    showCloseConfirmModal.value = true
+    return
+  }
+  void submitCloseDecision('cancel')
+}
+
 const minimize = () => electronApi.minimize()
 const maximize = () => electronApi.maximize()
 const close = () => electronApi.close()
+
+onUnmounted(() => {
+  pauseTrayDurationTicker()
+  try {
+    if (typeof electronApi.off === 'function') {
+      electronApi.off('singbox-installer-status', onInstallerStatusChange)
+      electronApi.off('window:close-confirm-required', onCloseConfirmRequired)
+    }
+  } catch {
+    // ignore
+  }
+})
+
+onMounted(() => {
+  try {
+    if (typeof electronApi.on === 'function') {
+      electronApi.on('window:close-confirm-required', onCloseConfirmRequired)
+    }
+  } catch {
+    // ignore
+  }
+})
 </script>
 
 <style>

@@ -25,6 +25,7 @@ export class SingBoxService {
   private isStopping = false
   private suppressNextStoppedStatus = false
   private processRuleUpdateQueue: Promise<void> = Promise.resolve()
+  private lifecycleQueue: Promise<void> = Promise.resolve()
 
   private installer: SingBoxInstaller
   private configManager: SingBoxConfigManager
@@ -44,17 +45,25 @@ export class SingBoxService {
    */
   private setupIPC() {
     ipcMain.handle('singbox-start', async (_, configContent: string) => {
+      return this.enqueueLifecycle(async () => {
         const configPath = path.join(app.getPath('userData'), 'config.json')
         await fs.writeFile(configPath, configContent)
         await this.start(configPath)
+      })
     })
-    ipcMain.handle('singbox-stop', () => this.stop())
+    ipcMain.handle('singbox-stop', async () => {
+      return this.enqueueLifecycle(async () => {
+        await this.stopAndWaitForExit(5000)
+      })
+    })
     ipcMain.handle('singbox-restart', async (_, configContent: string) => {
+      return this.enqueueLifecycle(async () => {
         this.suppressNextStoppedStatus = true
         await this.stopAndWaitForExit(5000)
         const configPath = path.join(app.getPath('userData'), 'config.json')
         await fs.writeFile(configPath, configContent)
         await this.start(configPath)
+      })
     })
     ipcMain.handle('singbox-ensure-core', async () => {
       await this.installer.checkAndDownloadBinary()
@@ -168,7 +177,7 @@ export class SingBoxService {
         this.retryCount++
         this.log(`正在重试启动 (${this.retryCount}/${this.maxRetries})...`)
         this.retryTimer = setTimeout(() => {
-          void this.start(configPath).catch((err) => {
+          void this.enqueueLifecycle(async () => this.start(configPath)).catch((err) => {
             this.log(`自动重试启动失败：${String((err as any)?.message || err)}`, 'error')
           })
         }, 2000)
@@ -209,6 +218,12 @@ export class SingBoxService {
     }
   }
 
+  private enqueueLifecycle<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.lifecycleQueue.then(task, task)
+    this.lifecycleQueue = run.then(() => undefined, () => undefined)
+    return run
+  }
+
   private log(message: string, type: 'info' | 'error' = 'info') {
     console.log(`[SingBox] ${message}`)
     this.safeSend('singbox-log', { message, type, timestamp: Date.now() })
@@ -241,9 +256,11 @@ export class SingBoxService {
   }
 
   private async restartWithCurrentConfig(configPath: string): Promise<void> {
-    this.suppressNextStoppedStatus = true
-    await this.stopAndWaitForExit(5000)
-    await this.start(configPath)
+    await this.enqueueLifecycle(async () => {
+      this.suppressNextStoppedStatus = true
+      await this.stopAndWaitForExit(5000)
+      await this.start(configPath)
+    })
   }
 
   private async stopAndWaitForExit(timeoutMs: number): Promise<void> {

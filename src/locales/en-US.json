@@ -6,7 +6,9 @@
     "running": "Running",
     "stopped": "Stopped",
     "start": "Start",
+    "starting": "Starting...",
     "stop": "Stop",
+    "stopping": "Stopping...",
     "start_acceleration": "Start Acceleration",
     "stop_acceleration": "Stop Acceleration",
     "checking": "Checking...",
@@ -23,6 +25,8 @@
     "latency_short": "Latency",
     "creation": "Creation",
     "alphabetical": "Alphabetical",
+    "ascending": "Ascending",
+    "descending": "Descending",
     "load": "Load",
     "bandwidth": "Bandwidth",
     "speed": "Speed",
@@ -134,7 +138,8 @@
     "subscription_invalid_url": "Please enter a valid subscription URL",
     "subscription_invalid_form": "Please enter a subscription name and a valid subscription URL",
     "subscription_added": "Subscription added",
-    "subscription_update_failed": "Subscription update failed"
+    "subscription_update_failed": "Subscription update failed",
+    "subscription_no_new_nodes": "Update completed, but no new nodes were found"
   },
   "games": {
     "library": "Games",
@@ -298,7 +303,19 @@
     "reset_app_failed": "Reset failed. Please try again.",
     "session_network_tuning_restarting": "Applying network tuning and restarting acceleration...",
     "session_network_tuning_applied": "Network tuning applied",
-    "session_network_tuning_apply_failed": "Failed to apply network tuning"
+    "session_network_tuning_apply_failed": "Failed to apply network tuning",
+    "window_close_behavior": "Close Button Behavior",
+    "window_close_behavior_desc": "Controls what happens when clicking the top-right close button. In \"Ask Every Time\", you'll see \"Minimize to Tray / Quit App\" with a remember option.",
+    "window_close_ask": "Ask Every Time",
+    "window_close_minimize": "Minimize to Tray",
+    "window_close_quit": "Quit Directly",
+    "close_confirm_title": "Close LagZero",
+    "close_confirm_desc": "How do you want to handle closing the app? If minimized, the app will keep running in the system tray.",
+    "close_confirm_remember": "Remember my choice (changeable in Settings)",
+    "close_confirm_minimize": "Minimize to Tray",
+    "close_confirm_quit": "Quit App",
+    "developer": "Developer Options",
+    "open_devtools": "Open DevTools"
   },
   "categories": {
     "new_category_placeholder": "Enter new tag name...",
@@ -385,5 +402,21 @@
     "core_not_found": "Core file not found. Please verify that the sing-box executable is in the installation directory and try again.",
     "recheck_failed": "Recheck failed: {error}",
     "open_url_failed": "Failed to open download URL: {error}"
+  },
+  "tray": {
+    "title": "Quick Control",
+    "current_game": "Current Game",
+    "no_game_selected": "No game selected",
+    "mode_idle": "Ready to Accelerate",
+    "mode_running": "Acceleration Active",
+    "idle_hint": "Select a game and tap Start.",
+    "running_hint": "Connection is protected and optimized.",
+    "latency": "Latency",
+    "packet_loss": "Packet Loss",
+    "duration": "Duration",
+    "unit_ms": "ms",
+    "unit_percent": "%",
+    "show_window": "Show Dashboard",
+    "quit": "Quit"
   }
 }

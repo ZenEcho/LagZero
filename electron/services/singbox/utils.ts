@@ -15,6 +15,7 @@ export function getSingboxEnv(): NodeJS.ProcessEnv {
   return {
     ...process.env,
     ENABLE_DEPRECATED_SPECIAL_OUTBOUNDS: 'true',
-    ENABLE_DEPRECATED_TUN_ADDRESS_X: 'true'
+    ENABLE_DEPRECATED_LEGACY_DNS_SERVERS: 'true',
+    ENABLE_DEPRECATED_MISSING_DOMAIN_RESOLVER: 'true'
   }
 }

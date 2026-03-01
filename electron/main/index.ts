@@ -39,17 +39,19 @@ global.__dirname = __dirname
 /**
  * 应用根目录路径
  */
-process.env.APP_ROOT = path.join(__dirname, '../')
+process.env.APP_ROOT = path.join(__dirname, path.basename(__dirname) === 'main' ? '../..' : '..')
 
 /**
  * 应用程序 ID，用于 Windows 上的 AppUserModelId
  */
 const APP_ID = 'com.' + pkg.name + '.client'
 
-/**
- * 静态资源目录路径
- * 开发环境下指向 public 目录，生产环境下指向渲染进程构建目录
- */
+// 设置应用名称，确保任务栏和任务管理器显示正确
+if (process.platform === 'win32') {
+  app.setAppUserModelId(APP_ID)
+}
+app.setName(pkg.productName)
+
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
 // 设置开发环境下的 userData 目录，避免污染生产环境数据
@@ -57,9 +59,11 @@ if (VITE_DEV_SERVER_URL) {
   app.setPath('userData', path.join(process.env.APP_ROOT, '.' + pkg.name + '-dev'))
 }
 
-// 设置 Windows 上的 AppUserModelId，确保任务栏图标和通知正常显示
-if (process.platform === 'win32') {
-  app.setAppUserModelId(APP_ID)
+// 禁止多开，避免多个实例同时占用端口
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
+if (!hasSingleInstanceLock) {
+  app.quit()
+  process.exit(0)
 }
 
 // 确保以管理员权限启动
@@ -98,10 +102,23 @@ let quitCleanupStarted = false
 let quittingForRestart = false
 
 /**
+ * 托盘 UI 最新状态快照（用于托盘懒加载后的首次同步）。
+ */
+let latestTrayState: Record<string, unknown> | null = null
+let latestTrayStateVersion = 0
+
+/**
  * 开启 Chromium 底层日志落盘
  * 这类日志（如 disk_cache/gpu cache）不走 console.*，需要通过命令行开关单独捕获。
  */
+function shouldEnableChromiumLogging() {
+  if (VITE_DEV_SERVER_URL) return true
+  const flag = String(process.env.LAGZERO_ENABLE_CHROMIUM_LOG || '').trim().toLowerCase()
+  return flag === '1' || flag === 'true' || flag === 'yes'
+}
+
 function configureChromiumLogging() {
+  if (!shouldEnableChromiumLogging()) return
   try {
     const logDir = path.join(app.getPath('userData'), 'logs')
     fs.ensureDirSync(logDir)
@@ -447,6 +464,33 @@ function initServices(win: BrowserWindow) {
     if (result.canceled || result.filePaths.length === 0) return null
     return result.filePaths.map(p => path.basename(p))
   })
+
+  // 注册托盘通信 IPC
+  ipcMain.on('tray:sync-state', (_, state) => {
+    if (state && typeof state === 'object') {
+      latestTrayStateVersion += 1
+      latestTrayState = {
+        ...(state as Record<string, unknown>),
+        __version: latestTrayStateVersion
+      }
+    } else {
+      latestTrayState = null
+    }
+
+    const trayWin = trayManager.getTrayWindow()
+    if (trayWin && !trayWin.isDestroyed()) {
+      trayWin.webContents.send('tray:state-updated', latestTrayState)
+    }
+  })
+
+  ipcMain.handle('tray:get-state', () => latestTrayState)
+
+  ipcMain.on('tray:action-toggle', () => {
+    const mainWin = windowManager.get()
+    if (mainWin && !mainWin.isDestroyed()) {
+      mainWin.webContents.send('tray:do-toggle')
+    }
+  })
 }
 
 /**
@@ -462,11 +506,17 @@ function startApp() {
   // @ts-ignore: 我们知道这是在创建一个新的
   const newTrayManager = new TrayManager(win)
   newTrayManager.create(appIcon)
+  newTrayManager.setStateGetter(() => latestTrayState)
   // 保持 trayManager 引用，防止被 GC
   Object.assign(trayManager, newTrayManager)
 
   initServices(win)
 }
+
+// 第二个实例启动时，唤起并聚焦已运行实例
+app.on('second-instance', () => {
+  windowManager.show()
+})
 
 // 监听所有窗口关闭事件
 app.on('window-all-closed', () => {

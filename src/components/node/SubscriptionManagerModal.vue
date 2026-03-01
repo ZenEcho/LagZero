@@ -112,8 +112,10 @@ function handleAddSubscription() {
 
 async function refreshSubscription(id: string) {
   const result = await nodeStore.refreshSubscription(id)
-  if (result.ok) {
+  if (result.ok && result.count > 0) {
     message.success(i18n.global.t('common.import_success', { count: result.count }))
+  } else if (result.message === 'no-new-nodes') {
+    message.info(i18n.global.t('nodes.subscription_no_new_nodes'))
   } else {
     message.error(i18n.global.t('nodes.subscription_update_failed'))
   }

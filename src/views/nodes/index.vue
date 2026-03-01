@@ -5,9 +5,12 @@
       <div>
         <h1 class="text-2xl md:text-3xl font-bold  text-on-surface tracking-tight flex items-center gap-3">
           {{ $t('common.nodes') }}
-          <span class="text-sm font-normal text-on-surface-muted bg-surface-overlay px-2 py-0.5 rounded-full border border-border/50 font-mono">{{ nodeStore.nodes.length }}</span>
+          <span
+            class="text-sm font-normal text-on-surface-muted bg-surface-overlay px-2 py-0.5 rounded-full border border-border/50 font-mono">{{
+              nodeStore.nodes.length }}</span>
         </h1>
-        <p class="text-xs text-on-surface-muted mt-1 uppercase tracking-widest font-medium opacity-70">Global Server Network</p>
+        <p class="text-xs text-on-surface-muted mt-1 uppercase tracking-widest font-medium opacity-70">Global Server
+          Network</p>
       </div>
 
       <div class="flex flex-wrap items-center gap-3 w-full sm:w-auto">
@@ -17,7 +20,7 @@
           <span class="hidden xs:inline ">{{ isChecking ? $t('common.checking') : $t('nodes.check_latency') }}</span>
           <span class="xs:hidden">{{ isChecking ? '...' : $t('nodes.check_latency') }}</span>
         </button>
-        
+
         <div class="w-px h-6 bg-border mx-1 hidden sm:block"></div>
 
         <button @click="showImportModal = true"
@@ -49,21 +52,11 @@
 
     <div class="mb-4 flex flex-col md:flex-row gap-3">
       <div class="flex-1 grid grid-cols-1 md:grid-cols-[1.5fr_1fr_1fr] gap-3 ">
-        <n-input
-          v-model:value="nodeStore.searchQuery"
-          :placeholder="$t('common.search')"
-          clearable
-        />
-        <n-select
-          v-model:value="nodeStore.activeTypeFilter"
-          :options="typeFilterOptions"
-        />
-        <n-select
-          v-model:value="nodeStore.activeGroupFilter"
-          :options="groupFilterOptions"
-        />
+        <n-input v-model:value="nodeStore.searchQuery" :placeholder="$t('common.search')" clearable />
+        <n-select v-model:value="nodeStore.activeTypeFilter" :options="typeFilterOptions" />
+        <n-select v-model:value="nodeStore.activeGroupFilter" :options="groupFilterOptions" />
       </div>
-      
+
       <n-popselect v-model:value="nodeStore.activeSortType" :options="sortOptions" trigger="click">
         <n-button class="w-full md:w-auto px-4">
           <template #icon>
@@ -75,7 +68,8 @@
     </div>
 
     <!-- Node Manager (List Only) -->
-    <div class="flex-1 bg-surface-panel/50 rounded-xl border border-border/50 overflow-hidden flex flex-col shadow-inner backdrop-blur-sm">
+    <div
+      class="flex-1 bg-surface-panel/50 rounded-xl border border-border/50 overflow-hidden flex flex-col shadow-inner backdrop-blur-sm">
       <NodeManager />
     </div>
 
@@ -94,7 +88,7 @@ import NodeManager from '@/components/node/NodeManager.vue'
 import NodeEditModal from '@/components/node/NodeEditModal.vue'
 import NodeImportModal from '@/components/node/NodeImportModal.vue'
 import SubscriptionManagerModal from '@/components/node/SubscriptionManagerModal.vue'
-import type { NodeConfig } from '@/utils/protocol'
+import type { NodeConfig } from '@/types'
 import { DEFAULT_NODE_GROUP } from '@/stores/nodes'
 import { useNodeStore } from '@/stores/nodes'
 import { generateBatchLinks } from '@/utils/protocol'
@@ -124,9 +118,12 @@ const groupFilterOptions = computed(() => [
 ])
 
 const sortOptions = computed(() => [
-  { label: i18n.global.t('common.creation'), value: 'default' },
-  { label: i18n.global.t('common.latency_short'), value: 'latency' },
-  { label: i18n.global.t('common.alphabetical'), value: 'alphabetical' }
+  { label: `${i18n.global.t('common.creation')} · ${i18n.global.t('common.ascending')}`, value: 'default-asc' },
+  { label: `${i18n.global.t('common.creation')} · ${i18n.global.t('common.descending')}`, value: 'default-desc' },
+  { label: `${i18n.global.t('common.latency_short')} · ${i18n.global.t('common.ascending')}`, value: 'latency-asc' },
+  { label: `${i18n.global.t('common.latency_short')} · ${i18n.global.t('common.descending')}`, value: 'latency-desc' },
+  { label: `${i18n.global.t('common.alphabetical')} · ${i18n.global.t('common.ascending')}`, value: 'alphabetical-asc' },
+  { label: `${i18n.global.t('common.alphabetical')} · ${i18n.global.t('common.descending')}`, value: 'alphabetical-desc' }
 ])
 
 const currentSortLabel = computed(() => {

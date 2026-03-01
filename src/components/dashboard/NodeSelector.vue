@@ -14,13 +14,15 @@
                         class="pl-9 pr-3 py-1.5 bg-surface-overlay/50 rounded-lg border border-border focus:border-primary/50 focus:bg-surface-overlay outline-none text-on-surface text-xs w-full transition-all placeholder:text-on-surface-muted" />
                 </div>
 
-                <button @click="cycleSort"
-                    class="px-2 py-1.5 rounded-lg border border-transparent hover:border-border hover:bg-surface-overlay text-on-surface-muted hover:text-primary transition-colors flex items-center gap-1.5"
-                    :title="$t('common.sort_by')">
-                    <div :class="getSortIcon(nodeStore.activeSortType)" class="text-lg"></div>
-                    <span class="text-[10px] font-bold uppercase tracking-wider">{{
-                        getSortLabel(nodeStore.activeSortType) }}</span>
-                </button>
+                <n-popselect v-model:value="nodeStore.activeSortType" :options="sortOptions" trigger="click">
+                    <button
+                        class="px-2 py-1.5 rounded-lg border border-transparent hover:border-border hover:bg-surface-overlay text-on-surface-muted hover:text-primary transition-colors flex items-center gap-1.5"
+                        :title="$t('common.sort_by')">
+                        <div :class="getSortIcon(nodeStore.activeSortType)" class="text-lg"></div>
+                        <span class="text-[10px] font-bold uppercase tracking-wider">{{
+                            getSortLabel(nodeStore.activeSortType) }}</span>
+                    </button>
+                </n-popselect>
             </div>
 
             <div class="flex flex-row gap-2 justify-center items-center w-full">
@@ -123,7 +125,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { NodeConfig } from '@/utils/protocol'
+import type { NodeConfig } from '@/types'
 import { DEFAULT_NODE_GROUP, useNodeStore } from '@/stores/nodes'
 
 interface ExtendedNode extends NodeConfig {
@@ -146,6 +148,14 @@ const nodeStore = useNodeStore()
 
 const availableTypes = computed(() => nodeStore.availableNodeTypes)
 const availableGroups = computed(() => nodeStore.availableGroups)
+const sortOptions = computed(() => [
+    { label: `${t('common.creation')} · ${t('common.ascending')}`, value: 'default-asc' },
+    { label: `${t('common.creation')} · ${t('common.descending')}`, value: 'default-desc' },
+    { label: `${t('common.latency_short')} · ${t('common.ascending')}`, value: 'latency-asc' },
+    { label: `${t('common.latency_short')} · ${t('common.descending')}`, value: 'latency-desc' },
+    { label: `${t('common.alphabetical')} · ${t('common.ascending')}`, value: 'alphabetical-asc' },
+    { label: `${t('common.alphabetical')} · ${t('common.descending')}`, value: 'alphabetical-desc' }
+])
 
 const nodesWithStats = computed<ExtendedNode[]>(() => {
     return props.nodes.map(node => {
@@ -184,27 +194,26 @@ const visibleNodes = computed<ExtendedNode[]>(() => {
     })
 })
 
-function cycleSort() {
-    const modes: ('default' | 'latency' | 'alphabetical')[] = ['default', 'latency', 'alphabetical']
-    const currentIndex = modes.indexOf(nodeStore.activeSortType)
-    const nextIndex = (currentIndex + 1) % modes.length
-    nodeStore.activeSortType = modes[nextIndex]!
-}
-
 function getSortIcon(mode: string) {
     switch (mode) {
-        case 'default': return 'i-material-symbols-nest-clock-farsight-analog-outline-rounded'
-        case 'latency': return 'i-material-symbols-network-check'
-        case 'alphabetical': return 'i-material-symbols-sort-by-alpha'
+        case 'default-asc': return 'i-material-symbols-arrow-upward'
+        case 'default-desc': return 'i-material-symbols-arrow-downward'
+        case 'latency-asc': return 'i-material-symbols-network-check'
+        case 'latency-desc': return 'i-material-symbols-network-check'
+        case 'alphabetical-asc': return 'i-material-symbols-sort-by-alpha'
+        case 'alphabetical-desc': return 'i-material-symbols-sort-by-alpha'
         default: return 'i-material-symbols-sort'
     }
 }
 
 function getSortLabel(mode: string) {
     switch (mode) {
-        case 'default': return t('common.creation')
-        case 'latency': return t('common.latency_short')
-        case 'alphabetical': return t('common.alphabetical')
+        case 'default-asc': return `${t('common.creation')} ${t('common.ascending')}`
+        case 'default-desc': return `${t('common.creation')} ${t('common.descending')}`
+        case 'latency-asc': return `${t('common.latency_short')} ${t('common.ascending')}`
+        case 'latency-desc': return `${t('common.latency_short')} ${t('common.descending')}`
+        case 'alphabetical-asc': return `${t('common.alphabetical')} ${t('common.ascending')}`
+        case 'alphabetical-desc': return `${t('common.alphabetical')} ${t('common.descending')}`
         default: return mode
     }
 }

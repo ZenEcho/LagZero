@@ -1,14 +1,23 @@
 import type { Game, Category, NodeConfig, Platform } from './index'
 
 export interface ElectronAPI {
+  getWindowCloseAction: () => Promise<'ask' | 'minimize' | 'quit'>
+  setWindowCloseAction: (action: 'ask' | 'minimize' | 'quit') => Promise<'ask' | 'minimize' | 'quit'>
+  submitWindowCloseDecision: (payload: { action: 'minimize' | 'quit' | 'cancel', remember?: boolean }) => Promise<boolean>
   minimize: () => Promise<void>
   maximize: () => Promise<void>
   close: () => Promise<void>
   pickImage: () => Promise<string | null>
   pickProcess: () => Promise<string[] | null>
   pickProcessFolder: (maxDepth?: number) => Promise<string[] | null>
+  openDevTools: () => Promise<void>
   on: (channel: string, callback: (...args: any[]) => void) => void
   off: (channel: string, callback: (...args: any[]) => void) => void
+  traySyncState: (state: any) => void
+  trayGetState: () => Promise<any>
+  trayActionToggle: () => void
+  trayShowMain: () => Promise<void>
+  trayQuit: () => Promise<void>
 }
 
 export interface SingboxAPI {
@@ -46,6 +55,16 @@ export interface SystemAPI {
   setSystemProxy: (port: number, bypass?: string) => Promise<{ ok: boolean; message: string; snapshot?: any }>
   clearSystemProxy: (snapshot?: any) => Promise<{ ok: boolean; message: string }>
   getSystemProxyState: () => Promise<{ ok: boolean; message: string; state?: any }>
+  fetchUrl: (url: string, timeoutMs?: number) => Promise<{
+    ok: boolean
+    status: number
+    statusText: string
+    body: string
+    finalUrl?: string
+    error?: string
+  }>
+  onScanProgress: (callback: (data: { status: string, details?: string }) => void) => void
+  offScanProgress: (callback: (data: { status: string, details?: string }) => void) => void
 }
 
 export interface ProxyMonitorAPI {
@@ -104,6 +123,7 @@ export interface LogsAPI {
   getFilePath: () => Promise<string>
   getDirPath: () => Promise<string>
   pushFrontend: (entry: Partial<LogEntry>) => Promise<void>
+  pushFrontendBatch: (entries: Partial<LogEntry>[]) => Promise<void>
   onNew: (callback: (entry: LogEntry) => void) => void
   offNew: (callback: (entry: LogEntry) => void) => void
 }

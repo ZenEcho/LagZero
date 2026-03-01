@@ -6,7 +6,9 @@
     "running": "运行中",
     "stopped": "已停止",
     "start": "启动",
+    "starting": "启动中",
     "stop": "停止",
+    "stopping": "停止中",
     "start_acceleration": "开始加速",
     "stop_acceleration": "停止加速",
     "checking": "正在检查...",
@@ -23,6 +25,8 @@
     "latency_short": "延迟",
     "creation": "创建时间",
     "alphabetical": "字母排序",
+    "ascending": "正序",
+    "descending": "倒序",
     "load": "负载",
     "bandwidth": "带宽",
     "speed": "速度",
@@ -134,7 +138,8 @@
     "subscription_invalid_url": "请输入有效订阅 URL",
     "subscription_invalid_form": "请填写订阅名称并输入有效订阅 URL",
     "subscription_added": "订阅已添加",
-    "subscription_update_failed": "订阅更新失败"
+    "subscription_update_failed": "订阅更新失败",
+    "subscription_no_new_nodes": "更新完成，但没有新节点"
   },
   "games": {
     "library": "游戏库",
@@ -298,7 +303,19 @@
     "reset_app_failed": "重置失败，请稍后重试",
     "session_network_tuning_restarting": "正在应用网络优化参数并重启加速...",
     "session_network_tuning_applied": "网络优化参数已生效",
-    "session_network_tuning_apply_failed": "应用网络优化参数失败"
+    "session_network_tuning_apply_failed": "应用网络优化参数失败",
+    "window_close_behavior": "关闭按钮行为",
+    "window_close_behavior_desc": "控制点击右上角关闭按钮时的行为。选择“每次询问”时，会弹出“最小化到托盘 / 退出软件”并支持记住选择。",
+    "window_close_ask": "每次询问",
+    "window_close_minimize": "最小化到托盘",
+    "window_close_quit": "直接退出",
+    "close_confirm_title": "关闭 LagZero",
+    "close_confirm_desc": "你希望如何处理关闭操作？最小化后程序会继续在系统托盘中运行。",
+    "close_confirm_remember": "记住我的选择（可在设置中修改）",
+    "close_confirm_minimize": "最小化到托盘",
+    "close_confirm_quit": "退出软件",
+    "developer": "开发者选项",
+    "open_devtools": "打开控制台"
   },
   "categories": {
     "new_category_placeholder": "输入新标签名称...",
@@ -385,5 +402,21 @@
     "core_not_found": "未检测到核心文件，请确认已将 sing-box 可执行文件放到安装目录后再试。",
     "recheck_failed": "重新检测失败：{error}",
     "open_url_failed": "打开下载地址失败：{error}"
+  },
+  "tray": {
+    "title": "快捷控制",
+    "current_game": "当前游戏",
+    "no_game_selected": "未选择游戏",
+    "mode_idle": "准备加速",
+    "mode_running": "加速进行中",
+    "idle_hint": "请选择游戏后点击启动。",
+    "running_hint": "连接已受保护并持续优化。",
+    "latency": "延迟",
+    "packet_loss": "丢包",
+    "duration": "时长",
+    "unit_ms": "ms",
+    "unit_percent": "%",
+    "show_window": "显示主界面",
+    "quit": "退出"
   }
 }

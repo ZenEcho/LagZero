@@ -2,7 +2,6 @@ import { app, dialog, nativeImage, NativeImage } from 'electron'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import fs from 'fs-extra'
-import pkg from '../../package.json'
 
 const ELEVATION_FLAG = '--lagzero-elevated'
 
@@ -77,6 +76,8 @@ export function ensureAdminAtStartup() {
 
   const relaunched = relaunchAsAdmin()
   if (relaunched) {
+    // 先释放单实例锁，避免提权子进程在极短窗口内抢锁失败
+    app.releaseSingleInstanceLock()
     app.exit(0)
     process.exit(0)
   }

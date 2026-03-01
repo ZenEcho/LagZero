@@ -40,6 +40,15 @@ type SystemProxyResult = {
   snapshot?: SystemProxySnapshot
 }
 
+type FetchUrlResult = {
+  ok: boolean
+  status: number
+  statusText: string
+  body: string
+  finalUrl?: string
+  error?: string
+}
+
 /**
  * 系统服务
  * 
@@ -52,6 +61,51 @@ type SystemProxyResult = {
 export class SystemService {
   constructor() {
     this.registerIPC()
+  }
+
+  async fetchUrl(url: string, timeoutMs: number = 20000): Promise<FetchUrlResult> {
+    const target = String(url || '').trim()
+    if (!target) {
+      return {
+        ok: false,
+        status: 0,
+        statusText: '',
+        body: '',
+        error: 'empty-url'
+      }
+    }
+
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), Math.max(1000, timeoutMs))
+
+    try {
+      const response = await fetch(target, {
+        method: 'GET',
+        cache: 'no-store',
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'LagZero/1.0'
+        }
+      })
+      const body = await response.text()
+      return {
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        body,
+        finalUrl: response.url
+      }
+    } catch (e: any) {
+      return {
+        ok: false,
+        status: 0,
+        statusText: '',
+        body: '',
+        error: String(e?.message || e || 'fetch-failed')
+      }
+    } finally {
+      clearTimeout(timeout)
+    }
   }
 
   /**
@@ -415,5 +469,8 @@ $result | ConvertTo-Json -Compress
     ipcMain.handle('system:get-system-proxy-state', async () => {
       return this.getSystemProxyState()
     }) // 获取系统代理状态
+    ipcMain.handle('system:fetch-url', async (_, url: string, timeoutMs?: number) => {
+      return this.fetchUrl(url, timeoutMs)
+    }) // 由主进程执行 HTTP 请求（用于规避渲染进程 CORS）
   }
 }

@@ -10,7 +10,7 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
     },
-    include: ['src/**/*.test.ts', 'tests/**/*.spec.ts']
+    include: ['tests/**/*.spec.ts']
   },
   resolve: {
     alias: {

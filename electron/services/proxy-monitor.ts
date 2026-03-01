@@ -1,7 +1,7 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import { ProcessService, ProcessNode } from './process';
 import { SingBoxService } from './singbox';
-import { normalizeProcessNames, normalizeProcessName } from '../utils/process-helper';
+import { normalizeProcessNames, normalizeProcessName } from '@shared/utils';
 
 /**
  * 从进程树中找出“已代理父进程”派生出的所有子进程名称

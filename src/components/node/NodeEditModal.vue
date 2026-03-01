@@ -161,8 +161,8 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
-import type { NodeConfig } from '@/utils/protocol'
-import { normalizeNodeType } from '@/utils/protocol'
+import type { NodeConfig } from '@/types'
+import { normalizeNodeType } from '@shared/utils'
 
 const props = defineProps<{
   modelValue: boolean

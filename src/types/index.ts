@@ -1,181 +1,38 @@
+/**
+ * 前端类型定义
+ *
+ * 大部分类型从 @shared/types 统一导入，
+ * 此文件仅做 re-export 和少量前端特有补充。
+ */
+
 import { PLATFORMS } from '@/constants'
 
 export type Platform = typeof PLATFORMS[number]
 
-export interface Game {
-  id?: string
-  name: string
-  iconUrl?: string
-  processName: string | string[]
-  category: string
-  categories?: string[]
-  tags?: string[]
-  profileId?: string
-  lastPlayed?: number
-  status?: 'idle' | 'accelerating'
-  latency?: number
-  nodeId?: string
-  proxyMode?: 'process' | 'routing'
-  routingRules?: string[]
-  chainProxy?: boolean
-}
+// ============================
+// 从 shared 统一导入的类型
+// ============================
 
-export interface Category {
-  id: string
-  name: string
-  parentId?: string
-  rules?: string[]
-  icon?: string
-  order?: number
-}
-
-export interface NodeConfig {
-  id?: string // Added ID for management
-  type: string
-  tag: string
-  server: string
-  server_port: number
-  uuid?: string
-  password?: string
-  method?: string
-  plugin?: string
-  plugin_opts?: string
-  network?: string
-  security?: string
-  path?: string
-  host?: string
-  service_name?: string
-  alpn?: string
-  fingerprint?: string
-  tls?: {
-    enabled: boolean
-    server_name?: string
-    insecure?: boolean
-    utls?: {
-      enabled: boolean
-      fingerprint: string
-    }
-    reality?: {
-      enabled: boolean
-      public_key?: string
-      short_id?: string
-    }
-  }
-  flow?: string
-  packet_encoding?: string
-  username?: string
-}
-
-// Settings Types
-export type CheckMethod = 'ping' | 'tcp' | 'http'
-export type DnsMode = 'secure' | 'system'
-export type AccelNetworkMode = 'tun' | 'system_proxy'
-export type NetworkProfile = 'stable' | 'aggressive'
-export type UdpMode = 'auto' | 'prefer_udp' | 'prefer_tcp'
-export type TunStackMode = 'system' | 'mixed'
-export type VlessPacketEncodingOverride = 'off' | 'xudp'
-
-export interface SessionNetworkTuningOptions {
-  enabled: boolean
-  profile: NetworkProfile
-  udpMode: UdpMode
-  tunMtu: number
-  tunStack: TunStackMode
-  strictRoute: boolean
-  vlessPacketEncodingOverride: VlessPacketEncodingOverride
-  highLossHintOnly: boolean
-}
-
-// Theme Types
-export type Theme = 'light' | 'dark' | 'auto'
-export type ThemeColor = 'green' | 'blue' | 'purple' | 'orange' | 'red'
-
-// Singbox Config Types
-export interface DnsConfigOptions {
-  mode?: 'secure' | 'system'   // DNS 模式：安全模式 (DoH/DoT) 或 系统解析
-  primary?: string            // 主 DNS 服务器地址
-  secondary?: string          // 备用 DNS 服务器地址
-  bootstrap?: string          // Bootstrap DNS（用于解析 DNS 服务器域名）
-  tunInterfaceName?: string
-  proxyBypassList?: string
-  accelNetworkMode?: AccelNetworkMode
-  disableTun?: boolean
-  localProxyNode?: NodeConfig
-  localProxyStrictNode?: boolean
-  localProxy?: {
-    enabled: boolean
-    port: number
-  }
-  systemProxy?: {
-    enabled: boolean
-    port: number
-  }
-  sessionTuning?: SessionNetworkTuningOptions
-}
-
-// Latency Session Types
-export interface LatencyRecord {
-  id?: number
-  nodeKey: string
-  server: string
-  port: number
-  method: 'ping' | 'tcp' | 'http'
-  latency: number
-  loss: number
-  timestamp: number
-  gameId?: string
-  accelerationSeconds?: number
-  sessionLossRate?: number
-}
-
-// Singbox Internal Config
-export interface SingboxConfig {
-  log: {
-    level: string
-    timestamp: boolean
-  }
-  dns: {
-    servers: any[]
-    rules: any[]
-    final?: string
-  }
-  inbounds: any[]
-  outbounds: any[]
-  route: {
-    rules: any[]
-    rule_set?: any[]
-    auto_detect_interface: boolean
-    final?: string
-  }
-  experimental?: {
-    cache_file?: {
-      enabled: boolean
-    }
-  }
-}
-
-// System/Scanner Types
-export type LocalScanGame = {
-  name: string
-  processName: string[]
-  source: Platform
-  installDir: string
-}
-
-// Node Check Context
-export interface CheckRecordContext {
-  recordLatency?: boolean
-  gameId?: string
-  accelerationSeconds?: number
-  sessionLossRate?: number
-}
-
-// Logger Types
-export type FrontendLogLevel = 'debug' | 'info' | 'warn' | 'error'
-
-export type FrontendLogPayload = {
-  level: FrontendLogLevel
-  source: string
-  message: string
-  detail?: string
-}
+export type {
+  Game,
+  LocalScanGame,
+  NodeConfig,
+  NodeTlsConfig,
+  Category,
+  CheckMethod,
+  DnsMode,
+  AccelNetworkMode,
+  NetworkProfile,
+  UdpMode,
+  TunStackMode,
+  VlessPacketEncodingOverride,
+  SessionNetworkTuningOptions,
+  Theme,
+  ThemeColor,
+  LatencyRecord,
+  CheckRecordContext,
+  FrontendLogLevel,
+  FrontendLogPayload,
+  DnsConfigOptions,
+  SingboxConfig,
+} from '@shared/types'
