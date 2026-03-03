@@ -378,6 +378,7 @@ const lostSamples = ref(0)
 const showSessionTuningPanel = ref(false)
 const highLossHintShown = ref(false)
 const applyingSessionTuning = ref(false)
+const ipcCleanupFns: Array<() => void> = []
 
 const udpModeOptions = computed(() => ([
    { label: String(t('settings.udp_mode_auto')), value: 'auto' },
@@ -683,11 +684,14 @@ onMounted(() => {
       resumeDuration()
    }
    try {
-      electronApi.on('singbox-log', (d: any) => onSingboxEvent('singbox-log', d))
-      electronApi.on('singbox-error', (d: any) => onSingboxEvent('singbox-error', d))
-      electronApi.on('singbox-status', (d: any) => onSingboxEvent('singbox-status', d))
-      electronApi.on('singbox-installer-status', onInstallerStatusChange)
-      electronApi.on('tray:do-toggle', toggleAccelerator)
+      const onLogDisposer = electronApi.on('singbox-log', (d: any) => onSingboxEvent('singbox-log', d))
+      if (typeof onLogDisposer === 'function') ipcCleanupFns.push(onLogDisposer)
+      const onErrorDisposer = electronApi.on('singbox-error', (d: any) => onSingboxEvent('singbox-error', d))
+      if (typeof onErrorDisposer === 'function') ipcCleanupFns.push(onErrorDisposer)
+      const onStatusDisposer = electronApi.on('singbox-status', (d: any) => onSingboxEvent('singbox-status', d))
+      if (typeof onStatusDisposer === 'function') ipcCleanupFns.push(onStatusDisposer)
+      const onInstallerDisposer = electronApi.on('singbox-installer-status', onInstallerStatusChange)
+      if (typeof onInstallerDisposer === 'function') ipcCleanupFns.push(onInstallerDisposer)
       singboxApi.getInstallInfo().then((info) => {
          isCoreInstalled.value = info.exists
       }).catch(() => {
@@ -741,11 +745,13 @@ onUnmounted(() => {
    pauseSampling()
    pauseDuration()
    try {
-      // Logic for cleanup if necessary
-      // electronApi.off is defined as function in types, so no need to check existence if we trust types.
-      // However, if we want to be safe at runtime:
-      if (typeof electronApi.off === 'function') {
-         electronApi.off('tray:do-toggle', toggleAccelerator)
+      while (ipcCleanupFns.length > 0) {
+         const dispose = ipcCleanupFns.pop()
+         try {
+            dispose?.()
+         } catch {
+            // ignore
+         }
       }
    } catch (e) { }
 })

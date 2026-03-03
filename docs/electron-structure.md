@@ -39,7 +39,7 @@ electron/
 │   ├── database.ts          # 数据库服务：封装 SQLite 连接与基础 CRUD 操作
 │   ├── game-scanner.ts      # 游戏扫描服务：统一入口，聚合 scanners 目录下的扫描逻辑
 │   ├── game.ts              # 游戏管理服务：管理“我的游戏”列表、配置与状态
-│   ├── node.ts              # 节点管理服务：管理代理节点/订阅信息
+│   ├── node.ts              # 节点管理服务：管理代理节点
 │   ├── process.ts           # 进程管理服务：提供进程树查找、父子进程分析能力
 │   ├── proxy-monitor.ts     # 监控服务：实时监控游戏进程启动，自动触发加速路由
 │   ├── system.ts            # 系统服务：提供 DNS 刷新、虚拟网卡重置、网络测试等底层能力
@@ -57,32 +57,41 @@ electron/
 ## 模块详细说明
 
 ### 1. 入口层 (`main/`)
+
 经过重构，入口层职责更加单一：
+
 - **`index.ts`**: 核心入口，负责组装各个模块，初始化服务。
 - **`bootstrap.ts`**: 处理应用启动前的环境准备，如强制管理员权限、处理 SQLite 原生模块错误。
 - **`window.ts`**: 封装了 `BrowserWindow` 的创建与配置，管理窗口 IPC 事件（最小化/关闭）。
 - **`tray.ts`**: 独立管理系统托盘逻辑。
 
 ### 2. 业务层 (`services/`)
+
 这是代码最集中的地方，每个文件对应一个具体的业务领域。
 
 #### 核心服务：`singbox/`
+
 将原有的 `singbox.ts` 拆分为独立模块：
+
 - **`index.ts`**: 服务外观 (Facade)，对外提供 `start`, `stop`, `restart` 接口。
 - **`installer.ts`**: 专注于二进制文件的下载、解压和安装逻辑。
 - **`config.ts`**: 专注于配置文件的生成、校验和动态规则更新。
 
 #### 扫描服务：`game-scanner.ts` & `scanners/`
+
 - **`game-scanner.ts`**: 作为统一入口，对外暴露 `scanLocalGamesFromPlatforms`。
 - **`scanners/`**: 包含各平台的具体扫描实现：
-    - **`steam.ts`**: 解析 Steam 库文件。
-    - **`microsoft.ts`**: 结合注册表和 AppxManifest 解析 Xbox 游戏。
-    - **`flat.ts`**: 简单的目录遍历扫描 (Epic/EA)。
+  - **`steam.ts`**: 解析 Steam 库文件。
+  - **`microsoft.ts`**: 结合注册表和 AppxManifest 解析 Xbox 游戏。
+  - **`flat.ts`**: 简单的目录遍历扫描 (Epic/EA)。
 
 #### 监控服务：`proxy-monitor.ts`
+
 - 实现了智能进程捕获。它会轮询系统进程树，当发现已配置的游戏进程及其子进程启动时，自动通知 `singbox` 服务添加分流规则。
 
 ### 3. 工具层 (`utils/`)
+
 提炼了纯函数工具，不依赖具体业务逻辑，易于测试和复用。
+
 - **`command.ts`**: 解决了 Node.js 原生 `exec` 在 Windows 下的一些编码和窗口隐藏问题。
 - **`process-helper.ts`**: 统一了全项目的进程名处理逻辑（如忽略大小写、去除 `.exe` 后缀），确保规则匹配的准确性。

@@ -48,6 +48,13 @@ contextBridge.exposeInMainWorld('electron', {
     channelMap.set(callback, wrapped)
     ipcListenerMap.set(channel, channelMap)
     ipcRenderer.on(channel, wrapped)
+    return () => {
+      ipcRenderer.removeListener(channel, wrapped)
+      const mapped = ipcListenerMap.get(channel)
+      if (mapped?.get(callback) === wrapped) {
+        mapped.delete(callback)
+      }
+    }
   },
 
   /**

@@ -11,7 +11,7 @@ export interface ElectronAPI {
   pickProcess: () => Promise<string[] | null>
   pickProcessFolder: (maxDepth?: number) => Promise<string[] | null>
   openDevTools: () => Promise<void>
-  on: (channel: string, callback: (...args: any[]) => void) => void
+  on: (channel: string, callback: (...args: any[]) => void) => (() => void) | void
   off: (channel: string, callback: (...args: any[]) => void) => void
   traySyncState: (state: any) => void
   trayGetState: () => Promise<any>

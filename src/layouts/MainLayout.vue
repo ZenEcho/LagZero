@@ -157,6 +157,8 @@ import { useGameStore } from '@/stores/games'
 import { useNodeStore } from '@/stores/nodes'
 import { useSettingsStore } from '@/stores/settings'
 import { storeToRefs } from 'pinia'
+import { useI18n } from 'vue-i18n'
+import { useMessage } from 'naive-ui'
 
 const { width } = useWindowSize()
 const isCollapsed = ref(true)
@@ -166,11 +168,14 @@ const gameStore = useGameStore()
 const nodeStore = useNodeStore()
 const settingsStore = useSettingsStore()
 const { checkInterval } = storeToRefs(settingsStore)
+const { t } = useI18n()
+const message = useMessage()
 const trayCoreInstalled = ref(true)
 const trayDurationTick = ref(Date.now())
 const traySessionLoss = ref(0)
 const showCloseConfirmModal = ref(false)
 const closeRememberChoice = ref(false)
+const ipcCleanupFns: Array<() => void> = []
 const activeGame = computed(() => gameStore.getAcceleratingGame())
 const trayDisplayGame = computed(() => activeGame.value || gameStore.currentGame)
 
@@ -227,7 +232,8 @@ onMounted(async () => {
   resumeGlobalSampling()
   try {
     if (typeof electronApi.on === 'function') {
-      electronApi.on('singbox-installer-status', onInstallerStatusChange)
+      const onInstallerStatusChangeDisposer = electronApi.on('singbox-installer-status', onInstallerStatusChange)
+      if (typeof onInstallerStatusChangeDisposer === 'function') ipcCleanupFns.push(onInstallerStatusChangeDisposer)
     }
     singboxApi.getInstallInfo().then((info) => {
       trayCoreInstalled.value = !!info?.exists
@@ -329,6 +335,42 @@ function onCloseConfirmRequired() {
   showCloseConfirmModal.value = true
 }
 
+async function onTrayDoToggle() {
+  if (gameStore.operationState !== 'idle') return
+
+  const running = gameStore.getAcceleratingGame()
+  if (running?.id) {
+    try {
+      await gameStore.stopGame(running.id)
+    } catch (e: any) {
+      message.error(String(e?.message || e || t('games.stop_failed')))
+    }
+    return
+  }
+
+  const current = gameStore.currentGame
+  if (!current?.id) {
+    message.warning(String(t('games.no_game_selected')))
+    return
+  }
+  if (!current.nodeId) {
+    message.warning(String(t('dashboard.please_select_node')))
+    return
+  }
+
+  try {
+    await gameStore.startGame(current.id)
+  } catch (e: any) {
+    const rawMsg = String(e?.message || e || '')
+    if (rawMsg.startsWith('Another game is already accelerating:')) {
+      const gameName = rawMsg.replace('Another game is already accelerating:', '').trim()
+      message.warning(gameName ? `已有游戏正在加速：${gameName}，请先停止后再切换。` : '已有游戏正在加速，请先停止后再切换。')
+      return
+    }
+    message.error(rawMsg || String(t('dashboard.start_failed')))
+  }
+}
+
 async function submitCloseDecision(action: 'minimize' | 'quit' | 'cancel') {
   try {
     await electronApi.submitWindowCloseDecision({
@@ -362,9 +404,13 @@ const close = () => electronApi.close()
 onUnmounted(() => {
   pauseTrayDurationTicker()
   try {
-    if (typeof electronApi.off === 'function') {
-      electronApi.off('singbox-installer-status', onInstallerStatusChange)
-      electronApi.off('window:close-confirm-required', onCloseConfirmRequired)
+    while (ipcCleanupFns.length > 0) {
+      const dispose = ipcCleanupFns.pop()
+      try {
+        dispose?.()
+      } catch {
+        // ignore
+      }
     }
   } catch {
     // ignore
@@ -374,7 +420,10 @@ onUnmounted(() => {
 onMounted(() => {
   try {
     if (typeof electronApi.on === 'function') {
-      electronApi.on('window:close-confirm-required', onCloseConfirmRequired)
+      const onCloseConfirmRequiredDisposer = electronApi.on('window:close-confirm-required', onCloseConfirmRequired)
+      if (typeof onCloseConfirmRequiredDisposer === 'function') ipcCleanupFns.push(onCloseConfirmRequiredDisposer)
+      const onTrayDoToggleDisposer = electronApi.on('tray:do-toggle', onTrayDoToggle)
+      if (typeof onTrayDoToggleDisposer === 'function') ipcCleanupFns.push(onTrayDoToggleDisposer)
     }
   } catch {
     // ignore
