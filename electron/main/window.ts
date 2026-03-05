@@ -59,7 +59,8 @@ export class WindowManager {
         contextIsolation: true,
         webSecurity: true,
         allowRunningInsecureContent: false,
-        devTools: Boolean(VITE_DEV_SERVER_URL),
+        // Keep DevTools available in packaged builds; UI action controls when to open it.
+        devTools: true,
         spellcheck: false,
         backgroundThrottling: true,
       },

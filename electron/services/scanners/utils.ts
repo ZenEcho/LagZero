@@ -12,8 +12,20 @@ import {
 // 调整 libuv 的底层线程池大小，以最大化利用多核 CPU 处理海量并发文件的 I/O
 process.env.UV_THREADPOOL_SIZE = String(Math.max(4, os.cpus().length * 2))
 const DEFAULT_IO_CONCURRENCY = Math.max(4, Math.min(16, os.cpus().length))
-const PICK_EXE_DEPTH_STAGES = [2, 4, 6]
-const PICK_EXE_STAT_SAMPLE_LIMIT = 40
+const DRIVE_DETECT_CONCURRENCY = 16 // 并发探测盘符，避免串行等待 
+const PICK_EXE_DEPTH_STAGES = [2, 4, 6] // 深度扫描阶段
+const PICK_EXE_STAT_SAMPLE_LIMIT = 24 // 采样统计数量
+const PICK_EXE_EARLY_ACCEPT_SCORE = 8 // 早期接受分数
+const PICK_EXE_EARLY_ACCEPT_COUNT = 4 // 早期接受数量
+const PICK_EXE_DEEP_FALLBACK_DEPTH = 6 // 深度回退深度
+const LARGE_DIR_ENTRY_THRESHOLD = 3000 // 大目录条目阈值
+const LARGE_DIR_SUBDIR_SCAN_LIMIT = 120 // 大目录子目录扫描限制
+const LARGE_DIR_PRIORITY_KEYWORDS = [
+  'bin', 'binaries', 'win64', 'win32', 'x64', 'x86',
+  'game', 'client', 'release', 'shipping', 'launcher'
+]
+const PICK_EXE_MIN_SCORE = 2
+const PICK_EXE_SCORE_GAP_FROM_BEST = 4
 
 /**
  * 标准化游戏显示名称
@@ -32,6 +44,36 @@ export function normalizeDisplayName(name: string) {
  */
 export function normalizeFsPath(p: string) {
   return path.normalize(p).replace(/[\\\/]+$/, '').toLowerCase()
+}
+
+/**
+ * 解析 PowerShell ConvertTo-Json 输出，兼容数组/单对象/单字符串。
+ */
+export function parsePowershellJson<T>(raw: string): T[] {
+  const text = String(raw || '').trim()
+  if (!text) return []
+  try {
+    const parsed = JSON.parse(text)
+    if (Array.isArray(parsed)) return parsed as T[]
+    if (parsed !== null && parsed !== undefined) return [parsed as T]
+    return []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 进程名去重并统一小写键，保留原始文件名大小写。
+ */
+export function dedupeProcessNames(names: string[]) {
+  const map = new Map<string, string>()
+  for (const name of names) {
+    const n = String(name || '').trim()
+    if (!n) continue
+    const key = n.toLowerCase()
+    if (!map.has(key)) map.set(key, n)
+  }
+  return Array.from(map.values())
 }
 
 /**
@@ -75,16 +117,18 @@ export async function mapWithConcurrency<T, R>(
 
 /**
  * 获取 Windows 系统下的所有驱动器根目录 (C:\, D:\, ...)
+ * 并发探测盘符，避免串行等待。
  */
 export async function getWindowsDriveRoots(): Promise<string[]> {
   if (process.platform !== 'win32') return []
-  const roots: string[] = []
-  for (let i = 67; i <= 90; i += 1) {
-    const letter = String.fromCharCode(i)
+
+  const letters = Array.from({ length: 24 }, (_, idx) => String.fromCharCode(67 + idx))
+  const detected = await mapWithConcurrency(letters, async (letter) => {
     const root = `${letter}:\\`
-    if (await fs.pathExists(root)) roots.push(root)
-  }
-  return roots
+    return await fs.pathExists(root) ? root : ''
+  }, DRIVE_DETECT_CONCURRENCY)
+
+  return detected.filter(Boolean)
 }
 
 /**
@@ -104,14 +148,47 @@ export function shouldSkipExeByName(exeName: string) {
   return GAME_SCAN_IGNORE_EXE_KEYWORDS.some(k => lower.includes(k))
 }
 
+/**
+ * 判断进程名是否包含软过滤关键词
+ * (在评分阶段降权使用，但不直接跳过)
+ * @param exeName 进程名
+ * @returns 判断结果
+ */
 function hasSoftIgnoreKeyword(exeName: string) {
   const lower = String(exeName || '').toLowerCase()
   return GAME_SCAN_SOFT_IGNORE_EXE_KEYWORDS.some((k) => lower.includes(k))
 }
 
 /**
- * 递归收集目录下的所有 .exe 文件路径
- * @param maxDepth 最大递归深度 (-1 表示无限)
+ * 针对海量条目大目录结构（如几千文件夹）使用的粗略评分依据
+ * 优先关注含二进制或常见游戏存放术语的目录，以便早期扫描
+ * @param dirName 目录名
+ * @returns 启发式得分
+ */
+function scoreDirNameForLargeScan(dirName: string) {
+  const lower = String(dirName || '').toLowerCase()
+  if (!lower) return 0
+
+  let score = 0
+  if (LARGE_DIR_PRIORITY_KEYWORDS.some((k) => lower.includes(k))) score += 6
+  if (lower.startsWith('bin')) score += 2
+  if (lower === 'x64' || lower === 'x86') score += 2
+  return score
+}
+
+/**
+ * 目录扫描队列的任务定义
+ */
+type DirScanTask = {
+  /** 待扫描的目录路径 */
+  dir: string
+  /** 该目录在扫描过程中的层级深度 */
+  depth: number
+}
+
+/**
+ * 收集目录下的所有 .exe 文件路径（迭代扫描，避免递归栈开销）
+ * @param maxDepth 最大扫描深度 (-1 表示无限)
  * @param progressCallback 进度回调
  */
 export async function collectExePaths(
@@ -121,48 +198,66 @@ export async function collectExePaths(
   progressCallback?: ScanProgressCallback
 ): Promise<string[]> {
   const results: string[] = []
-  const dirents = await safeReadDir(dir)
+  const pending: DirScanTask[] = [{ dir, depth: currentDepth }]
+  const visited = new Set<string>()
 
-  // 性能优化：单层目录文件异常多时直接跳过，防止卡死
-  if (dirents.length > 3000) {
-    return results
-  }
+  const workerCount = Math.max(1, Math.min(DEFAULT_IO_CONCURRENCY, pending.length || DEFAULT_IO_CONCURRENCY))
 
-  const subDirs: string[] = []
+  const run = async () => {
+    while (true) {
+      const task = pending.shift()
+      if (!task) return
 
-  for (const dirent of dirents) {
-    const full = path.join(dir, dirent.name)
-    if (dirent.isDirectory()) {
-      const folderName = dirent.name.toLowerCase()
-      if (GAME_SCAN_IGNORE_DIR_NAMES.has(folderName)) continue
-      if (maxDepth === -1 || currentDepth <= maxDepth) {
-        subDirs.push(full)
+      const normalizedTaskDir = normalizeFsPath(task.dir)
+      if (visited.has(normalizedTaskDir)) continue
+      visited.add(normalizedTaskDir)
+
+      const dirents = await safeReadDir(task.dir)
+      const isLargeDir = dirents.length > LARGE_DIR_ENTRY_THRESHOLD
+      const subDirs: Array<{ fullPath: string, score: number }> = []
+
+      for (const dirent of dirents) {
+        const full = path.join(task.dir, dirent.name)
+        if (dirent.isDirectory()) {
+          const folderName = dirent.name.toLowerCase()
+          if (GAME_SCAN_IGNORE_DIR_NAMES.has(folderName)) continue
+          if (maxDepth === -1 || task.depth < maxDepth) {
+            subDirs.push({
+              fullPath: full,
+              score: scoreDirNameForLargeScan(dirent.name)
+            })
+          }
+          continue
+        }
+
+        if (!dirent.isFile() || !dirent.name.toLowerCase().endsWith('.exe')) continue
+        if (shouldSkipExeByName(dirent.name)) continue
+        results.push(full)
       }
-      continue
-    }
 
-    if (!dirent.isFile() || !dirent.name.toLowerCase().endsWith('.exe')) continue
-    if (shouldSkipExeByName(dirent.name)) continue
-    results.push(full)
-  }
+      const selectedSubDirs = isLargeDir && subDirs.length > LARGE_DIR_SUBDIR_SCAN_LIMIT
+        ? subDirs
+          .sort((a, b) => b.score - a.score || a.fullPath.localeCompare(b.fullPath))
+          .slice(0, LARGE_DIR_SUBDIR_SCAN_LIMIT)
+          .map(v => v.fullPath)
+        : subDirs.map(v => v.fullPath)
 
-  // 多线程/并发处理所有合法的子目录
-  if (subDirs.length > 0) {
-    const subResults = await mapWithConcurrency(subDirs, async (subDir) => {
-      progressCallback?.('scanning_dir', subDir)
-      return await collectExePaths(subDir, maxDepth, currentDepth + 1, progressCallback)
-    }, DEFAULT_IO_CONCURRENCY)
-    for (const sub of subResults) {
-      results.push(...sub)
+      for (const subDir of selectedSubDirs) {
+        progressCallback?.('scanning_dir', subDir)
+        pending.push({ dir: subDir, depth: task.depth + 1 })
+      }
     }
   }
+
+  const workers = Array.from({ length: workerCount }, () => run())
+  await Promise.all(workers)
 
   return results
 }
 
 /**
  * 启发式算法：从目录下选择所有像是游戏主进程及相关子程序的可执行文件
- * 
+ *
  * 评分规则：
  * - 文件名与文件夹名完全匹配 (+10)
  * - 文件名包含文件夹名 (+6)
@@ -210,8 +305,18 @@ export async function pickRelatedExecutables(
     }
 
     if (allExes.length === 0) continue
-    if (allExes.length >= 8) break
-    if (allExes.some(exe => quickScore(exe) >= 10)) break
+    if (allExes.length >= PICK_EXE_EARLY_ACCEPT_COUNT) break
+    if (allExes.some(exe => quickScore(exe) >= PICK_EXE_EARLY_ACCEPT_SCORE)) break
+  }
+
+  if (allExes.length === 0) {
+    // 仅在浅层完全找不到 exe 时才深扫，避免对每个游戏都做重 I/O。
+    const deepFallback = await collectExePaths(gameDir, PICK_EXE_DEEP_FALLBACK_DEPTH, 1, progressCallback)
+    for (const exe of deepFallback) {
+      if (seen.has(exe)) continue
+      seen.add(exe)
+      allExes.push(exe)
+    }
   }
 
   if (allExes.length === 0) return []
@@ -239,9 +344,12 @@ export async function pickRelatedExecutables(
 
   ranked.sort((a, b) => b.score - a.score)
 
-  // 选择得分较高的进程（比如前5个，或者得分 > 0 的进程），但至少返回1个（如果是空则前面已经返回了）
-  // 加上为了支持子程序，我们把得分最高的，以及所有比较可能的是子程序的也带上。
-  // 可以把前3到5个得分最高的 exe 选出来，只要它们不是安装包即可。
-  const selected = ranked.filter(r => r.score >= 0).slice(0, 5).map(r => r.exe)
+  const bestScore = ranked[0]?.score ?? 0
+  const scoreFloor = Math.max(PICK_EXE_MIN_SCORE, bestScore - PICK_EXE_SCORE_GAP_FROM_BEST)
+  const selected = ranked
+    .filter(r => r.score >= scoreFloor)
+    .slice(0, 4)
+    .map(r => r.exe)
+
   return selected.length > 0 ? selected : [ranked[0].exe]
 }

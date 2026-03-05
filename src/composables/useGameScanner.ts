@@ -5,7 +5,6 @@ import { categoryApi, systemApi } from '@/api'
 import { useGameStore } from '@/stores/games'
 import { useCategoryStore } from '@/stores/categories'
 import type { Category, Game, LocalScanGame } from '@/types'
-import { PLATFORMS } from '@/constants'
 
 // 将 isScanning 和 scanProgressText 提升到模块级别
 const isScanning = ref(false)
@@ -57,15 +56,6 @@ export function useGameScanner() {
     await categoryStore.addCategory(newCategory)
     await categoryStore.loadCategories()
     return categoryStore.categories.find(c => String(c.name || '').toLowerCase() === normalizedName.toLowerCase())?.id || getFallbackCategoryId()
-  }
-
-  /**
-   * 确保平台分类存在
-   * @param source 游戏来源平台
-   */
-  async function ensurePlatformCategoryId(source: LocalScanGame['source']): Promise<string> {
-    const platformName = PLATFORMS.find((name) => name === source) || source
-    return ensureCategoryByName(platformName)
   }
 
   /**
@@ -122,12 +112,6 @@ export function useGameScanner() {
    * @returns 新增的游戏数量
    */
   async function autoAddGamesFromLibraryScan(localGames: LocalScanGame[]) {
-    for (const platform of PLATFORMS) {
-      const hasPlatformGame = localGames.some(g => g.source === platform)
-      if (!hasPlatformGame) continue
-      await ensureCategoryByName(platform)
-    }
-
     // 构建现有游戏库的查找键集合，用于快速去重
     const existingGameKeys = new Set(
       gameStore.gameLibrary.flatMap((game: Game) => {
@@ -153,7 +137,7 @@ export function useGameScanner() {
 
     for (const item of candidates) {
       const matchedCategoryId = await categoryApi.match(item.name, item.processName)
-      const platformCategoryId = await ensurePlatformCategoryId(item.source)
+      const platformCategoryId = await ensureCategoryByName(item.source)
       const mergedCategories = Array.from(new Set(
         [platformCategoryId, matchedCategoryId, getFallbackCategoryId()]
           .map(v => String(v || '').trim())
@@ -163,6 +147,7 @@ export function useGameScanner() {
       await gameStore.addGame({
         name: item.name,
         processName: item.processName,
+        // iconUrl: item.iconUrl,
         category: categoryId,
         categories: mergedCategories,
         tags: [],

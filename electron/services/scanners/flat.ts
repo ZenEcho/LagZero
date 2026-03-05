@@ -1,48 +1,59 @@
 import fs from 'fs-extra'
 import path from 'path'
 import { LocalGameScanResult, Platform, ScanProgressCallback } from './types'
-import { mapWithConcurrency, normalizeDisplayName, pickRelatedExecutables, safeReadDir } from './utils'
+import { dedupeProcessNames, mapWithConcurrency, normalizeDisplayName, pickRelatedExecutables, safeReadDir } from './utils'
+
+/**
+ * 扁平目录扫描相关配置选项
+ */
+export type FlatScanOptions = {
+  /** 需要跳过的目录名列表 */
+  ignoreDirNames?: Set<string>
+  /** 如果提供，则执行自定义校验方法通过的才会被扫描 */
+  shouldIncludeDir?: (installDir: string, dirName: string) => boolean
+  /** 顶级节点检索并发限制 */
+  rootConcurrency?: number
+  /** 子节点扫描深层并发数 */
+  entryConcurrency?: number
+}
 
 /**
  * 扫描指定目录下的通用平台游戏 (Epic, EA, Microsoft Store)
- * 
- * 这种扫描方式主要依赖于目录结构和可执行文件的启发式匹配。
- * 
- * @param source 游戏平台标识
- * @param progressCallback 进度回调
- * @returns 扫描到的游戏列表
  */
 export async function scanFlatPlatformFolder(
   source: Platform,
   roots: string[],
-  progressCallback?: ScanProgressCallback
+  progressCallback?: ScanProgressCallback,
+  options?: FlatScanOptions
 ): Promise<LocalGameScanResult[]> {
-  const results: LocalGameScanResult[] = []
+  const ignoreDirNames = options?.ignoreDirNames
+  const shouldIncludeDir = options?.shouldIncludeDir
 
   const tasks = await mapWithConcurrency(roots, async (root) => {
     if (!await fs.pathExists(root)) return []
     progressCallback?.('scanning_dir', root)
     const entries = await safeReadDir(root)
 
-    // 目录中游戏项也并行扫描
     const scannedGames = await mapWithConcurrency(entries, async (entry) => {
       if (!entry.isDirectory()) return null
-      const installDir = path.join(root, entry.name)
-      const exes = await pickRelatedExecutables(installDir, entry.name, progressCallback)
+      const dirName = entry.name
+      if (ignoreDirNames?.has(dirName.toLowerCase())) return null
+      const installDir = path.join(root, dirName)
+      if (shouldIncludeDir && !shouldIncludeDir(installDir, dirName)) return null
+
+      const exes = await pickRelatedExecutables(installDir, dirName, progressCallback)
       if (!exes || exes.length === 0) return null
+
       return {
-        name: normalizeDisplayName(entry.name),
-        processName: exes.map(e => path.basename(e)),
+        name: normalizeDisplayName(dirName),
+        processName: dedupeProcessNames(exes.map(e => path.basename(e))),
         source,
         installDir
-      }
-    }, 6)
+      } as LocalGameScanResult
+    }, options?.entryConcurrency ?? 6)
+
     return scannedGames.filter(g => g !== null) as LocalGameScanResult[]
-  }, 4)
-
-  for (const c of tasks) {
-    results.push(...c)
-  }
-
-  return results
+  }, options?.rootConcurrency ?? 4)
+  return tasks.flat()
 }
+

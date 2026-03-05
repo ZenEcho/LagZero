@@ -1,7 +1,7 @@
 import fs from 'fs-extra'
 import path from 'path'
 import { LocalGameScanResult, ScanProgressCallback } from './scanners/types'
-import { mapWithConcurrency } from './scanners/utils'
+import { dedupeProcessNames, mapWithConcurrency, normalizeFsPath } from './scanners/utils'
 import { scanSteamGames } from './scanners/steam'
 import { scanMicrosoftGames } from './scanners/microsoft'
 import { scanEpicGames } from './scanners/epic'
@@ -12,9 +12,6 @@ import { scanLocalShortcuts } from './scanners/local'
 
 /**
  * 游戏扫描服务
- * 
- * 负责扫描本地已安装的游戏，目前支持 Windows 平台。
- * 聚合了 Steam, Microsoft Store (Xbox), Epic Games, EA App 等多个平台的扫描逻辑。
  */
 export class GameScannerService {
   /**
@@ -24,35 +21,78 @@ export class GameScannerService {
   async scanLocalGamesFromPlatforms(progressCallback?: ScanProgressCallback): Promise<LocalGameScanResult[]> {
     if (process.platform !== 'win32') return []
 
-    const scanners = [
-      scanSteamGames,
-      scanMicrosoftGames,
-      scanEpicGames,
-      scanEAGames,
-      scanBattleNetGames,
-      scanWeGameGames,
-      scanLocalShortcuts
+    const scanners: Array<{ name: string, run: (progressCallback?: ScanProgressCallback) => Promise<LocalGameScanResult[]> }> = [
+      { name: 'Steam', run: scanSteamGames },
+      { name: 'Microsoft', run: scanMicrosoftGames },
+      { name: 'Epic', run: scanEpicGames },
+      { name: 'EA', run: scanEAGames },
+      { name: 'BattleNet', run: scanBattleNetGames },
+      { name: 'WeGame', run: scanWeGameGames },
+      { name: 'Local', run: scanLocalShortcuts }
     ]
-    const platformResults = await mapWithConcurrency(scanners, async (scan) => scan(progressCallback), 3)
-    const [steam, microsoft, epic, ea, battlenet, wegame, local] = platformResults
 
-    // 去重逻辑：名称和进程名列表都相同的视为同一个游戏
-    const dedup = new Map<string, LocalGameScanResult>()
-    for (const game of [...steam, ...microsoft, ...epic, ...ea, ...battlenet, ...wegame, ...local]) {
-      const processKey = Array.isArray(game.processName) ? game.processName.sort().join(',').toLowerCase() : ''
-      const key = `${game.name.toLowerCase()}|${processKey}`
-      if (!dedup.has(key)) dedup.set(key, game)
+    console.info(`[GameScan] 开始扫描平台，任务数=${scanners.length}`)
+
+    const platformResults = await mapWithConcurrency(scanners, async ({ name, run }) => {
+      const startedAt = Date.now()
+      try {
+        console.info(`[GameScan] 平台扫描开始: ${name}`)
+        const result = await run(progressCallback)
+        const costMs = Date.now() - startedAt
+        console.info(`[GameScan] 平台扫描完成: ${name} | 命中=${result.length} | 耗时=${costMs}ms`)
+        return result
+      } catch (error) {
+        const costMs = Date.now() - startedAt
+        console.error(`[GameScan] 平台扫描失败: ${name} | 耗时=${costMs}ms`, error)
+        return []
+      }
+    }, 4)
+
+    const allResults = platformResults.flat()
+    const rawTotal = allResults.length
+
+    const byInstallDir = new Map<string, LocalGameScanResult>()
+    const fallback = new Map<string, LocalGameScanResult>()
+
+    for (const game of allResults) {
+      const processNames = dedupeProcessNames(Array.isArray(game.processName) ? game.processName : [])
+      const normalized: LocalGameScanResult = {
+        ...game,
+        processName: processNames
+      }
+
+      const installDirKey = normalizeFsPath(normalized.installDir)
+      if (installDirKey) {
+        const prev = byInstallDir.get(installDirKey)
+        if (!prev) {
+          byInstallDir.set(installDirKey, normalized)
+        } else {
+          byInstallDir.set(installDirKey, {
+            ...prev,
+            name: prev.name.length >= normalized.name.length ? prev.name : normalized.name,
+            processName: dedupeProcessNames([...prev.processName, ...normalized.processName]),
+          })
+        }
+        continue
+      }
+
+      const processKey = processNames.slice().sort((a, b) => a.localeCompare(b)).join(',').toLowerCase()
+      const key = `${normalized.name.toLowerCase()}|${processKey}`
+      if (!fallback.has(key)) fallback.set(key, normalized)
     }
 
-    return Array.from(dedup.values())
+    const deduped = [...byInstallDir.values(), ...fallback.values()]
+    console.info(`[GameScan] 扫描汇总完成 | 原始=${rawTotal} | 去重后=${deduped.length} | installDir键=${byInstallDir.size} | fallback键=${fallback.size}`)
+
+    return deduped
   }
 
   /**
    * 扫描指定目录下的可执行文件
-   * @param dir 目标目录
-   * @param maxDepth 最大递归深度 (-1 为无限)
-   * @param currentDepth 当前深度 (内部使用)
-   * @returns 找到的 .exe 文件名列表
+   * @param dir 要扫描的起始目录
+   * @param maxDepth 最大扫描深度（-1表示无限深度）
+   * @param currentDepth 内部递归使用的当前深度，默认从1开始
+   * @returns 扫描到的 .exe 文件相对当前调用层的名称或相对子路径名称列表
    */
   async scanDir(dir: string, maxDepth: number, currentDepth: number = 1): Promise<string[]> {
     let results: string[] = []
@@ -74,3 +114,4 @@ export class GameScannerService {
     return results
   }
 }
+

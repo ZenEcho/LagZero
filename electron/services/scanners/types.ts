@@ -1,3 +1,4 @@
+/** 支持的游戏平台标识 */
 export type Platform = 'Steam' | 'Microsoft' | 'Epic' | 'EA' | 'BattleNet' | 'WeGame' | 'Local' | 'GOG'
 
 /**
@@ -101,4 +102,10 @@ export const GAME_SCAN_EXE_HARD_EXCLUDE = new Set([
   'vc_redist.x64.exe',
   'vc_redist.x86.exe',
   'dotnetfx.exe',
+  // 常见压缩/解包工具，容易被误识别为游戏进程
+  '7z.exe',
+  '7za.exe',
+  '7zr.exe',
+  'unarc.exe',
 ])
+

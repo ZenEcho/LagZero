@@ -44,4 +44,7 @@ export type LocalScanGame = {
     processName: string[]
     source: string
     installDir: string
+    /** 游戏图标 URL（可选） */
+    iconUrl?: string
 }
+

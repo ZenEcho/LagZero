@@ -318,6 +318,28 @@ function flushPendingLogLines() {
   })
 }
 
+function flushPendingLogLinesSync() {
+  if (logFlushTimer) {
+    clearTimeout(logFlushTimer)
+    logFlushTimer = null
+  }
+  if (pendingLogLines.length === 0) return
+
+  const chunk = pendingLogLines.join('')
+  pendingLogLines = []
+  const logFilePath = getAppLogFilePath()
+
+  try {
+    fs.ensureDirSync(path.dirname(logFilePath))
+    fs.appendFileSync(logFilePath, chunk, 'utf8')
+    const bytes = Buffer.byteLength(chunk, 'utf8')
+    sessionLogFileSizeBytes += bytes
+    sessionLogFileSizeKnown = true
+  } catch {
+    // ignore synchronous flush failures
+  }
+}
+
 function scheduleLogFlush(immediate = false) {
   if (logFlushTimer) return
   logFlushTimer = setTimeout(() => {
@@ -327,6 +349,12 @@ function scheduleLogFlush(immediate = false) {
 
 function appendLogToFile(row: AppLogEntry) {
   pendingLogLines.push(formatLogLine(row))
+
+  // 错误级日志优先立即落盘，减少闪退时日志丢失。
+  if (row.level === 'error') {
+    scheduleLogFlush(true)
+    return
+  }
   if (pendingLogLines.length >= LOG_WRITE_FLUSH_MAX_LINES) {
     scheduleLogFlush(true)
     return
@@ -419,9 +447,16 @@ export function setupLogger(getWin: () => BrowserWindow | null) {
   install('log', 'info')
 
   queueLogWrite(writeStartupSection)
-  const flushNow = () => flushPendingLogLines()
-  app.on('before-quit', flushNow)
-  process.on('exit', flushNow)
+  const flushAsync = () => flushPendingLogLines()
+  const flushSync = () => flushPendingLogLinesSync()
+  app.on('before-quit', flushSync)
+  process.on('beforeExit', flushSync)
+  process.on('exit', flushSync)
+  process.on('uncaughtExceptionMonitor', flushSync)
+  process.on('SIGINT', flushSync)
+  process.on('SIGTERM', flushSync)
+  // 正常运行阶段仍保留异步刷盘，降低同步 I/O 频率。
+  setInterval(flushAsync, Math.max(LOG_WRITE_FLUSH_INTERVAL_MS, 500)).unref()
 
   pushAppLog({
     level: 'info',
@@ -467,3 +502,6 @@ export function setupLogger(getWin: () => BrowserWindow | null) {
     }
   })
 }
+
+
+

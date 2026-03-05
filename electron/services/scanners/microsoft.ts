@@ -1,12 +1,15 @@
 import fs from 'fs-extra'
 import path from 'path'
 import { LocalGameScanResult, ScanProgressCallback } from './types'
-import { getWindowsDriveRoots, normalizeDisplayName, normalizeFsPath, safeReadDir, pickRelatedExecutables } from './utils'
+import { dedupeProcessNames, getWindowsDriveRoots, mapWithConcurrency, normalizeDisplayName, normalizeFsPath, parsePowershellJson, safeReadDir, pickRelatedExecutables } from './utils'
 import { runCommand } from '../../utils/command'
 import { scanFlatPlatformFolder } from './flat'
 
 /**
  * 根据注册表或 Manifest 提供的提示信息，优化游戏名称
+ * @param installDir 游戏安装目录
+ * @param hints 注册或解析来的名录库
+ * @returns 最接近真实名字字串或空
  */
 function pickBestNameFromHints(installDir: string, hints: Map<string, string>) {
   const dirKey = normalizeFsPath(installDir)
@@ -26,23 +29,8 @@ function pickBestNameFromHints(installDir: string, hints: Map<string, string>) {
 }
 
 /**
- * 解析 PowerShell 返回的 JSON 字符串
- */
-function parsePowershellJson<T>(raw: string): T[] {
-  const text = raw.trim()
-  if (!text) return []
-  try {
-    const parsed = JSON.parse(text)
-    if (Array.isArray(parsed)) return parsed as T[]
-    if (parsed && typeof parsed === 'object') return [parsed as T]
-    return []
-  } catch {
-    return []
-  }
-}
-
-/**
  * 从 Windows 注册表中获取已安装软件的名称和安装路径映射
+ * @returns 包名定位和本地全量索引哈希名库
  */
 async function getRegistryDisplayNameHints(): Promise<Map<string, string>> {
   const map = new Map<string, string>()
@@ -78,6 +66,8 @@ async function getRegistryDisplayNameHints(): Promise<Map<string, string>> {
 
 /**
  * 从 AppxManifest.xml 内容中提取显示名称
+ * @param content Application Manifest 文本
+ * @returns 暴露出来的主观标识名字
  */
 function parseDisplayNameFromManifest(content: string): string {
   const displayName = content.match(/<DisplayName>([^<]+)<\/DisplayName>/i)?.[1]?.trim() || ''
@@ -88,15 +78,18 @@ function parseDisplayNameFromManifest(content: string): string {
 
 /**
  * 从 XboxGames 目录下的 AppxManifest.xml 解析游戏名称
+ * @param xboxRoots Xbox 默认多盘加载外设口
+ * @returns { 安装基础包索引 -> 主游戏展示字向 }
  */
 async function getManifestDisplayNameHints(xboxRoots: string[]): Promise<Map<string, string>> {
   const map = new Map<string, string>()
 
-  for (const root of xboxRoots) {
-    if (!await fs.pathExists(root)) continue
+  const rootBatches = await mapWithConcurrency(xboxRoots, async (root) => {
+    if (!await fs.pathExists(root)) return [] as Array<{ installDir: string, name: string }>
     const entries = await safeReadDir(root)
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue
+
+    const rows = await mapWithConcurrency(entries, async (entry) => {
+      if (!entry.isDirectory()) return null
       const gameDir = path.join(root, entry.name)
       const manifestCandidates = [
         path.join(gameDir, 'AppxManifest.xml'),
@@ -109,12 +102,21 @@ async function getManifestDisplayNameHints(xboxRoots: string[]): Promise<Map<str
           const content = await fs.readFile(manifestPath, 'utf8')
           const parsedName = parseDisplayNameFromManifest(content)
           if (!parsedName) continue
-          map.set(normalizeFsPath(gameDir), normalizeDisplayName(parsedName))
-          break
+          return { installDir: gameDir, name: normalizeDisplayName(parsedName) }
         } catch {
           // ignore manifest read errors
         }
       }
+
+      return null
+    }, 6)
+
+    return rows.filter(Boolean) as Array<{ installDir: string, name: string }>
+  }, 4)
+
+  for (const batch of rootBatches) {
+    for (const row of batch) {
+      map.set(normalizeFsPath(row.installDir), row.name)
     }
   }
 
@@ -123,6 +125,8 @@ async function getManifestDisplayNameHints(xboxRoots: string[]): Promise<Map<str
 
 /**
  * 扫描 UWP / 已安装的 AppxPackages
+ * @param progressCallback 透传加载回溯日志流
+ * @returns 分析出标准列表输出
  */
 async function scanAppxPackages(progressCallback?: ScanProgressCallback): Promise<LocalGameScanResult[]> {
   if (process.platform !== 'win32') return []
@@ -132,16 +136,14 @@ async function scanAppxPackages(progressCallback?: ScanProgressCallback): Promis
   if (code !== 0 || !output) return []
 
   const rows = parsePowershellJson<{ Name?: string, InstallLocation?: string }>(output)
-  const results: LocalGameScanResult[] = []
 
-  // 避免并发过高
-  for (const row of rows) {
+  const scanned = await mapWithConcurrency(rows, async (row) => {
     const packageName = String(row.Name || '').trim()
     const location = String(row.InstallLocation || '').trim()
-    if (!packageName || !location) continue
+    if (!packageName || !location) return null
 
     const manifestPath = path.join(location, 'AppxManifest.xml')
-    if (!await fs.pathExists(manifestPath)) continue
+    if (!await fs.pathExists(manifestPath)) return null
     progressCallback?.('scanning_dir', location)
 
     try {
@@ -152,24 +154,24 @@ async function scanAppxPackages(progressCallback?: ScanProgressCallback): Promis
         content.includes('TargetDeviceFamily Name="Windows.Xbox"') ||
         /(Forza|Minecraft|Halo|AgeOf|SeaOf|FlightSim|StateOfDecay|Gears)/i.test(packageName)
 
-      if (isGame) {
-        const parsedName = parseDisplayNameFromManifest(content) || packageName
-        const exes = await pickRelatedExecutables(location, parsedName, progressCallback)
-        if (exes && exes.length > 0) {
-          results.push({
-            name: normalizeDisplayName(parsedName),
-            processName: exes.map(e => path.basename(e)),
-            source: 'Microsoft',
-            installDir: location
-          })
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }
+      if (!isGame) return null
 
-  return results
+      const parsedName = parseDisplayNameFromManifest(content) || packageName
+      const exes = await pickRelatedExecutables(location, parsedName, progressCallback)
+      if (!exes || exes.length === 0) return null
+
+      return {
+        name: normalizeDisplayName(parsedName),
+        processName: dedupeProcessNames(exes.map(e => path.basename(e))),
+        source: 'Microsoft' as const,
+        installDir: location
+      } as LocalGameScanResult
+    } catch {
+      return null
+    }
+  }, 6)
+
+  return scanned.filter(Boolean) as LocalGameScanResult[]
 }
 
 /**
@@ -186,10 +188,24 @@ export async function scanMicrosoftGames(progressCallback?: ScanProgressCallback
     scanAppxPackages(progressCallback)
   ])
 
-  // 去重 (相同的安装目录只保留一个)
   const uniqueGames = new Map<string, LocalGameScanResult>()
   for (const game of [...base, ...appxBase]) {
-    uniqueGames.set(normalizeFsPath(game.installDir), game)
+    const key = normalizeFsPath(game.installDir)
+    const prev = uniqueGames.get(key)
+
+    if (!prev) {
+      uniqueGames.set(key, {
+        ...game,
+        processName: dedupeProcessNames(game.processName)
+      })
+      continue
+    }
+
+    uniqueGames.set(key, {
+      ...prev,
+      name: prev.name.length >= game.name.length ? prev.name : game.name,
+      processName: dedupeProcessNames([...prev.processName, ...game.processName])
+    })
   }
   const mergedBase = Array.from(uniqueGames.values())
 

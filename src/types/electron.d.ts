@@ -39,6 +39,7 @@ export interface SystemAPI {
     processName: string[]
     source: Platform
     installDir: string
+    iconUrl?: string
   }>>
   getProcessTree: () => Promise<any>
   ping: (host: string) => Promise<number>
@@ -141,3 +142,4 @@ declare global {
     logs: LogsAPI
   }
 }
+

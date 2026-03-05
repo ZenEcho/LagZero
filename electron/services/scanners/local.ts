@@ -3,105 +3,100 @@ import fs from 'fs-extra'
 import path from 'path'
 import os from 'os'
 import { LocalGameScanResult, ScanProgressCallback } from './types'
-import { normalizeDisplayName, pickRelatedExecutables, shouldSkipExeByName } from './utils'
+import { dedupeProcessNames, mapWithConcurrency, normalizeDisplayName, pickRelatedExecutables, shouldSkipExeByName } from './utils'
+
+/**
+ * 特定指向系统级核心与工具的捷径配置黑名单关键字，过滤误扫
+ */
+const LOCAL_SHORTCUT_SKIP_TARGET_KEYWORDS = [
+  'code.exe',
+  '\\system32\\',
+  '\\windows\\',
+  '\\microsoft office\\',
+  '\\office\\'
+]
 
 /**
  * 读取本地快捷方式 (.lnk) 识别独立游戏
  */
 export async function scanLocalShortcuts(progressCallback?: ScanProgressCallback): Promise<LocalGameScanResult[]> {
-    progressCallback?.('scanning_platform', 'Local')
-    if (process.platform !== 'win32') return []
+  progressCallback?.('scanning_platform', 'Local')
+  if (process.platform !== 'win32') return []
 
-    const results: LocalGameScanResult[] = []
-    const dedup = new Set<string>()
+  const dedup = new Set<string>()
 
-    const dirsToScan = [
-        path.join(os.homedir(), 'Desktop'),
-        path.join(process.env.PUBLIC || 'C:\\Users\\Public', 'Desktop'),
-        path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs'),
-        path.join(process.env.PROGRAMDATA || 'C:\\ProgramData', 'Microsoft', 'Windows', 'Start Menu', 'Programs')
-    ]
+  const dirsToScan = [
+    path.join(os.homedir(), 'Desktop'),
+    path.join(process.env.PUBLIC || 'C:\\Users\\Public', 'Desktop'),
+    path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs'),
+    path.join(process.env.PROGRAMDATA || 'C:\\ProgramData', 'Microsoft', 'Windows', 'Start Menu', 'Programs')
+  ]
 
-    const lnkFiles: string[] = []
+  const lnkFiles: string[] = []
 
-    // 递归收集 .lnk 文件 (Start Menu 有多层目录)
-    async function collectLnks(dir: string, depth = 0) {
-        if (depth > 3) return
-        if (!await fs.pathExists(dir)) return
-        try {
-            const items = await fs.readdir(dir, { withFileTypes: true })
-            const tasks = items.map(async (item) => {
-                const fullPath = path.join(dir, item.name)
-                if (item.isDirectory()) {
-                    progressCallback?.('scanning_dir', fullPath)
-                    await collectLnks(fullPath, depth + 1)
-                } else if (item.isFile() && item.name.toLowerCase().endsWith('.lnk')) {
-                    lnkFiles.push(fullPath)
-                }
-            })
-            await Promise.all(tasks)
-        } catch { }
-    }
-
-    const collectTasks = dirsToScan.map(dir => collectLnks(dir))
-    await Promise.all(collectTasks)
-
-    // 并行解析 lnk
-    const parseTasks = lnkFiles.map(async (lnk) => {
-        try {
-            const shortcut = shell.readShortcutLink(lnk)
-            const target = shortcut.target
-
-            if (!target || !target.toLowerCase().endsWith('.exe')) return null
-            if (shouldSkipExeByName(path.basename(target))) return null
-
-            // 额外的：过滤掉知名非游戏软件 (如 Chrome, Edge, 办公软件等)
-            const lowerTarget = target.toLowerCase()
-            if (lowerTarget.includes('chrome.exe') ||
-                lowerTarget.includes('msedge.exe') ||
-                lowerTarget.includes('code.exe') ||
-                lowerTarget.includes('office') ||
-                lowerTarget.includes('system32')) {
-                return null
-            }
-
-            if (!await fs.pathExists(target)) return null
-
-            const installDir = path.dirname(target)
-            const exeKey = target.toLowerCase()
-
-            // 此处由于并非完全同步，使用 Set 进行去重可能有极小并发覆盖可能，但可以接受，都在最后过滤
-            if (dedup.has(exeKey)) return null
-            dedup.add(exeKey)
-
-            // 解析名字：使用快捷方式的名字，去掉后缀
-            let displayName = path.basename(lnk, '.lnk')
-            displayName = normalizeDisplayName(displayName)
-
-            // 使用 pickRelatedExecutables 获取更完整的主进程列表，但确保 target 本身被包含
-            let processNames = [path.basename(target)]
-            try {
-                const exes = await pickRelatedExecutables(installDir, displayName, progressCallback)
-                if (exes && exes.length > 0) {
-                    processNames = Array.from(new Set([...processNames, ...exes.map(e => path.basename(e))]))
-                }
-            } catch { }
-
-            return {
-                name: displayName,
-                processName: processNames,
-                source: 'Local',
-                installDir
-            } as LocalGameScanResult
-        } catch (e) {
-            return null
+  async function collectLnks(dir: string, depth = 0) {
+    if (depth > 3) return
+    if (!await fs.pathExists(dir)) return
+    try {
+      const items = await fs.readdir(dir, { withFileTypes: true })
+      await mapWithConcurrency(items, async (item) => {
+        const fullPath = path.join(dir, item.name)
+        if (item.isDirectory()) {
+          progressCallback?.('scanning_dir', fullPath)
+          await collectLnks(fullPath, depth + 1)
+        } else if (item.isFile() && item.name.toLowerCase().endsWith('.lnk')) {
+          lnkFiles.push(fullPath)
         }
-    })
-
-    const parsedResults = await Promise.all(parseTasks)
-    for (const res of parsedResults) {
-        if (res !== null) results.push(res)
+      }, 6)
+    } catch {
+      // ignore
     }
+  }
 
-    return results
+  await mapWithConcurrency(dirsToScan, async (dir) => {
+    await collectLnks(dir)
+    return true
+  }, 4)
+
+  const parsedResults = await mapWithConcurrency(lnkFiles, async (lnk) => {
+    try {
+      const shortcut = shell.readShortcutLink(lnk)
+      const target = String(shortcut.target || '').trim()
+      if (!target || !target.toLowerCase().endsWith('.exe')) return null
+      if (shouldSkipExeByName(path.basename(target))) return null
+
+      const lowerTarget = target.toLowerCase()
+      if (LOCAL_SHORTCUT_SKIP_TARGET_KEYWORDS.some(k => lowerTarget.includes(k))) return null
+      if (!await fs.pathExists(target)) return null
+
+      const installDir = path.dirname(target)
+      const exeKey = target.toLowerCase()
+      if (dedup.has(exeKey)) return null
+      dedup.add(exeKey)
+
+      let displayName = normalizeDisplayName(path.basename(lnk, '.lnk'))
+      if (!displayName) displayName = normalizeDisplayName(path.basename(installDir))
+
+      let processNames = [path.basename(target)]
+      try {
+        const exes = await pickRelatedExecutables(installDir, displayName, progressCallback)
+        if (exes && exes.length > 0) {
+          processNames = dedupeProcessNames([...processNames, ...exes.map(e => path.basename(e))])
+        }
+      } catch {
+        // ignore
+      }
+
+      return {
+        name: displayName,
+        processName: processNames,
+        source: 'Local' as const,
+        installDir
+      } as LocalGameScanResult
+    } catch {
+      return null
+    }
+  }, 8)
+
+  return parsedResults.filter(Boolean) as LocalGameScanResult[]
 }

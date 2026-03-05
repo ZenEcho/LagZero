@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, session } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, session, crashReporter } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'fs-extra'
@@ -130,7 +130,24 @@ function configureChromiumLogging() {
   }
 }
 
+function setupCrashReporter() {
+  try {
+    crashReporter.start({
+      productName: pkg.productName || pkg.name,
+      companyName: pkg.name,
+      submitURL: 'https://lagzero.invalid/crash',
+      uploadToServer: false,
+      compress: true,
+      ignoreSystemCrashHandler: false
+    })
+    console.info(`[Main] CrashReporter 已启用，dump 目录: ${app.getPath('crashDumps')}`)
+  } catch (e) {
+    console.warn('[Main] 启用 CrashReporter 失败:', e)
+  }
+}
+
 configureChromiumLogging()
+setupCrashReporter()
 
 // 初始化日志系统
 setupLogger(() => windowManager.get())
@@ -332,6 +349,20 @@ function relaunchAppSafely(): boolean {
 }
 
 /**
+ * Close app without relaunch
+ * @returns whether close was triggered
+ */
+function closeAppSafely(): boolean {
+  try {
+    app.quit()
+    return true
+  } catch (e) {
+    console.error('[Main] Failed to close app:', e)
+    return false
+  }
+}
+
+/**
  * 初始化所有业务服务并注册 IPC 监听
  * @param win 主窗口实例
  */
@@ -354,14 +385,30 @@ function initServices(win: BrowserWindow) {
 
   // 注册扫描服务 IPC
   ipcMain.handle('system:scan-local-games', async (event) => {
+    const startedAt = Date.now()
+    let lastScanDirProgressAt = 0
+    let lastScanDir = ''
+    console.info('[GameScan] 收到扫描请求')
     try {
-      return await gameScannerService?.scanLocalGamesFromPlatforms((status, details) => {
-        if (!event.sender.isDestroyed()) {
-          event.sender.send('system:scan-progress', { status, details })
+      const result = await gameScannerService?.scanLocalGamesFromPlatforms((status, details) => {
+        if (event.sender.isDestroyed()) return
+
+        if (status === 'scanning_dir') {
+          const now = Date.now()
+          const dir = String(details || '')
+          // 高频目录进度做节流，避免 IPC 风暴拖慢扫描。
+          if (dir === lastScanDir && now - lastScanDirProgressAt < 1000) return
+          if (now - lastScanDirProgressAt < 120) return
+          lastScanDirProgressAt = now
+          lastScanDir = dir
         }
+
+        event.sender.send('system:scan-progress', { status, details })
       }) || []
+      console.info(`[GameScan] 扫描请求完成 | 返回=${result.length} | 耗时=${Date.now() - startedAt}ms`)
+      return result
     } catch (error) {
-      console.error('[GameScan] 扫描本地游戏失败:', error)
+      console.error(`[GameScan] 扫描本地游戏失败 | 耗时=${Date.now() - startedAt}ms`, error)
       return []
     }
   })
@@ -390,8 +437,8 @@ function initServices(win: BrowserWindow) {
   })
   ipcMain.handle('app:restart', async () => {
     if (VITE_DEV_SERVER_URL) {
-      console.info('[Main] 开发模式下跳过应用重启。')
-      return false
+      console.info('[Main] Dev mode restart request: close app without relaunch.')
+      return closeAppSafely()
     }
     return relaunchAppSafely()
   })
@@ -432,6 +479,11 @@ function initServices(win: BrowserWindow) {
       await fs.outputFile(getResetMarkerPath(), new Date().toISOString(), 'utf8')
     } catch (e) {
       console.warn('[Main] 写入重置标记失败:', e)
+    }
+
+    if (VITE_DEV_SERVER_URL) {
+      console.info('[Main] Dev mode reset request: close app after cleanup.')
+      return closeAppSafely()
     }
 
     return relaunchAppSafely()
@@ -547,8 +599,19 @@ app.whenReady()
 
 // 全局未捕获异常处理
 process.on('unhandledRejection', (reason) => {
-  const message = String(reason)
-  console.error('[Main] 未捕获的 Promise 拒绝:', message)
+  console.error('[Main] 未捕获的 Promise 拒绝:', reason)
+})
+
+process.on('uncaughtException', (error) => {
+  console.error('[Main] 未捕获异常:', error)
+})
+
+app.on('render-process-gone', (_event, _webContents, details) => {
+  console.error('[Main] 渲染进程退出:', details)
+})
+
+app.on('child-process-gone', (_event, details) => {
+  console.error('[Main] 子进程退出:', details)
 })
 
 // 应用退出前清理
@@ -573,3 +636,5 @@ app.on('before-quit', (event) => {
       app.exit(0)
     })
 })
+
+
