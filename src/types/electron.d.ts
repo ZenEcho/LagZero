@@ -24,11 +24,23 @@ export interface SingboxAPI {
   start: (config: string) => Promise<void>
   stop: () => Promise<void>
   restart: (config: string) => Promise<void>
-  ensureCoreInstalled: () => Promise<void>
+  ensureCoreInstalled: (preferredVersion?: string) => Promise<void>
+  installCore: (preferredVersion?: string) => Promise<void>
+  listCoreVersions: (forceRefresh?: boolean) => Promise<Array<{
+    version: string
+    tagName: string
+    publishedAt?: string
+    channel: 'stable' | 'beta' | 'alpha'
+  }>>
+  getPreferredVersion: () => Promise<string>
+  setPreferredVersion: (preferredVersion?: string) => Promise<string>
   getInstallInfo: () => Promise<{
     exists: boolean
     installDir: string
     binaryPath: string
+    installedVersion?: string
+    preferredVersion: string
+    isRunning: boolean
   }>
 }
 

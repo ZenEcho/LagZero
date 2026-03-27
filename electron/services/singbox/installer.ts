@@ -6,6 +6,9 @@ import { pipeline } from 'stream/promises'
 import { createWriteStream } from 'fs'
 import { Readable } from 'stream'
 import https from 'node:https'
+import { app } from 'electron'
+import pkg from '../../../package.json'
+import { JsonStore } from '../../common/store'
 import { generateId } from '../../utils/id'
 import { BIN_DIR } from './constants'
 
@@ -36,7 +39,46 @@ export interface InstallerStatus {
   isTimeout?: boolean
 }
 
-export type StatusFn = (status: InstallerStatus) => void
+export interface SingBoxCoreRelease {
+  version: string
+  tagName: string
+  publishedAt?: string
+  channel: 'stable' | 'beta' | 'alpha'
+}
+
+export interface SingBoxInstallInfo {
+  exists: boolean
+  installDir: string
+  binaryPath: string
+  installedVersion?: string
+  preferredVersion: string
+}
+
+interface ReleaseAssetResolution {
+  version: string
+  tagName: string
+  downloadUrl: string
+  archiveExt: string
+}
+
+interface InstallMeta {
+  version: string
+  tagName?: string
+  downloadUrl?: string
+  installedAt: number
+}
+
+type StatusFn = (status: InstallerStatus) => void
+
+const GITHUB_RELEASES_BASE = 'https://api.github.com/repos/SagerNet/sing-box/releases'
+const RELEASE_CACHE_TTL_MS = 5 * 60 * 1000
+const TESTED_SINGBOX_VERSION = normalizePackageVersion(pkg.lagZeroTestSingboxVersion)
+
+function normalizePackageVersion(version: unknown) {
+  const raw = String(version || '').trim()
+  if (!raw || raw.toLowerCase() === 'latest') return ''
+  return raw.replace(/^v/i, '')
+}
 
 /**
  * Sing-box 安装器
@@ -46,10 +88,19 @@ export class SingBoxInstaller {
   private log: LogFn
   private onStatus?: StatusFn
   private installingPromise: Promise<string> | null = null
+  private settingsStore: JsonStore<{ preferredVersion: string }>
+  private releaseCache: { fetchedAt: number, versions: SingBoxCoreRelease[] } | null = null
 
   constructor(logFn: LogFn, statusFn?: StatusFn) {
     this.log = logFn
     this.onStatus = statusFn
+    this.settingsStore = new JsonStore({
+      name: 'singbox-core-settings',
+      cwd: app.getPath('userData'),
+      defaults: {
+        preferredVersion: 'latest'
+      }
+    })
   }
 
   getInstallDir() {
@@ -61,6 +112,73 @@ export class SingBoxInstaller {
     return path.join(BIN_DIR, `sing-box${ext}`)
   }
 
+  getPreferredVersion() {
+    return this.normalizeRequestedVersion(this.settingsStore.get().preferredVersion)
+  }
+
+  setPreferredVersion(version?: string) {
+    const normalized = this.normalizeRequestedVersion(version)
+    const current = this.settingsStore.get()
+    if (current.preferredVersion !== normalized) {
+      this.settingsStore.set({
+        ...current,
+        preferredVersion: normalized
+      })
+    }
+    return normalized
+  }
+
+  async listAvailableVersions(forceRefresh = false): Promise<SingBoxCoreRelease[]> {
+    const now = Date.now()
+    if (!forceRefresh && this.releaseCache && now - this.releaseCache.fetchedAt < RELEASE_CACHE_TTL_MS) {
+      return this.releaseCache.versions
+    }
+
+    let versions: SingBoxCoreRelease[]
+    try {
+      const releases = await this.fetchJson<any[]>(`${GITHUB_RELEASES_BASE}?per_page=50`)
+      versions = releases
+        .filter((release) => !release?.draft)
+        .reduce<SingBoxCoreRelease[]>((acc, release) => {
+          const tagName = String(release?.tag_name || '').trim()
+          const version = this.normalizeVersionFromTag(tagName)
+          if (!version) return acc
+          acc.push({
+            version,
+            tagName,
+            publishedAt: typeof release?.published_at === 'string' ? release.published_at : undefined,
+            channel: this.inferReleaseChannel(release)
+          })
+          return acc
+        }, [])
+    } catch (error) {
+      if (!TESTED_SINGBOX_VERSION) throw error
+      this.log(`获取 sing-box 版本列表失败，已回退到保底版本 v${TESTED_SINGBOX_VERSION}：${String((error as any)?.message || error)}`, 'error')
+      versions = []
+    }
+
+    versions = this.ensureTestedVersionPresent(versions)
+
+    this.releaseCache = {
+      fetchedAt: now,
+      versions
+    }
+    return versions
+  }
+
+  async getInstallInfo(): Promise<SingBoxInstallInfo> {
+    const exists = await this.checkBinaryExists()
+    const meta = exists ? await this.readInstallMeta() : null
+
+    return {
+      exists,
+      installDir: this.getInstallDir(),
+      binaryPath: this.getBinaryPath(),
+      installedVersion: meta?.version,
+      preferredVersion: this.getPreferredVersion()
+    }
+  }
+
   async checkBinaryExists() {
     const binPath = this.getBinaryPath()
     if (await fs.pathExists(binPath)) return true
@@ -68,7 +186,7 @@ export class SingBoxInstaller {
   }
 
   /**
-   * 检查 sing-box 是否存在，不存在则自动下载
+   * 检查 sing-box 是否存在，不存在则根据首选版本自动下载
    * @returns 可执行文件的绝对路径
    */
   async checkAndDownloadBinary(): Promise<string> {
@@ -77,7 +195,8 @@ export class SingBoxInstaller {
       return this.installingPromise
     }
 
-    this.installingPromise = this.checkAndDownloadBinaryInternal()
+    const requestedVersion = this.getPreferredVersion()
+    this.installingPromise = this.checkAndDownloadBinaryInternal(requestedVersion)
     try {
       return await this.installingPromise
     } finally {
@@ -85,7 +204,25 @@ export class SingBoxInstaller {
     }
   }
 
-  private async checkAndDownloadBinaryInternal(): Promise<string> {
+  /**
+   * 安装指定版本的 sing-box（会覆盖现有核心）
+   */
+  async installCore(version?: string): Promise<string> {
+    if (this.installingPromise) {
+      this.log('检测到已有 sing-box 安装任务，等待完成...')
+      return this.installingPromise
+    }
+
+    const requestedVersion = this.setPreferredVersion(version)
+    this.installingPromise = this.installCoreInternal(requestedVersion)
+    try {
+      return await this.installingPromise
+    } finally {
+      this.installingPromise = null
+    }
+  }
+
+  private async checkAndDownloadBinaryInternal(requestedVersion: string): Promise<string> {
     await fs.ensureDir(BIN_DIR)
     const platform = process.platform
     const arch = process.arch
@@ -93,28 +230,49 @@ export class SingBoxInstaller {
     this.emitStatus({ phase: 'checking' })
 
     if (await this.checkBinaryExists()) {
-      this.emitStatus({ phase: 'ready' })
+      const meta = await this.readInstallMeta()
+      this.emitStatus({ phase: 'ready', version: meta?.version })
       return binPath
     }
 
     this.emitStatus({ phase: 'missing' })
-    return this.downloadAndInstallBinary(platform, arch, binPath)
+    return this.downloadAndInstallBinary(platform, arch, binPath, requestedVersion)
+  }
+
+  private async installCoreInternal(requestedVersion: string): Promise<string> {
+    await fs.ensureDir(BIN_DIR)
+    const platform = process.platform
+    const arch = process.arch
+    const binPath = this.getBinaryPath()
+    this.emitStatus({ phase: 'checking' })
+    return this.downloadAndInstallBinary(platform, arch, binPath, requestedVersion)
   }
 
   /**
    * 执行下载和安装流程
    */
-  private async downloadAndInstallBinary(platform: NodeJS.Platform, arch: string, binPath: string): Promise<string> {
-    this.log('未检测到 sing-box，开始自动下载...')
-    this.emitStatus({ phase: 'resolving' })
+  private async downloadAndInstallBinary(
+    platform: NodeJS.Platform,
+    arch: string,
+    binPath: string,
+    requestedVersion: string
+  ): Promise<string> {
+    const displayVersion = requestedVersion === 'latest' ? 'latest' : requestedVersion
+    this.log(`开始准备 sing-box ${displayVersion} 安装包...`)
+    this.emitStatus({
+      phase: 'resolving',
+      version: requestedVersion === 'latest' ? undefined : requestedVersion
+    })
     let version: string | undefined
+    let tagName: string | undefined
     let downloadUrl: string | undefined
     let archivePath = ''
     let extractDir = ''
 
     try {
-      const resolved = await this.resolveLatestReleaseDownload(platform, arch)
+      const resolved = await this.resolveReleaseDownload(platform, arch, requestedVersion)
       version = resolved.version
+      tagName = resolved.tagName
       downloadUrl = resolved.downloadUrl
       const archiveExt = resolved.archiveExt
       this.emitStatus({
@@ -125,7 +283,7 @@ export class SingBoxInstaller {
         downloadedBytes: 0
       })
 
-      archivePath = path.join(BIN_DIR, `sing-box-${version}${archiveExt}`)
+      archivePath = path.join(BIN_DIR, `sing-box-${version}-${generateId()}${archiveExt}`)
       extractDir = path.join(BIN_DIR, `tmp-${generateId()}`)
       await fs.ensureDir(extractDir)
       await this.downloadToFile(downloadUrl, archivePath, (progress, downloadedBytes, totalBytes) => {
@@ -150,6 +308,12 @@ export class SingBoxInstaller {
         throw new Error('安装完成后仍未找到 sing-box 可执行文件')
       }
 
+      await this.writeInstallMeta({
+        version,
+        tagName,
+        downloadUrl,
+        installedAt: Date.now()
+      })
       this.log(`sing-box 已安装：${binPath}`)
       this.emitStatus({
         phase: 'completed',
@@ -171,22 +335,26 @@ export class SingBoxInstaller {
       throw new Error(msg)
     } finally {
       if (extractDir) {
-        await fs.remove(extractDir).catch(() => {})
+        await fs.remove(extractDir).catch(() => { })
       }
       if (archivePath) {
-        await fs.remove(archivePath).catch(() => {})
+        await fs.remove(archivePath).catch(() => { })
       }
     }
   }
 
   /**
-   * 解析 GitHub 最新 Release 版本信息
+   * 解析 GitHub Release 版本信息
    */
-  private async resolveLatestReleaseDownload(platform: NodeJS.Platform, arch: string): Promise<{ version: string, downloadUrl: string, archiveExt: string }> {
+  private async resolveReleaseDownload(
+    platform: NodeJS.Platform,
+    arch: string,
+    requestedVersion: string
+  ): Promise<ReleaseAssetResolution> {
     const platformName = platform === 'win32' ? 'windows'
       : platform === 'darwin' ? 'darwin'
-      : platform === 'linux' ? 'linux'
-      : null
+        : platform === 'linux' ? 'linux'
+          : null
 
     if (!platformName) {
       throw new Error(`不支持的平台：${platform}`)
@@ -194,30 +362,74 @@ export class SingBoxInstaller {
 
     const archName = arch === 'x64' ? 'amd64'
       : arch === 'arm64' ? 'arm64'
-      : arch === 'ia32' ? '386'
-      : null
+        : arch === 'ia32' ? '386'
+          : null
 
     if (!archName) {
       throw new Error(`不支持的架构：${arch}`)
     }
 
     const archiveExt = platformName === 'windows' ? '.zip' : '.tar.gz'
+    const requestedCandidates = this.buildReleaseRequestCandidates(requestedVersion)
+    let lastError: unknown = null
 
-    const release = await this.fetchJson<any>('https://api.github.com/repos/SagerNet/sing-box/releases/latest')
-    const tagName = String(release?.tag_name || '')
-    const version = tagName.startsWith('v') ? tagName.slice(1) : tagName
-    if (!version) throw new Error('无法解析 sing-box 版本号')
+    for (const candidate of requestedCandidates) {
+      try {
+        const release = candidate === 'latest'
+          ? await this.fetchJson<any>(`${GITHUB_RELEASES_BASE}/latest`)
+          : await this.fetchReleaseByVersion(candidate)
 
-    const assetName = `sing-box-${version}-${platformName}-${archName}${archiveExt}`
-    const assets: any[] = Array.isArray(release?.assets) ? release.assets : []
-    const asset = assets.find(a => String(a?.name || '') === assetName)
-    const downloadUrl = String(asset?.browser_download_url || '')
+        const tagName = String(release?.tag_name || '').trim()
+        const version = this.normalizeVersionFromTag(tagName)
+        if (!version) throw new Error('无法解析 sing-box 版本号')
 
-    if (!downloadUrl) {
-      throw new Error(`未找到对应的发布包：${assetName}`)
+        const assetName = `sing-box-${version}-${platformName}-${archName}${archiveExt}`
+        const assets: any[] = Array.isArray(release?.assets) ? release.assets : []
+        const asset = assets.find((a) => String(a?.name || '') === assetName)
+        const downloadUrl = String(asset?.browser_download_url || '')
+
+        if (!downloadUrl) {
+          throw new Error(`未找到对应的发布包：${assetName}`)
+        }
+
+        if (candidate !== requestedCandidates[0]) {
+          this.log(`sing-box latest 不可用，已回退到保底版本 v${version}`)
+        }
+
+        return { version, tagName, downloadUrl, archiveExt }
+      } catch (error) {
+        lastError = error
+        if (candidate !== requestedCandidates.at(-1)) {
+          this.log(`解析 sing-box ${candidate} 失败，尝试保底版本：${String((error as any)?.message || error)}`, 'error')
+          continue
+        }
+      }
     }
 
-    return { version, downloadUrl, archiveExt }
+    throw lastError instanceof Error
+      ? lastError
+      : new Error(`未找到可用的 sing-box 发布包：${requestedVersion}`)
+  }
+
+  private async fetchReleaseByVersion(requestedVersion: string): Promise<any> {
+    const candidates = this.buildTagCandidates(requestedVersion)
+    let lastError: unknown = null
+
+    for (const tag of candidates) {
+      try {
+        return await this.fetchJson<any>(`${GITHUB_RELEASES_BASE}/tags/${encodeURIComponent(tag)}`)
+      } catch (error) {
+        lastError = error
+        const message = String((error as any)?.message || error || '')
+        if (!message.includes('404')) {
+          throw error
+        }
+      }
+    }
+
+    throw lastError instanceof Error
+      ? lastError
+      : new Error(`未找到 sing-box 版本：${requestedVersion}`)
   }
 
   /**
@@ -274,7 +486,7 @@ export class SingBoxInstaller {
     await this.withRetry(
       async (attempt) => {
         if (attempt > 1) {
-          await fs.remove(destPath).catch(() => {})
+          await fs.remove(destPath).catch(() => { })
         }
         await this.doDownloadRequest(url, destPath, 5, onProgress)
       },
@@ -420,8 +632,8 @@ export class SingBoxInstaller {
       const exeDir = path.dirname(exePath)
       const entries = await fs.readdir(exeDir, { withFileTypes: true })
       const dlls = entries
-        .filter(e => e.isFile() && e.name.toLowerCase().endsWith('.dll'))
-        .map(e => path.join(exeDir, e.name))
+        .filter((e) => e.isFile() && e.name.toLowerCase().endsWith('.dll'))
+        .map((e) => path.join(exeDir, e.name))
 
       for (const dll of dlls) {
         const target = path.join(BIN_DIR, path.basename(dll))
@@ -429,7 +641,7 @@ export class SingBoxInstaller {
       }
     }
 
-    await fs.chmod(binPath, 0o755).catch(() => {})
+    await fs.chmod(binPath, 0o755).catch(() => { })
   }
 
   /**
@@ -462,7 +674,8 @@ export class SingBoxInstaller {
     if (path.resolve(manualPath) === path.resolve(binPath)) return true
 
     await fs.copyFile(manualPath, binPath)
-    await fs.chmod(binPath, 0o755).catch(() => {})
+    await fs.chmod(binPath, 0o755).catch(() => { })
+    await this.clearInstallMeta()
 
     if (process.platform === 'win32') {
       const manualDir = path.dirname(manualPath)
@@ -470,12 +683,109 @@ export class SingBoxInstaller {
       for (const entry of entries) {
         if (!entry.isFile()) continue
         if (!entry.name.toLowerCase().endsWith('.dll')) continue
-        await fs.copyFile(path.join(manualDir, entry.name), path.join(BIN_DIR, entry.name)).catch(() => {})
+        await fs.copyFile(path.join(manualDir, entry.name), path.join(BIN_DIR, entry.name)).catch(() => { })
       }
     }
 
     this.log(`检测到手动放置的 sing-box，已采用：${manualPath}`)
     return true
+  }
+
+  private getInstallMetaPath() {
+    return path.join(BIN_DIR, 'sing-box-install-meta.json')
+  }
+
+  private async readInstallMeta(): Promise<InstallMeta | null> {
+    try {
+      const meta = await fs.readJson(this.getInstallMetaPath()) as Partial<InstallMeta>
+      if (!meta || typeof meta !== 'object' || typeof meta.version !== 'string' || !meta.version.trim()) {
+        return null
+      }
+      return {
+        version: meta.version.trim(),
+        tagName: typeof meta.tagName === 'string' ? meta.tagName : undefined,
+        downloadUrl: typeof meta.downloadUrl === 'string' ? meta.downloadUrl : undefined,
+        installedAt: typeof meta.installedAt === 'number' ? meta.installedAt : 0
+      }
+    } catch {
+      return null
+    }
+  }
+
+  private async writeInstallMeta(meta: InstallMeta) {
+    await fs.ensureDir(path.dirname(this.getInstallMetaPath()))
+    await fs.writeJson(this.getInstallMetaPath(), meta, { spaces: 2 })
+  }
+
+  private async clearInstallMeta() {
+    await fs.remove(this.getInstallMetaPath()).catch(() => { })
+  }
+
+  private normalizeRequestedVersion(version?: string) {
+    const raw = String(version || '').trim()
+    if (!raw || raw.toLowerCase() === 'latest') return 'latest'
+    return raw.replace(/^v/i, '')
+  }
+
+  private normalizeVersionFromTag(tagName: string) {
+    return String(tagName || '').trim().replace(/^v/i, '')
+  }
+
+  private inferReleaseChannel(release: any): 'stable' | 'beta' | 'alpha' {
+    const text = `${String(release?.tag_name || '')} ${String(release?.name || '')}`.toLowerCase()
+    if (text.includes('alpha')) return 'alpha'
+    if (
+      text.includes('beta')
+      || /\brc\b/.test(text)
+      || text.includes('preview')
+      || text.includes('pre-release')
+      || release?.prerelease
+    ) {
+      return 'beta'
+    }
+    return 'stable'
+  }
+
+  private buildTagCandidates(version: string) {
+    const normalized = this.normalizeRequestedVersion(version)
+    if (normalized === 'latest') return ['latest']
+    const original = String(version || '').trim()
+    return [...new Set([
+      original,
+      normalized,
+      `v${normalized}`
+    ].filter(Boolean))]
+  }
+
+  private buildReleaseRequestCandidates(version: string) {
+    const normalized = this.normalizeRequestedVersion(version)
+    if (normalized !== 'latest' || !TESTED_SINGBOX_VERSION || TESTED_SINGBOX_VERSION === normalized) {
+      return [normalized]
+    }
+    return ['latest', TESTED_SINGBOX_VERSION]
+  }
+
+  private ensureTestedVersionPresent(versions: SingBoxCoreRelease[]) {
+    if (!TESTED_SINGBOX_VERSION) return versions
+    if (versions.some((release) => release.version === TESTED_SINGBOX_VERSION)) {
+      return versions
+    }
+
+    return [
+      {
+        version: TESTED_SINGBOX_VERSION,
+        tagName: `v${TESTED_SINGBOX_VERSION}`,
+        channel: this.inferReleaseChannelFromVersion(TESTED_SINGBOX_VERSION)
+      },
+      ...versions
+    ]
+  }
+
+  private inferReleaseChannelFromVersion(version: string): 'stable' | 'beta' | 'alpha' {
+    const text = String(version || '').toLowerCase()
+    if (text.includes('alpha')) return 'alpha'
+    if (text.includes('beta') || /\brc\b/.test(text) || text.includes('preview')) return 'beta'
+    return 'stable'
   }
 
   private emitStatus(payload: Omit<InstallerStatus, 'installDir' | 'binaryPath'>) {

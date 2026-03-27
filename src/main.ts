@@ -10,7 +10,9 @@ import { initLatencySessionStore } from './utils/latency-session'
 import { setupRuntimeLogging } from './utils/runtime-logger'
 import { useLocalProxyStore } from './stores/local-proxy'
 import { useNodeStore } from './stores/nodes'
+import { useSingboxInstallerStore } from './stores/singbox-installer'
 import { useSettingsStore } from './stores/settings'
+import { singboxApi } from './api'
 
 setupRuntimeLogging()
 
@@ -30,12 +32,37 @@ const isTrayWindow = window.location.hash.includes('/tray')
 if (!isTrayWindow) {
   const localProxyStore = useLocalProxyStore()
   const nodeStore = useNodeStore()
+  const singboxInstallerStore = useSingboxInstallerStore()
   const settingsStore = useSettingsStore()
   let pendingStartAfterStarting = false
+
+  const syncPreferredCoreVersion = async (version: string) => {
+    try {
+      const normalized = await singboxApi.setPreferredVersion(version)
+      if (normalized && normalized !== settingsStore.singboxCoreVersion) {
+        settingsStore.singboxCoreVersion = normalized
+      }
+    } catch (e) {
+      console.warn('同步 sing-box 核心版本偏好失败:', e)
+    }
+  }
+
+  void syncPreferredCoreVersion(settingsStore.singboxCoreVersion)
+  void singboxInstallerStore.initialize().catch((e) => {
+    console.warn('初始化 sing-box 安装状态失败:', e)
+  })
 
   void localProxyStore.startLocalProxy('startup').catch((e) => {
     console.error('启动时启动本地代理失败:', e)
   })
+
+  watch(
+    () => settingsStore.singboxCoreVersion,
+    (version, prev) => {
+      if (version === prev) return
+      void syncPreferredCoreVersion(version)
+    }
+  )
 
   watch(
     () => nodeStore.nodes.length,

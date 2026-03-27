@@ -92,7 +92,15 @@ export class SingBoxConfigManager {
       hints.push('提示：看起来是权限不足导致启动失败，请尝试“以管理员身份运行”。')
     }
 
-    if (text.includes('invalid') || text.includes('unknown field') || text.includes('parse') || text.includes('json')) {
+    if (
+      text.includes('invalid')
+      || text.includes('unknown field')
+      || text.includes('parse')
+      || text.includes('json')
+      || text.includes('deprecated')
+      || text.includes('removed in sing-box')
+      || text.includes('use rule actions instead')
+    ) {
       hints.push('提示：节点/配置参数可能不兼容当前 sing-box 版本，请把弹窗里的最后一行报错发我。')
     }
 

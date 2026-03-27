@@ -87,7 +87,15 @@ contextBridge.exposeInMainWorld('singbox', {
   /** 重启内核 */
   restart: (config: string) => ipcRenderer.invoke('singbox-restart', config),
   /** 确保核心已安装 */
-  ensureCoreInstalled: () => ipcRenderer.invoke('singbox-ensure-core'),
+  ensureCoreInstalled: (preferredVersion?: string) => ipcRenderer.invoke('singbox-ensure-core', preferredVersion),
+  /** 安装或重装指定版本核心 */
+  installCore: (preferredVersion?: string) => ipcRenderer.invoke('singbox-install-core', preferredVersion),
+  /** 获取可用核心版本列表 */
+  listCoreVersions: (forceRefresh?: boolean) => ipcRenderer.invoke('singbox-list-core-versions', forceRefresh),
+  /** 获取当前首选核心版本 */
+  getPreferredVersion: () => ipcRenderer.invoke('singbox-get-preferred-version'),
+  /** 设置首选核心版本 */
+  setPreferredVersion: (preferredVersion?: string) => ipcRenderer.invoke('singbox-set-preferred-version', preferredVersion),
   /** 获取核心安装状态 */
   getInstallInfo: () => ipcRenderer.invoke('singbox-get-install-info'),
 })

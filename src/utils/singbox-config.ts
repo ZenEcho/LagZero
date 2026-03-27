@@ -152,22 +152,13 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
       {
         type: 'direct',
         tag: 'direct'
-      },
-      // 阻断出口
-      {
-        type: 'block',
-        tag: 'block'
-      },
-      // DNS 出口（用于劫持 DNS 流量）
-      {
-        type: 'dns',
-        tag: 'dns-out'
       }
     ],
     route: {
       rules: [
-        // 所有的 DNS 流量都转发给 DNS 模块处理
-        { protocol: 'dns', outbound: 'dns-out' }
+        // sing-box 1.13+ 已移除 inbound.sniff 和 dns/block 特殊出站，这里改用规则动作。
+        { action: 'sniff' },
+        { protocol: 'dns', action: 'hijack-dns' }
       ],
       auto_detect_interface: true,
       // 最终兜底规则：
@@ -202,7 +193,6 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
       // 说明：NAT1 取决于公网直连能力，客户端侧只能做“更开放映射”的优化，无法绝对保证。
       endpoint_independent_nat: true,
       stack: sessionTuning.tunStack,
-      sniff: true // 开启流量嗅探，用于域名解析
     })
   }
 
@@ -218,7 +208,6 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
       tag: 'http-in',
       listen: '127.0.0.1',
       listen_port: httpPort,
-      sniff: true,
       set_system_proxy: false
     })
 
@@ -227,8 +216,7 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
       type: 'socks',
       tag: 'socks-in',
       listen: '127.0.0.1',
-      listen_port: socksPort,
-      sniff: true
+      listen_port: socksPort
     })
 
     // 配置本地代理的流量出口
@@ -262,7 +250,6 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
       tag: 'system-http-in',
       listen: '127.0.0.1',
       listen_port: httpPort,
-      sniff: true,
       set_system_proxy: false // 注意：这里仅开启端口，系统代理的设置由外部程序控制
     })
 

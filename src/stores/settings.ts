@@ -70,6 +70,7 @@ export const useSettingsStore = defineStore('settings', () => {
         '<local>\nlocalhost\n127.0.0.1\n::1\n192.168.*\n10.*\n*.local'
     ) // 系统代理绕过列表
     const tunInterfaceName = useLocalStorage('settings-tun-interface-name', 'LagZero') // TUN接口名称 默认LagZero
+    const singboxCoreVersion = useLocalStorage('settings-singbox-core-version', 'latest') // sing-box 首选核心版本
     if (tunInterfaceName.value === 'singbox-tun') {
         tunInterfaceName.value = 'LagZero'
     }
@@ -108,6 +109,7 @@ export const useSettingsStore = defineStore('settings', () => {
         systemProxyPort,
         systemProxyBypass,
         tunInterfaceName,
+        singboxCoreVersion,
         sessionNetworkTuning,
         resetSessionNetworkTuning,
         applySessionNetworkProfilePreset

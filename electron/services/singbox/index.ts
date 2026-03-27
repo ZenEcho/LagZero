@@ -65,15 +65,32 @@ export class SingBoxService {
         await this.start(configPath)
       })
     })
-    ipcMain.handle('singbox-ensure-core', async () => {
+    ipcMain.handle('singbox-ensure-core', async (_, preferredVersion?: string) => {
+      if (preferredVersion) {
+        this.installer.setPreferredVersion(preferredVersion)
+      }
       await this.installer.checkAndDownloadBinary()
     })
+    ipcMain.handle('singbox-install-core', async (_, preferredVersion?: string) => {
+      this.installer.setPreferredVersion(preferredVersion)
+      if (this.process) {
+        throw new Error('sing-box 正在运行，请先停止加速后再切换核心版本')
+      }
+      await this.installer.installCore(preferredVersion)
+    })
+    ipcMain.handle('singbox-list-core-versions', async (_, forceRefresh?: boolean) => {
+      return this.installer.listAvailableVersions(Boolean(forceRefresh))
+    })
+    ipcMain.handle('singbox-get-preferred-version', async () => {
+      return this.installer.getPreferredVersion()
+    })
+    ipcMain.handle('singbox-set-preferred-version', async (_, preferredVersion?: string) => {
+      return this.installer.setPreferredVersion(preferredVersion)
+    })
     ipcMain.handle('singbox-get-install-info', async () => {
-      const exists = await this.installer.checkBinaryExists()
       return {
-        exists,
-        installDir: this.installer.getInstallDir(),
-        binaryPath: this.installer.getBinaryPath()
+        ...await this.installer.getInstallInfo(),
+        isRunning: !!this.process
       }
     })
   }
