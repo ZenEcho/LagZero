@@ -5,9 +5,10 @@
  * 此文件仅做 re-export 和少量前端特有补充。
  */
 
-import { PLATFORMS } from '@/constants'
+import { PLATFORMS, SCAN_SOURCES } from '@/constants'
 
 export type Platform = typeof PLATFORMS[number]
+export type GameScanSource = typeof SCAN_SOURCES[number]
 
 // ============================
 // 从 shared 统一导入的类型

@@ -10,12 +10,16 @@
  * normalizeNodeType('ss')      // 'shadowsocks'
  * normalizeNodeType('socks5')  // 'socks'
  * normalizeNodeType('https')   // 'http'
+ * normalizeNodeType('hy2')     // 'hysteria2'
  */
 export function normalizeNodeType(type: unknown): string {
     const t = String(type ?? '').trim().toLowerCase()
     if (t === 'ss' || t === 'shadowsocks') return 'shadowsocks'
     if (t === 'socks5' || t === 'socks') return 'socks'
     if (t === 'https' || t === 'http') return 'http'
+    if (t === 'hy' || t === 'hysteria') return 'hysteria'
+    if (t === 'hy2' || t === 'hysteria2') return 'hysteria2'
+    if (t === 'shadow-tls' || t === 'shadowtls') return 'shadowtls'
     return t
 }
 

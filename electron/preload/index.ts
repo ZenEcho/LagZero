@@ -105,7 +105,7 @@ contextBridge.exposeInMainWorld('system', {
   /** 扫描系统进程 */
   scanProcesses: () => ipcRenderer.invoke('process-scan'),
   /** 扫描本地已安装的游戏 (Steam/Xbox/Epic/EA) */
-  scanLocalGames: () => ipcRenderer.invoke('system:scan-local-games'),
+  scanLocalGames: (sources?: string[]) => ipcRenderer.invoke('system:scan-local-games', sources),
   /** 获取进程树 */
   getProcessTree: () => ipcRenderer.invoke('process-tree'),
   /** ICMP Ping 测试 */
@@ -168,6 +168,7 @@ contextBridge.exposeInMainWorld('games', {
   getAll: () => ipcRenderer.invoke('games:get-all'),
   save: (game: any) => ipcRenderer.invoke('games:save', game),
   delete: (id: string) => ipcRenderer.invoke('games:delete', id),
+  deleteMany: (ids: string[]) => ipcRenderer.invoke('games:delete-many', ids),
 })
 
 // 分类管理
@@ -182,6 +183,11 @@ contextBridge.exposeInMainWorld('categories', {
 contextBridge.exposeInMainWorld('app', {
   getVersion: () => ipcRenderer.invoke('app:get-version'),
   checkUpdate: () => ipcRenderer.invoke('app:check-update'),
+  getProtocolGuardState: (scheme: 'clash' | 'mihomo') => ipcRenderer.invoke('app:get-protocol-guard-state', scheme),
+  setProtocolGuardEnabled: (scheme: 'clash' | 'mihomo', enabled: boolean) => ipcRenderer.invoke('app:set-protocol-guard-enabled', scheme, enabled),
+  consumePendingDeepLinkImports: () => ipcRenderer.invoke('app:consume-pending-deep-link-imports'),
+  setDeepLinkRendererReady: () => ipcRenderer.send('app:deep-link-renderer-ready'),
+  setDeepLinkRendererNotReady: () => ipcRenderer.send('app:deep-link-renderer-not-ready'),
   openUrl: (url: string) => ipcRenderer.invoke('app:open-url', url),
   /** 打开目录 */
   openDir: (dir: string) => ipcRenderer.invoke('app:open-dir', dir),

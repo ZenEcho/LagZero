@@ -10,6 +10,14 @@ import { scanBattleNetGames } from './scanners/battlenet'
 import { scanWeGameGames } from './scanners/wegame'
 import { scanLocalShortcuts } from './scanners/local'
 
+const GAME_SCAN_SOURCES = ['Steam', 'Microsoft', 'Epic', 'EA', 'BattleNet', 'WeGame', 'Local'] as const
+type GameScanSource = typeof GAME_SCAN_SOURCES[number]
+const GAME_SCAN_SOURCE_SET = new Set<GameScanSource>(GAME_SCAN_SOURCES)
+
+function isGameScanSource(value: unknown): value is GameScanSource {
+  return GAME_SCAN_SOURCE_SET.has(String(value || '') as GameScanSource)
+}
+
 /**
  * 游戏扫描服务
  */
@@ -18,10 +26,18 @@ export class GameScannerService {
    * 扫描所有支持平台的游戏
    * @returns 扫描到的游戏列表 (去重后)
    */
-  async scanLocalGamesFromPlatforms(progressCallback?: ScanProgressCallback): Promise<LocalGameScanResult[]> {
+  async scanLocalGamesFromPlatforms(
+    sourcesOrProgressCallback?: string[] | ScanProgressCallback,
+    progressCallback?: ScanProgressCallback
+  ): Promise<LocalGameScanResult[]> {
     if (process.platform !== 'win32') return []
 
-    const scanners: Array<{ name: string, run: (progressCallback?: ScanProgressCallback) => Promise<LocalGameScanResult[]> }> = [
+    const requestedSources = Array.isArray(sourcesOrProgressCallback)
+      ? Array.from(new Set(sourcesOrProgressCallback.filter(isGameScanSource)))
+      : []
+    const callback = typeof sourcesOrProgressCallback === 'function' ? sourcesOrProgressCallback : progressCallback
+
+    const scanners: Array<{ name: GameScanSource, run: (progressCallback?: ScanProgressCallback) => Promise<LocalGameScanResult[]> }> = [
       { name: 'Steam', run: scanSteamGames },
       { name: 'Microsoft', run: scanMicrosoftGames },
       { name: 'Epic', run: scanEpicGames },
@@ -31,13 +47,22 @@ export class GameScannerService {
       { name: 'Local', run: scanLocalShortcuts }
     ]
 
-    console.info(`[GameScan] 开始扫描平台，任务数=${scanners.length}`)
+    const activeScanners = Array.isArray(sourcesOrProgressCallback)
+      ? scanners.filter(({ name }) => requestedSources.includes(name))
+      : scanners
 
-    const platformResults = await mapWithConcurrency(scanners, async ({ name, run }) => {
+    console.info(`[GameScan] 开始扫描平台，任务数=${activeScanners.length}${requestedSources.length > 0 ? ` | 来源=${requestedSources.join(',')}` : ''}`)
+
+    if (activeScanners.length === 0) {
+      console.info('[GameScan] 未选择任何扫描来源，直接返回空结果')
+      return []
+    }
+
+    const platformResults = await mapWithConcurrency(activeScanners, async ({ name, run }) => {
       const startedAt = Date.now()
       try {
         console.info(`[GameScan] 平台扫描开始: ${name}`)
-        const result = await run(progressCallback)
+        const result = await run(callback)
         const costMs = Date.now() - startedAt
         console.info(`[GameScan] 平台扫描完成: ${name} | 命中=${result.length} | 耗时=${costMs}ms`)
         return result
@@ -114,4 +139,3 @@ export class GameScannerService {
     return results
   }
 }
-

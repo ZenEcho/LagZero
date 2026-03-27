@@ -2,7 +2,7 @@
   "name": "lagzero",
   "productName": "LagZero",
   "private": true,
-  "version": "0.2.2",
+  "version": "0.2.3",
   "lagZeroTestSingboxVersion": "1.13.4",
   "main": "dist-electron/index.js",
   "type": "module",
@@ -107,7 +107,15 @@
         "owner": "ZenEcho",
         "repo": "LagZero"
       }
-    ]
+    ],
+    "protocols": {
+      "name": "LagZero Subscription Link",
+      "schemes": [
+        "lagzero",
+        "clash",
+        "mihomo"
+      ]
+    }
   },
   "dependencies": {
     "adm-zip": "^0.5.16",
@@ -117,7 +125,8 @@
     "kysely": "^0.28.11",
     "tar": "^7.5.7",
     "uuid": "^13.0.0",
-    "workerpool": "^10.0.1"
+    "workerpool": "^10.0.1",
+    "yaml": "^2.8.3"
   },
   "devDependencies": {
     "@iconify-json/carbon": "^1.2.18",

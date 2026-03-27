@@ -190,7 +190,7 @@ import { useMessage, useDialog } from 'naive-ui'
 import { DEFAULT_NODE_GROUP, useNodeStore } from '@/stores/nodes'
 import { useSettingsStore } from '@/stores/settings'
 import { useLocalProxyStore } from '@/stores/local-proxy'
-import { generateShareLink } from '@/utils/protocol'
+import { generateBatchLinks } from '@/utils/protocol'
 import type { NodeConfig } from '@/types'
 import { useClipboard } from '@vueuse/core'
 import NodeEditModal from './NodeEditModal.vue'
@@ -340,7 +340,7 @@ async function handleSaveNode(node: Omit<NodeConfig, 'id'> | NodeConfig) {
 }
 
 async function shareNode(node: NodeConfig) {
-  const link = generateShareLink(node)
+  const link = generateBatchLinks([node])
   if (link) {
     await copy(link)
     message.success(t('nodes.link_copied'))

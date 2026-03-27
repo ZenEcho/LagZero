@@ -237,11 +237,19 @@ export class DatabaseService {
         tag TEXT NOT NULL,
         server TEXT NOT NULL,
         server_port INTEGER NOT NULL,
+        server_ports TEXT,
+        hop_interval TEXT,
         uuid TEXT,
         password TEXT,
+        auth TEXT,
         method TEXT,
         plugin TEXT,
         plugin_opts TEXT,
+        obfs TEXT,
+        obfs_password TEXT,
+        up_mbps INTEGER,
+        down_mbps INTEGER,
+        version INTEGER,
         network TEXT,
         security TEXT,
         path TEXT,
@@ -253,6 +261,14 @@ export class DatabaseService {
         flow TEXT,
         packet_encoding TEXT,
         username TEXT,
+        congestion_control TEXT,
+        udp_relay_mode TEXT,
+        udp_over_stream INTEGER,
+        zero_rtt_handshake INTEGER,
+        heartbeat TEXT,
+        idle_session_check_interval TEXT,
+        idle_session_timeout TEXT,
+        min_idle_session INTEGER,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       );
@@ -306,6 +322,22 @@ export class DatabaseService {
     this.ensureColumn('nodes', 'alpn', 'TEXT')
     this.ensureColumn('nodes', 'fingerprint', 'TEXT')
     this.ensureColumn('nodes', 'username', 'TEXT')
+    this.ensureColumn('nodes', 'server_ports', 'TEXT')
+    this.ensureColumn('nodes', 'hop_interval', 'TEXT')
+    this.ensureColumn('nodes', 'auth', 'TEXT')
+    this.ensureColumn('nodes', 'obfs', 'TEXT')
+    this.ensureColumn('nodes', 'obfs_password', 'TEXT')
+    this.ensureColumn('nodes', 'up_mbps', 'INTEGER')
+    this.ensureColumn('nodes', 'down_mbps', 'INTEGER')
+    this.ensureColumn('nodes', 'version', 'INTEGER')
+    this.ensureColumn('nodes', 'congestion_control', 'TEXT')
+    this.ensureColumn('nodes', 'udp_relay_mode', 'TEXT')
+    this.ensureColumn('nodes', 'udp_over_stream', 'INTEGER')
+    this.ensureColumn('nodes', 'zero_rtt_handshake', 'INTEGER')
+    this.ensureColumn('nodes', 'heartbeat', 'TEXT')
+    this.ensureColumn('nodes', 'idle_session_check_interval', 'TEXT')
+    this.ensureColumn('nodes', 'idle_session_timeout', 'TEXT')
+    this.ensureColumn('nodes', 'min_idle_session', 'INTEGER')
     this.ensureColumn('games', 'category_ids', 'TEXT')
 
     this.initDefaultData()
@@ -414,16 +446,38 @@ export class DatabaseService {
     }
   }
 
+  private normalizeOptionalBoolean(value: unknown): number | null {
+    if (value == null) return null
+    return value ? 1 : 0
+  }
+
+  private mapNodeRow(row: any) {
+    return {
+      ...row,
+      type: normalizeNodeType(row.type),
+      tls: safeJsonParse(row.tls || 'null', undefined),
+      udp_over_stream: row.udp_over_stream == null ? undefined : Boolean(row.udp_over_stream),
+      zero_rtt_handshake: row.zero_rtt_handshake == null ? undefined : Boolean(row.zero_rtt_handshake)
+    }
+  }
+
+  private toNodeRecord(node: any) {
+    return {
+      ...node,
+      type: normalizeNodeType(node.type),
+      tls: node.tls ? (typeof node.tls === 'string' ? node.tls : JSON.stringify(node.tls)) : null,
+      udp_over_stream: this.normalizeOptionalBoolean(node.udp_over_stream),
+      zero_rtt_handshake: this.normalizeOptionalBoolean(node.zero_rtt_handshake),
+      updated_at: new Date().toISOString()
+    }
+  }
+
   /**
    * 获取所有节点
    */
   async getAllNodes() {
     const rows = await this.db.selectFrom('nodes').selectAll().execute()
-    return rows.map(row => ({
-      ...row,
-      type: normalizeNodeType(row.type),
-      tls: safeJsonParse(row.tls || 'null', undefined)
-    }))
+    return rows.map(row => this.mapNodeRow(row))
   }
 
   /**
@@ -433,8 +487,13 @@ export class DatabaseService {
   async saveNode(node: any) {
     const validColumns = [
       'id', 'type', 'tag', 'server', 'server_port',
-      'uuid', 'password', 'method', 'plugin', 'plugin_opts', 'network', 'security',
+      'server_ports', 'hop_interval',
+      'uuid', 'password', 'auth', 'method', 'plugin', 'plugin_opts',
+      'obfs', 'obfs_password', 'up_mbps', 'down_mbps', 'version',
+      'network', 'security',
       'path', 'host', 'service_name', 'alpn', 'fingerprint', 'tls', 'flow', 'packet_encoding', 'username',
+      'congestion_control', 'udp_relay_mode', 'udp_over_stream', 'zero_rtt_handshake', 'heartbeat',
+      'idle_session_check_interval', 'idle_session_timeout', 'min_idle_session',
       'created_at', 'updated_at'
     ]
 
@@ -450,6 +509,10 @@ export class DatabaseService {
       if (key === 'id' || key === 'updated_at') continue
       if (key === 'tls') {
         nodeData.tls = node.tls ? (typeof node.tls === 'string' ? node.tls : JSON.stringify(node.tls)) : null
+        continue
+      }
+      if (key === 'udp_over_stream' || key === 'zero_rtt_handshake') {
+        nodeData[key] = this.normalizeOptionalBoolean(node[key])
         continue
       }
       if (key in node) {
@@ -494,11 +557,8 @@ export class DatabaseService {
     if (nodes.length === 0) return this.getAllNodes()
 
     const values = nodes.map(node => ({
-      ...node,
-      id: node.id || generateId(),
-      type: normalizeNodeType(node.type),
-      tls: node.tls ? JSON.stringify(node.tls) : null,
-      updated_at: new Date().toISOString()
+      ...this.toNodeRecord(node),
+      id: node.id || generateId()
     }))
 
     await this.db.transaction().execute(async (trx) => {
@@ -599,6 +659,23 @@ export class DatabaseService {
    */
   async deleteGame(id: string) {
     await this.db.deleteFrom('games').where('id', '=', id).execute()
+    return this.getAllGames()
+  }
+
+  /**
+   * 批量删除游戏
+   * @param ids - 游戏 ID 列表
+   */
+  async deleteGames(ids: string[]) {
+    const normalizedIds = Array.from(new Set(
+      (Array.isArray(ids) ? ids : [])
+        .map(id => String(id || '').trim())
+        .filter(Boolean)
+    ))
+
+    if (normalizedIds.length === 0) return this.getAllGames()
+
+    await this.db.deleteFrom('games').where('id', 'in', normalizedIds).execute()
     return this.getAllGames()
   }
 
@@ -732,11 +809,8 @@ export class DatabaseService {
       if (data.nodes && Array.isArray(data.nodes)) {
         for (const node of data.nodes) {
           const nodeData = {
-            ...node,
+            ...this.toNodeRecord(node),
             id: node.id || generateId(),
-            type: normalizeNodeType(node.type),
-            tls: node.tls ? JSON.stringify(node.tls) : null,
-            updated_at: new Date().toISOString()
           }
           await trx.insertInto('nodes').values(nodeData).onConflict(oc => oc.column('id').doUpdateSet(nodeData)).execute()
         }

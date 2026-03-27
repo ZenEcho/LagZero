@@ -1,8 +1,9 @@
+import type { GameScanSource } from '@/types'
 import { toIpcSafeSnapshot } from '@shared/utils'
 
 export const systemApi = {
   scanProcesses: () => window.system.scanProcesses(),
-  scanLocalGames: () => window.system.scanLocalGames(),
+  scanLocalGames: (sources?: GameScanSource[]) => window.system.scanLocalGames(sources),
   getProcessTree: () => window.system.getProcessTree(),
   ping: (host: string) => window.system.ping(host),
   tcpPing: (host: string, port: number) => window.system.tcpPing(host, port),

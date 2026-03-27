@@ -151,14 +151,23 @@ import ThemeToggle from '@/components/common/ThemeToggle.vue'
 import LanguageToggle from '@/components/common/LanguageToggle.vue'
 import SingboxInstallerGuard from '@/components/singbox/SingboxInstallerGuard.vue'
 import pkg from '../../package.json'
-import { electronApi, singboxApi } from '@/api'
+import { appApi, electronApi, singboxApi } from '@/api'
 import { useAppUpdater } from '@/composables/useAppUpdater'
 import { useGameStore } from '@/stores/games'
-import { useNodeStore } from '@/stores/nodes'
+import { useNodeStore, type NodeSubscriptionSchedule } from '@/stores/nodes'
 import { useSettingsStore } from '@/stores/settings'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
-import { useMessage } from 'naive-ui'
+import { useLoadingBar, useMessage } from 'naive-ui'
+
+type DeepLinkImportPayload = {
+  action: 'import-subscription'
+  rawUrl: string
+  subscriptionUrl: string
+  name?: string
+  schedule?: NodeSubscriptionSchedule
+  immediate?: boolean
+}
 
 const { width } = useWindowSize()
 const isCollapsed = ref(true)
@@ -170,12 +179,14 @@ const settingsStore = useSettingsStore()
 const { checkInterval } = storeToRefs(settingsStore)
 const { t } = useI18n()
 const message = useMessage()
+const loadingBar = useLoadingBar()
 const trayCoreInstalled = ref(true)
 const trayDurationTick = ref(Date.now())
-const traySessionLoss = ref(0)
 const showCloseConfirmModal = ref(false)
 const closeRememberChoice = ref(false)
 const ipcCleanupFns: Array<() => void> = []
+let deepLinkImportQueue: Promise<void> = Promise.resolve()
+let deepLinkListenerRegistered = false
 const activeGame = computed(() => gameStore.getAcceleratingGame())
 const trayDisplayGame = computed(() => activeGame.value || gameStore.currentGame)
 
@@ -196,6 +207,7 @@ function syncTrayState() {
 
     const running = activeGame.value
     const runningId = running?.id || ''
+    const sessionLossRate = runningId ? gameStore.getSessionLossRate(runningId) : 0
     const startedAt = runningId ? gameStore.getAccelerationStartedAt(runningId) : 0
     const durationSeconds = startedAt > 0
       ? Math.floor((trayDurationTick.value - startedAt) / 1000)
@@ -209,7 +221,7 @@ function syncTrayState() {
       isActionPending: gameStore.operationState !== 'idle',
       operationState: gameStore.operationState,
       latency: running?.latency || 0,
-      loss: traySessionLoss.value,
+      loss: sessionLossRate,
       duration: toDurationString(durationSeconds)
     })
   } catch {
@@ -226,15 +238,30 @@ function onInstallerStatusChange(d: any) {
 }
 
 onMounted(async () => {
-  await getVersion()
-  void checkUpdate()
-  void sampleLatencyForBackgroundPages()
-  resumeGlobalSampling()
   try {
+    ensureDeepLinkListenerRegistered()
+    if (deepLinkListenerRegistered) {
+      appApi.setDeepLinkRendererReady()
+      console.info('[DeepLink] 前端已声明可接收外部导入事件')
+    }
+    console.info('[DeepLink] MainLayout 已挂载，开始领取等待中的外部导入请求')
+    const pendingImports = await appApi.consumePendingDeepLinkImports().catch(() => [])
+    if (pendingImports.length > 0) {
+      console.info('[DeepLink] 前端已接手等待中的外部导入请求', {
+        count: pendingImports.length
+      })
+      message.info(String(t('nodes.one_click_import_queue_processing', { count: pendingImports.length })))
+    }
+    pendingImports.forEach(enqueueDeepLinkImport)
+
     if (typeof electronApi.on === 'function') {
       const onInstallerStatusChangeDisposer = electronApi.on('singbox-installer-status', onInstallerStatusChange)
       if (typeof onInstallerStatusChangeDisposer === 'function') ipcCleanupFns.push(onInstallerStatusChangeDisposer)
     }
+    await getVersion()
+    void checkUpdate()
+    void sampleLatencyForBackgroundPages()
+    resumeGlobalSampling()
     singboxApi.getInstallInfo().then((info) => {
       trayCoreInstalled.value = !!info?.exists
     }).catch(() => {
@@ -257,7 +284,13 @@ async function sampleLatencyForBackgroundPages() {
 
   const startedAt = gameStore.getAccelerationStartedAt(game.id)
   const accelerationSeconds = startedAt > 0 ? Math.floor((Date.now() - startedAt) / 1000) : 0
-  const sessionStats = await nodeStore.getGameLatencyStatsForSession(game.id)
+  const persistedSessionStats = await nodeStore.getGameLatencyStatsForSession(game.id)
+  const cachedSessionStats = gameStore.getSessionLatencyStats(game.id)
+  const sessionStats = {
+    total: Math.max(persistedSessionStats.total, cachedSessionStats.total),
+    lost: Math.max(persistedSessionStats.lost, cachedSessionStats.lost)
+  }
+  gameStore.setSessionLatencyStats(game.id, sessionStats)
   const sessionLossRate = sessionStats.total > 0
     ? Math.round((sessionStats.lost / sessionStats.total) * 100)
     : 0
@@ -270,7 +303,10 @@ async function sampleLatencyForBackgroundPages() {
   })
   if (!stats) return
   gameStore.updateLatency(game.id, stats.latency)
-  traySessionLoss.value = sessionLossRate
+  gameStore.setSessionLatencyStats(game.id, {
+    total: sessionStats.total + 1,
+    lost: sessionStats.lost + ((stats.loss > 0 || stats.latency <= 0) ? 1 : 0)
+  })
 }
 
 const { resume: resumeGlobalSampling } = useIntervalFn(() => {
@@ -291,7 +327,6 @@ watch(
     }
     pauseTrayDurationTicker()
     trayDurationTick.value = Date.now()
-    traySessionLoss.value = 0
   },
   { immediate: true }
 )
@@ -333,6 +368,236 @@ function handleSidebarWheel(e: WheelEvent) {
 function onCloseConfirmRequired() {
   closeRememberChoice.value = false
   showCloseConfirmModal.value = true
+}
+
+function normalizeDeepLinkSchedule(schedule: unknown): NodeSubscriptionSchedule {
+  switch (String(schedule || '').trim()) {
+    case 'startup':
+    case 'daily':
+    case 'monthly':
+      return String(schedule).trim() as NodeSubscriptionSchedule
+    case 'manual':
+    default:
+      return 'manual'
+  }
+}
+
+function deriveSubscriptionName(subscriptionUrl: string, fallbackName?: string): string {
+  const explicit = String(fallbackName || '').trim()
+  if (explicit) return explicit
+
+  try {
+    const url = new URL(subscriptionUrl)
+    const lastSegment = url.pathname.split('/').filter(Boolean).pop()
+    if (lastSegment) return decodeURIComponent(lastSegment)
+    if (url.hostname) return url.hostname
+  } catch {
+    // ignore
+  }
+
+  return 'Imported Subscription'
+}
+
+function summarizeSubscriptionUrlForLog(subscriptionUrl: string): string {
+  const normalized = String(subscriptionUrl || '').trim()
+  if (!normalized) return '(empty)'
+  try {
+    const url = new URL(normalized)
+    return `${url.origin}${url.pathname}`
+  } catch {
+    return normalized.slice(0, 160)
+  }
+}
+
+function summarizeDeepLinkForLog(rawUrl: string): string {
+  const normalized = String(rawUrl || '').trim()
+  if (!normalized) return '(empty)'
+  try {
+    const url = new URL(normalized)
+    const action = url.hostname.trim() || url.pathname.replace(/^\/+/, '').trim() || '(empty)'
+    const target = String(
+      url.searchParams.get('url')
+      || url.searchParams.get('subscription')
+      || url.searchParams.get('config')
+      || ''
+    ).trim()
+    return `${url.protocol}//${action} -> ${summarizeSubscriptionUrlForLog(target)}`
+  } catch {
+    return normalized.slice(0, 160)
+  }
+}
+
+function resolveDeepLinkImportReason(reason?: string): string {
+  const normalized = String(reason || '').trim()
+  if (!normalized) return String(t('nodes.one_click_import_reason_unknown'))
+  if (/^HTTP\s+\d+$/i.test(normalized)) {
+    return String(t('nodes.one_click_import_reason_http', {
+      status: normalized.replace(/^HTTP\s+/i, '')
+    }))
+  }
+
+  switch (normalized) {
+    case 'subscription-not-found':
+      return String(t('nodes.one_click_import_reason_subscription_not_found'))
+    case 'no-valid-nodes':
+      return String(t('nodes.one_click_import_reason_no_valid_nodes'))
+    case 'import-failed':
+      return String(t('nodes.one_click_import_reason_import_failed'))
+    case 'fetch-failed':
+      return String(t('nodes.one_click_import_reason_fetch_failed'))
+    case 'invalid-subscription-url':
+      return String(t('nodes.one_click_import_reason_invalid_subscription_url'))
+    default:
+      return normalized
+  }
+}
+
+function buildDeepLinkImportFailedMessage(name: string, reason?: string): string {
+  return String(t('nodes.one_click_import_failed_reason', {
+    name,
+    reason: resolveDeepLinkImportReason(reason)
+  }))
+}
+
+function enqueueDeepLinkImport(payload: unknown) {
+  const normalized = payload as DeepLinkImportPayload | null | undefined
+  if (!normalized || normalized.action !== 'import-subscription') return
+
+  deepLinkImportQueue = deepLinkImportQueue
+    .then(() => handleDeepLinkImport(normalized))
+    .catch((e) => {
+      const subscriptionUrl = String(normalized.subscriptionUrl || '').trim()
+      const name = deriveSubscriptionName(subscriptionUrl, normalized.name)
+      console.error('[DeepLink] 处理外部导入时出现未捕获异常', {
+        link: summarizeDeepLinkForLog(normalized.rawUrl),
+        subscription: summarizeSubscriptionUrlForLog(subscriptionUrl),
+        name,
+        error: e instanceof Error ? e.message : String(e)
+      })
+      loadingBar.error()
+      message.error(buildDeepLinkImportFailedMessage(name, e instanceof Error ? e.message : 'unknown-error'))
+    })
+}
+
+function ensureDeepLinkListenerRegistered() {
+  if (deepLinkListenerRegistered) return
+
+  try {
+    if (typeof electronApi.on !== 'function') return
+
+    const onDeepLinkImportDisposer = electronApi.on('app:deep-link-import', (payload: unknown) => {
+      console.info('[DeepLink] 前端收到主进程实时下发的外部导入事件')
+      enqueueDeepLinkImport(payload)
+    })
+
+    if (typeof onDeepLinkImportDisposer === 'function') {
+      ipcCleanupFns.push(onDeepLinkImportDisposer)
+    }
+
+    deepLinkListenerRegistered = true
+    console.info('[DeepLink] 前端实时外部导入监听器已注册')
+  } catch {
+    // ignore
+  }
+}
+
+async function handleDeepLinkImport(payload: DeepLinkImportPayload) {
+  const subscriptionUrl = String(payload.subscriptionUrl || '').trim()
+  const schedule = normalizeDeepLinkSchedule(payload.schedule)
+  const name = deriveSubscriptionName(subscriptionUrl, payload.name)
+  if (!subscriptionUrl) {
+    console.warn('[DeepLink] 外部导入缺少订阅地址', {
+      link: summarizeDeepLinkForLog(payload.rawUrl),
+      name
+    })
+    loadingBar.error()
+    message.error(buildDeepLinkImportFailedMessage(name, 'invalid-subscription-url'))
+    return
+  }
+
+  loadingBar.start()
+  const loadingMessage = message.loading(String(t('nodes.one_click_import_loading', { name })), {
+    duration: 0
+  })
+
+  console.info('[DeepLink] 开始处理外部导入', {
+    link: summarizeDeepLinkForLog(payload.rawUrl),
+    subscription: summarizeSubscriptionUrlForLog(subscriptionUrl),
+    name,
+    schedule,
+    immediate: payload.immediate !== false
+  })
+
+  try {
+    const saved = nodeStore.upsertSubscription({
+      name,
+      url: subscriptionUrl,
+      schedule,
+      enabled: true
+    })
+
+    if (!saved.ok || !saved.id) {
+      console.warn('[DeepLink] 外部导入保存订阅失败', {
+        subscription: summarizeSubscriptionUrlForLog(subscriptionUrl),
+        name
+      })
+      loadingBar.error()
+      message.error(buildDeepLinkImportFailedMessage(name, 'invalid-subscription-url'))
+      return
+    }
+
+    console.info('[DeepLink] 订阅已写入本地', {
+      name,
+      subscription: summarizeSubscriptionUrlForLog(subscriptionUrl),
+      created: saved.created !== false
+    })
+
+    await router.push('/nodes').catch(() => { })
+
+    if (payload.immediate === false) {
+      console.info('[DeepLink] 外部导入仅添加订阅，不立即刷新', {
+        name,
+        subscription: summarizeSubscriptionUrlForLog(subscriptionUrl),
+        created: saved.created !== false
+      })
+      loadingBar.finish()
+      message.success(String(
+        t(saved.created ? 'nodes.one_click_import_subscription_added' : 'nodes.one_click_import_subscription_updated', { name })
+      ))
+      return
+    }
+
+    const result = await nodeStore.refreshSubscription(saved.id)
+    if (result.ok && result.count > 0) {
+      console.info('[DeepLink] 外部导入成功', {
+        name,
+        subscription: summarizeSubscriptionUrlForLog(subscriptionUrl),
+        count: result.count
+      })
+      loadingBar.finish()
+      message.success(String(t('nodes.one_click_import_success', { name, count: result.count })))
+      return
+    }
+    if (result.message === 'no-new-nodes') {
+      console.info('[DeepLink] 外部导入完成，但没有新增节点', {
+        name,
+        subscription: summarizeSubscriptionUrlForLog(subscriptionUrl)
+      })
+      loadingBar.finish()
+      message.info(String(t('nodes.one_click_import_no_new_nodes', { name })))
+      return
+    }
+
+    console.error('[DeepLink] 外部导入失败', {
+      name,
+      subscription: summarizeSubscriptionUrlForLog(subscriptionUrl),
+      reason: result.message || 'unknown-error'
+    })
+    loadingBar.error()
+    message.error(buildDeepLinkImportFailedMessage(name, result.message))
+  } finally {
+    loadingMessage.destroy()
+  }
 }
 
 async function onTrayDoToggle() {
@@ -404,6 +669,10 @@ const close = () => electronApi.close()
 onUnmounted(() => {
   pauseTrayDurationTicker()
   try {
+    if (deepLinkListenerRegistered) {
+      appApi.setDeepLinkRendererNotReady()
+    }
+    deepLinkListenerRegistered = false
     while (ipcCleanupFns.length > 0) {
       const dispose = ipcCleanupFns.pop()
       try {

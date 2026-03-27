@@ -94,6 +94,8 @@ export const useGameStore = defineStore('games', () => {
   const systemProxySnapshot = ref<any | null>(null)
   /** 当前会话中，按游戏维度覆盖的网络优化参数。 */
   const gameSessionNetworkTuning = reactive<Record<string, SessionNetworkTuningOptions>>({})
+  /** 当前会话中，按游戏维度缓存的延迟采样统计。 */
+  const gameSessionLatencyStats = reactive<Record<string, { total: number; lost: number }>>({})
 
 
 
@@ -243,6 +245,25 @@ export const useGameStore = defineStore('games', () => {
     }
   }
 
+  /** 批量删除游戏并维护当前选中项回退逻辑。 */
+  async function removeGames(ids: string[]) {
+    const normalizedIds = Array.from(new Set(
+      (Array.isArray(ids) ? ids : [])
+        .map(id => String(id || '').trim())
+        .filter(Boolean)
+    ))
+
+    if (normalizedIds.length === 0) return
+
+    const updatedGames = await gameApi.deleteMany(normalizedIds)
+    syncGames(updatedGames)
+
+    if (currentGameId.value && normalizedIds.includes(currentGameId.value)) {
+      const firstGame = gameLibrary.value[0]
+      currentGameId.value = (gameLibrary.value.length > 0 && firstGame && firstGame.id) ? firstGame.id : null
+    }
+  }
+
   /**
    * 用远端列表同步本地游戏库，同时保留本地运行态：
    * - `status` / `latency` 尽量复用本地已有值
@@ -303,6 +324,31 @@ export const useGameStore = defineStore('games', () => {
   /** 获取游戏进入加速状态的时间戳；无记录时返回 `0`。 */
   function getAccelerationStartedAt(id: string) {
     return accelerationStartedAt[id] || 0
+  }
+
+  function getSessionLatencyStats(id: string): { total: number; lost: number } {
+    const key = String(id || '').trim()
+    if (!key) return { total: 0, lost: 0 }
+    const stats = gameSessionLatencyStats[key]
+    return {
+      total: Math.max(0, Math.floor(Number(stats?.total || 0))),
+      lost: Math.max(0, Math.floor(Number(stats?.lost || 0)))
+    }
+  }
+
+  function setSessionLatencyStats(id: string, stats: { total: number; lost: number }) {
+    const key = String(id || '').trim()
+    if (!key) return
+    gameSessionLatencyStats[key] = {
+      total: Math.max(0, Math.floor(Number(stats?.total || 0))),
+      lost: Math.max(0, Math.floor(Number(stats?.lost || 0)))
+    }
+  }
+
+  function getSessionLossRate(id: string): number {
+    const stats = getSessionLatencyStats(id)
+    if (stats.total <= 0) return 0
+    return Math.round((stats.lost / stats.total) * 100)
   }
 
   /** 更新游戏延迟（毫秒）。 */
@@ -553,11 +599,15 @@ export const useGameStore = defineStore('games', () => {
     getAcceleratingGame,
     resetAllAccelerationStatus,
     getAccelerationStartedAt,
+    getSessionLatencyStats,
+    setSessionLatencyStats,
+    getSessionLossRate,
     updateLatency,
     matchRunningGames,
     addGame,
     updateGame,
     removeGame,
+    removeGames,
     startGame,
     stopGame,
     applySessionNetworkTuningChange,

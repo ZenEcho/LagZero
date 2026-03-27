@@ -3,10 +3,12 @@
     <!-- Header Controls -->
     <div class="flex flex-col gap-4 mb-6">
       <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div class="flex items-center gap-4">
-          <h1 class="text-xl md:text-2xl font-bold text-on-surface flex items-center gap-3">
+        <div class="flex items-center gap-4 shrink-0">
+          <h1 class="text-xl md:text-2xl font-bold text-on-surface flex items-center gap-3 whitespace-nowrap">
             {{ $t('games.library') }}
-            <span class="text-sm font-normal text-on-surface-muted bg-surface-overlay px-2 py-0.5 rounded-full border border-border/50 font-mono">{{ gameStore.gameLibrary.length }}</span>
+            <span
+              class="text-sm font-normal text-on-surface-muted bg-surface-overlay px-2 py-0.5 rounded-full border border-border/50 font-mono">{{
+                gameStore.gameLibrary.length }}</span>
           </h1>
           <div class="bg-surface rounded-lg p-1 flex border border-border">
             <button @click="viewMode = 'grid'" class="p-1.5 md:p-2  rounded transition"
@@ -20,10 +22,12 @@
           </div>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2 md:gap-4 w-full sm:w-auto">
-          <div class="relative flex-1 sm:flex-none">
+        <div ref="headerActionsRef"
+          class="flex items-center gap-2 md:gap-4 w-full sm:flex-1 sm:min-w-0 sm:justify-end sm:flex-nowrap">
+          <div class="relative flex-1 min-w-[150px]"
+            :class="headerActionsCompact ? 'sm:max-w-[160px]' : 'sm:max-w-[240px] lg:max-w-[320px]'">
             <input v-model="searchQuery" type="text" :placeholder="$t('games.search_placeholder')"
-              class="bg-surface border border-border rounded-full py-1.5 pl-9 pr-4 text-xs md:text-sm text-on-surface w-full sm:w-48 lg:w-64 outline-none focus:border-primary placeholder:text-on-surface-muted" />
+              class="bg-surface border border-border rounded-full py-1.5 pl-9 pr-4 text-xs md:text-sm text-on-surface w-full outline-none focus:border-primary placeholder:text-on-surface-muted" />
             <div class="i-carbon-search absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-muted text-sm"></div>
           </div>
 
@@ -32,23 +36,93 @@
             {{ scanProgressText }}
           </div>
 
-          <n-button round @click="scanGames" :loading="isScanning" class="shadow-sm">
-            <template #icon>
-              <div class="i-carbon-radar"></div>
+          <n-popover trigger="hover" placement="bottom-end" :show-arrow="false">
+            <template #trigger>
+              <n-button :round="!utilityButtonsIconOnly" :circle="utilityButtonsIconOnly" @click="handleScanClick"
+                :loading="isScanning" class="shadow-sm shrink-0"
+                :title="utilityButtonsIconOnly ? $t('games.scan_local') : undefined">
+                <template #icon>
+                  <div class="i-carbon-radar"></div>
+                </template>
+                <template v-if="!utilityButtonsIconOnly">
+                  <span class="hidden xs:inline ">{{ isScanning ? $t('games.scanning') : $t('games.scan_local')
+                  }}</span>
+                  <span class="xs:hidden">{{ isScanning ? '...' : $t('games.scan') }}</span>
+                </template>
+                <span v-if="!utilityButtonsIconOnly"
+                  class="hidden xl:inline-flex ml-2 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-surface-overlay border border-border/50 text-on-surface-muted">
+                  {{ scanSourceSummary }}
+                </span>
+              </n-button>
             </template>
-            <span class="hidden xs:inline ">{{ isScanning ? $t('games.scanning') : $t('games.scan_local') }}</span>
-            <span class="xs:hidden">{{ isScanning ? '...' : $t('games.scan') }}</span>
+
+            <div class="w-[280px] p-1 flex flex-col gap-3">
+              <div class="flex items-start justify-between gap-3">
+                <div class="space-y-1">
+                  <div class="text-xs font-bold text-on-surface">{{ $t('games.scan_scope') }}</div>
+                  <div class="text-[11px] leading-5 text-on-surface-muted">{{ $t('games.scan_scope_desc') }}</div>
+                </div>
+                <n-tag size="small" :bordered="false" type="info">
+                  {{ $t('games.scan_scope_selected_count', { count: activeScanSources.length }) }}
+                </n-tag>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <button
+                  class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors bg-surface-overlay/60 border-border/50 text-on-surface hover:border-primary/50 hover:text-primary"
+                  @click.stop="selectAllScanSources">
+                  {{ $t('games.scan_select_all') }}
+                </button>
+                <button
+                  class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors bg-surface-overlay/60 border-border/50 text-on-surface hover:border-primary/50 hover:text-primary"
+                  @click.stop="selectLocalScanSourceOnly">
+                  {{ $t('games.scan_select_local_only') }}
+                </button>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2">
+                <button v-for="option in scanSourceOptions" :key="option.value"
+                  class="px-3 py-2 rounded-xl border text-left transition-all duration-200"
+                  :class="activeScanSourceSet.has(option.value)
+                    ? 'border-primary bg-primary/10 text-primary shadow-[0_8px_18px_-14px_rgba(var(--rgb-primary),0.6)]'
+                    : 'border-border/60 bg-surface-overlay/40 text-on-surface-muted hover:border-primary/40 hover:text-on-surface'" @click.stop="toggleScanSource(option.value)">
+                  <div class="flex items-center gap-2">
+                    <div class="text-sm"
+                      :class="activeScanSourceSet.has(option.value) ? 'i-carbon-checkbox-checked-filled' : 'i-carbon-checkbox'">
+                    </div>
+                    <span class="text-xs font-semibold">{{ option.label }}</span>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </n-popover>
+
+          <n-button :round="!utilityButtonsIconOnly" :circle="utilityButtonsIconOnly" secondary
+            @click="toggleSelectionMode" class="shadow-sm shrink-0"
+            :title="utilityButtonsIconOnly ? (selectionMode ? $t('common.cancel') : $t('games.batch_manage')) : undefined">
+            <template #icon>
+              <div :class="selectionMode ? 'i-carbon-close' : 'i-carbon-checkbox-indeterminate'"></div>
+            </template>
+            <template v-if="!utilityButtonsIconOnly">
+              <span class="hidden xs:inline">{{ selectionMode ? $t('common.cancel') : $t('games.batch_manage') }}</span>
+              <span class="xs:hidden">{{ selectionMode ? $t('common.cancel') : $t('games.batch') }}</span>
+            </template>
           </n-button>
 
-          <n-button type="primary" round @click="openAddModal" class="shadow-lg shadow-primary/20">
+          <n-button type="primary" :round="!headerActionsCompact" :circle="headerActionsCompact" @click="openAddModal"
+            class="shadow-lg shadow-primary/20 shrink-0"
+            :title="headerActionsCompact ? $t('games.add_game') : undefined">
             <template #icon>
               <div class="i-carbon-add"></div>
             </template>
-            <span class="hidden xs:inline ">{{ $t('games.add_game') }}</span>
-            <span class="xs:hidden">{{ $t('common.add') }}</span>
+            <template v-if="!headerActionsCompact">
+              <span class="hidden xs:inline ">{{ $t('games.add_game') }}</span>
+              <span class="xs:hidden">{{ $t('common.add') }}</span>
+            </template>
           </n-button>
 
-          <n-button quaternary circle @click="showCategoryManager = true" :title="$t('common.categories')">
+          <n-button quaternary circle @click="showCategoryManager = true" :title="$t('common.categories')"
+            class="shrink-0">
             <template #icon>
               <div class="i-carbon-categories"></div>
             </template>
@@ -64,6 +138,34 @@
         :class="activeCategory === cat.value ? 'bg-primary border-primary text-on-primary shadow-md shadow-primary/20 ' : 'bg-surface border-border text-on-surface-muted hover:border-primary/50 hover:text-on-surface '">
         {{ cat.label }}
       </button>
+    </div>
+
+    <div v-if="selectionMode"
+      class="mb-6 rounded-2xl border border-border/60 bg-surface/70 px-4 py-3 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 shadow-sm">
+      <div class="flex items-center gap-3 min-w-0">
+        <div class="w-10 h-10 rounded-xl bg-primary/12 text-primary flex items-center justify-center">
+          <div class="i-carbon-checkbox-indeterminate text-xl"></div>
+        </div>
+        <div class="min-w-0">
+          <div class="text-sm font-bold text-on-surface">{{ $t('games.batch_selected', {
+            count: selectedGameIds.length
+          }) }}
+          </div>
+          <div class="text-xs text-on-surface-muted">{{ $t('games.batch_selected_hint') }}</div>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <n-button size="small" secondary @click="toggleVisibleSelection">
+          {{ allVisibleSelected ? $t('games.batch_deselect_all_visible') : $t('games.batch_select_all_visible') }}
+        </n-button>
+        <n-button size="small" secondary @click="clearGameSelection" :disabled="selectedGameIds.length === 0">
+          {{ $t('games.batch_clear_selection') }}
+        </n-button>
+        <n-button size="small" type="error" @click="deleteSelectedGames" :disabled="selectedGameIds.length === 0">
+          {{ $t('games.batch_delete') }}
+        </n-button>
+      </div>
     </div>
 
     <div v-if="acceleratingGame"
@@ -104,10 +206,28 @@
         <div v-for="game in filteredGames" :key="game.id" @click="game.id && handleGameClick(game)"
           class="group relative bg-surface border rounded-xl transition-all duration-300 overflow-hidden hover:shadow-[0_12px_28px_-12px_rgba(var(--rgb-primary),0.4)] "
           :class="[
-            isAccelerationLockedFor(game) ? 'opacity-50 grayscale cursor-not-allowed border-border' : 'cursor-pointer  hover:border-primary/50',
-            game.status === 'accelerating' ? 'border-success shadow-[0_0_15px_rgba(var(--rgb-success),0.2)] ring-1 ring-success/30' : 'border-border/50',
+            selectionMode
+              ? (isGameSelectable(game) ? 'cursor-pointer hover:border-primary/50' : 'opacity-60 cursor-not-allowed border-border')
+              : (isAccelerationLockedFor(game) ? 'opacity-50 grayscale cursor-not-allowed border-border' : 'cursor-pointer hover:border-primary/50'),
+            isGameSelected(game)
+              ? 'border-primary bg-primary/5 shadow-[0_0_18px_rgba(var(--rgb-primary),0.12)] ring-1 ring-primary/30'
+              : (game.status === 'accelerating' ? 'border-success shadow-[0_0_15px_rgba(var(--rgb-success),0.2)] ring-1 ring-success/30' : 'border-border/50'),
             viewMode === 'grid' ? 'flex flex-col' : 'flex items-center p-3 gap-4'
           ]">
+
+          <button v-if="selectionMode"
+            class="absolute top-2 left-2 z-20 w-8 h-8 rounded-full border flex items-center justify-center transition-colors backdrop-blur-md"
+            :class="isGameSelected(game)
+              ? 'bg-primary text-on-primary border-primary shadow-lg shadow-primary/30'
+              : (isGameSelectable(game)
+                ? 'bg-overlay/45 text-white/85 border-white/25 hover:bg-overlay/65'
+                : 'bg-surface/80 text-on-surface-muted border-border/60 cursor-not-allowed')"
+            :title="isGameSelected(game) ? $t('games.batch_unselect_game') : $t('games.batch_select_game')"
+            @click.stop="toggleGameSelection(game)">
+            <div :class="isGameSelected(game) ? 'i-carbon-checkbox-checked-filled' : 'i-carbon-checkbox'"
+              class="text-lg">
+            </div>
+          </button>
 
           <!-- Grid View Image Area -->
           <div v-if="viewMode === 'grid'" class="aspect-[16/9] relative bg-surface-variant/50 overflow-hidden ">
@@ -129,7 +249,7 @@
             <!-- Hover Overlay with Actions -->
             <div
               class="absolute inset-0 bg-overlay/55 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center gap-3 backdrop-blur-[2px]"
-              v-if="!isAccelerationLockedFor(game)">
+              v-if="!selectionMode && !isAccelerationLockedFor(game)">
               <template v-if="game.status !== 'accelerating'">
                 <button
                   class="w-10 h-10 rounded-full bg-primary text-on-primary flex items-center justify-center hover:scale-110 transition shadow-lg shadow-primary/40"
@@ -243,7 +363,7 @@
           </div>
 
           <!-- List View Actions -->
-          <div v-if="viewMode === 'list'"
+          <div v-if="viewMode === 'list' && !selectionMode"
             class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity px-2">
             <template v-if="game.status !== 'accelerating'">
               <n-button circle type="primary" size="small" @click.stop="tryStartGame(game)" :disabled="isActionPending">
@@ -278,14 +398,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGameStore, type Game } from '@/stores/games'
 import { useCategoryStore } from '@/stores/categories'
 import { useI18n } from 'vue-i18n'
 import { useMessage, useDialog } from 'naive-ui'
 import type { LocalScanGame } from '@/types'
-import { PLATFORMS } from '@/constants'
+import { useLocalStorage, useWindowSize } from '@vueuse/core'
+import { PLATFORMS, SCAN_SOURCES, type GameScanSource } from '@/constants'
 import GameEditModal from '@/components/library/GameEditModal.vue'
 import CategoryManager from '@/components/library/CategoryManager.vue'
 import { useGameScanner } from '@/composables/useGameScanner'
@@ -324,6 +445,7 @@ const { t } = useI18n()
 const message = useMessage()
 const dialog = useDialog()
 const router = useRouter()
+const { width: windowWidth } = useWindowSize()
 const gameStore = useGameStore()
 const categoryStore = useCategoryStore()
 
@@ -334,6 +456,11 @@ const { isScanning, scanProgressText, scanGames } = useGameScanner()
 const runningGames = computed(() => gameStore.runningGames)
 const acceleratingGame = computed(() => gameStore.getAcceleratingGame())
 const isActionPending = computed(() => gameStore.operationState !== 'idle')
+const headerActionsRef = ref<HTMLElement | null>(null)
+const headerActionsCompact = ref(false)
+const selectionMode = ref(false)
+const selectedGameIds = ref<string[]>([])
+const selectedScanSources = useLocalStorage<GameScanSource[]>('games-scan-sources', [...SCAN_SOURCES])
 
 const showEditModal = ref(false)
 const showCategoryManager = ref(false)
@@ -349,10 +476,41 @@ const tagPopoverThreshold = 72
 const tagMeasureContext = typeof document !== 'undefined'
   ? document.createElement('canvas').getContext('2d')
   : null
+const scanSourceLabelKeyMap: Record<GameScanSource, string> = {
+  Steam: 'games.scan_source_steam',
+  Microsoft: 'games.scan_source_microsoft',
+  Epic: 'games.scan_source_epic',
+  EA: 'games.scan_source_ea',
+  BattleNet: 'games.scan_source_battlenet',
+  WeGame: 'games.scan_source_wegame',
+  Local: 'games.scan_source_local'
+}
+
+let headerActionsResizeObserver: ResizeObserver | null = null
+let headerCompactMeasureToken = 0
 
 onMounted(() => {
   categoryStore.loadCategories()
+  initHeaderActionsObserver()
+  scheduleHeaderCompactModeSync()
 })
+
+onBeforeUnmount(() => {
+  headerActionsResizeObserver?.disconnect()
+  headerActionsResizeObserver = null
+})
+
+watch(selectedScanSources, (value) => {
+  const normalized = normalizeScanSources(value)
+  if (normalized.length !== value.length || normalized.some((source, index) => source !== value[index])) {
+    selectedScanSources.value = normalized
+  }
+}, { immediate: true })
+
+watch(() => gameStore.gameLibrary.map(game => String(game.id || '')).join('|'), () => {
+  const validIds = new Set(gameStore.gameLibrary.map(game => String(game.id || '')).filter(Boolean))
+  selectedGameIds.value = selectedGameIds.value.filter(id => validIds.has(id))
+}, { immediate: true })
 
 const categories = computed(() => {
   const list = categoryStore.categories.map((c: any) => ({
@@ -369,6 +527,31 @@ const categoryNameMap = computed(() => {
   }
   return map
 })
+
+const selectedGameIdSet = computed(() => new Set(selectedGameIds.value))
+const activeScanSources = computed(() => normalizeScanSources(selectedScanSources.value))
+const activeScanSourceSet = computed(() => new Set(activeScanSources.value))
+const scanSourceOptions = computed(() => SCAN_SOURCES.map(source => ({
+  value: source,
+  label: getScanSourceLabel(source)
+})))
+const utilityButtonsIconOnly = computed(() => windowWidth.value < 1000 || headerActionsCompact.value)
+const scanSourceSummary = computed(() => {
+  if (activeScanSources.value.length === SCAN_SOURCES.length) return t('games.scan_scope_all')
+  if (activeScanSources.value.length === 0) return t('games.scan_scope_none')
+  if (activeScanSources.value.length <= 2) {
+    return activeScanSources.value.map(source => getScanSourceLabel(source)).join(' / ')
+  }
+  return t('games.scan_scope_selected_count', { count: activeScanSources.value.length })
+})
+
+watch(
+  () => [selectionMode.value, isScanning.value, scanSourceSummary.value].join('|'),
+  () => {
+    scheduleHeaderCompactModeSync()
+  },
+  { immediate: true }
+)
 
 function getGameCategoryIds(game: Game): string[] {
   if (Array.isArray(game.categories) && game.categories.length > 0) {
@@ -448,6 +631,135 @@ const filteredGames = computed(() => {
     return bTime - aTime
   })
 })
+const selectableVisibleGames = computed(() => filteredGames.value.filter(game => isGameSelectable(game)))
+const allVisibleSelected = computed(() =>
+  selectableVisibleGames.value.length > 0
+  && selectableVisibleGames.value.every(game => !!game.id && selectedGameIdSet.value.has(String(game.id)))
+)
+
+function initHeaderActionsObserver() {
+  if (typeof ResizeObserver === 'undefined') return
+  headerActionsResizeObserver?.disconnect()
+  if (!headerActionsRef.value) return
+  headerActionsResizeObserver = new ResizeObserver(() => {
+    scheduleHeaderCompactModeSync()
+  })
+  headerActionsResizeObserver.observe(headerActionsRef.value)
+}
+
+function isHeaderActionsOverflowing(): boolean {
+  const element = headerActionsRef.value
+  if (!element) return false
+  return element.scrollWidth - element.clientWidth > 4
+}
+
+function scheduleHeaderCompactModeSync() {
+  const token = ++headerCompactMeasureToken
+  void syncHeaderCompactMode(token)
+}
+
+async function syncHeaderCompactMode(token: number) {
+  await nextTick()
+  if (token !== headerCompactMeasureToken) return
+
+  if (headerActionsCompact.value) {
+    headerActionsCompact.value = false
+    await nextTick()
+    if (token !== headerCompactMeasureToken) return
+  }
+
+  headerActionsCompact.value = isHeaderActionsOverflowing()
+}
+
+function normalizeScanSources(value: unknown): GameScanSource[] {
+  const selected = new Set(
+    (Array.isArray(value) ? value : [])
+      .map(source => String(source || '').trim())
+      .filter(Boolean)
+  )
+  return SCAN_SOURCES.filter(source => selected.has(source))
+}
+
+function getScanSourceLabel(source: GameScanSource): string {
+  return t(scanSourceLabelKeyMap[source])
+}
+
+function toggleScanSource(source: GameScanSource) {
+  const next = activeScanSourceSet.value.has(source)
+    ? activeScanSources.value.filter(item => item !== source)
+    : [...activeScanSources.value, source]
+  selectedScanSources.value = normalizeScanSources(next)
+}
+
+function selectAllScanSources() {
+  selectedScanSources.value = [...SCAN_SOURCES]
+}
+
+function selectLocalScanSourceOnly() {
+  selectedScanSources.value = ['Local']
+}
+
+async function handleScanClick() {
+  if (isScanning.value) return
+  if (activeScanSources.value.length === 0) {
+    message.warning(t('games.scan_source_required'))
+    return
+  }
+  await scanGames(activeScanSources.value)
+}
+
+function isGameSelectable(game: Game) {
+  return !!game.id && game.status !== 'accelerating'
+}
+
+function isGameSelected(game: Game) {
+  return !!game.id && selectedGameIdSet.value.has(String(game.id))
+}
+
+function clearGameSelection() {
+  selectedGameIds.value = []
+}
+
+function toggleSelectionMode() {
+  selectionMode.value = !selectionMode.value
+  if (!selectionMode.value) {
+    clearGameSelection()
+  }
+}
+
+function toggleGameSelection(game: Game) {
+  if (!selectionMode.value || !isGameSelectable(game) || !game.id) return
+  const id = String(game.id)
+  if (selectedGameIdSet.value.has(id)) {
+    selectedGameIds.value = selectedGameIds.value.filter(selectedId => selectedId !== id)
+    return
+  }
+  selectedGameIds.value = [...selectedGameIds.value, id]
+}
+
+function selectAllVisibleGames() {
+  const nextIds = selectableVisibleGames.value
+    .map(game => String(game.id || ''))
+    .filter(Boolean)
+  selectedGameIds.value = Array.from(new Set([...selectedGameIds.value, ...nextIds]))
+}
+
+function clearVisibleSelection() {
+  const visibleIds = new Set(
+    selectableVisibleGames.value
+      .map(game => String(game.id || ''))
+      .filter(Boolean)
+  )
+  selectedGameIds.value = selectedGameIds.value.filter(id => !visibleIds.has(id))
+}
+
+function toggleVisibleSelection() {
+  if (allVisibleSelected.value) {
+    clearVisibleSelection()
+    return
+  }
+  selectAllVisibleGames()
+}
 
 function selectGame(id: string) {
   const ok = gameStore.setCurrentGame(id)
@@ -465,6 +777,10 @@ function tryStartGame(game: Game) {
 }
 
 function handleGameClick(game: Game) {
+  if (selectionMode.value) {
+    toggleGameSelection(game)
+    return
+  }
   if (game.status === 'accelerating') {
     router.push('/dashboard')
   } else {
@@ -496,6 +812,29 @@ function openAddModal() {
 function editGame(game: Game) {
   editingGame.value = game
   showEditModal.value = true
+}
+
+async function deleteSelectedGames() {
+  if (selectedGameIds.value.length === 0) {
+    message.warning(t('games.batch_select_games_first'))
+    return
+  }
+
+  const count = selectedGameIds.value.length
+  dialog.warning({
+    title: t('games.batch_delete'),
+    content: t('games.batch_delete_confirm', { count }),
+    positiveText: t('common.delete'),
+    negativeText: t('common.cancel'),
+    positiveButtonProps: {
+      type: 'error'
+    },
+    onPositiveClick: async () => {
+      await gameStore.removeGames(selectedGameIds.value)
+      toggleSelectionMode()
+      message.success(t('games.batch_delete_success', { count }))
+    }
+  })
 }
 
 async function deleteGame(game: Game) {

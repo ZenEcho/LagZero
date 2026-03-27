@@ -248,6 +248,8 @@ function getNodeIcon(type: string) {
     if (normalized.includes('trojan')) return 'i-carbon-security'
     if (normalized.includes('hysteria')) return 'i-carbon-flash'
     if (normalized.includes('tuic')) return 'i-carbon-rocket'
+    if (normalized.includes('anytls')) return 'i-carbon-security'
+    if (normalized.includes('shadowtls')) return 'i-carbon-security'
     return 'i-carbon-network-1'
 }
 

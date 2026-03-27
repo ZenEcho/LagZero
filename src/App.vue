@@ -1,14 +1,16 @@
 <template>
   <n-config-provider :theme="theme" :theme-overrides="themeOverrides">
-    <n-message-provider>
-      <n-dialog-provider>
-        <n-notification-provider>
-          <n-modal-provider>
-            <router-view />
-          </n-modal-provider>
-        </n-notification-provider>
-      </n-dialog-provider>
-    </n-message-provider>
+    <n-loading-bar-provider>
+      <n-message-provider>
+        <n-dialog-provider>
+          <n-notification-provider>
+            <n-modal-provider>
+              <router-view />
+            </n-modal-provider>
+          </n-notification-provider>
+        </n-dialog-provider>
+      </n-message-provider>
+    </n-loading-bar-provider>
   </n-config-provider>
 </template>
 

@@ -14,11 +14,11 @@
         type="textarea"
         :rows="10"
         class="font-mono"
-        placeholder="vmess://...&#10;ss://...&#10;https://subscription-url..."
+        placeholder="vmess://...&#10;hy2://...&#10;tuic://...&#10;anytls://...&#10;shadowtls://...&#10;proxies:&#10;  - name: demo"
       />
       
       <div class="text-xs text-on-surface-muted">
-        Supported formats: VMess, VLESS, Shadowsocks, Trojan links, or Base64 subscription content.
+        {{ t('nodes.import_supported_formats') }}
       </div>
     </div>
 

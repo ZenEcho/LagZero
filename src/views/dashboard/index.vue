@@ -559,9 +559,14 @@ async function syncSessionStateFromStore() {
    } else if (isRunning.value) {
       startTime.value = Date.now()
    }
-   const stats = await nodeStore.getGameLatencyStatsForSession(game.value.id)
-   totalSamples.value = stats.total
-   lostSamples.value = stats.lost
+   const persistedStats = await nodeStore.getGameLatencyStatsForSession(game.value.id)
+   const cachedStats = gameStore.getSessionLatencyStats(game.value.id)
+   totalSamples.value = Math.max(persistedStats.total, cachedStats.total)
+   lostSamples.value = Math.max(persistedStats.lost, cachedStats.lost)
+   gameStore.setSessionLatencyStats(game.value.id, {
+      total: totalSamples.value,
+      lost: lostSamples.value
+   })
    refreshSessionLossRate()
    refreshDuration()
 }
@@ -588,6 +593,10 @@ async function sampleLatencyAndLoss(recordLatency: boolean) {
       if (stats.loss > 0 || stats.latency <= 0) {
          lostSamples.value += 1
       }
+      gameStore.setSessionLatencyStats(game.value.id, {
+         total: totalSamples.value,
+         lost: lostSamples.value
+      })
    }
    refreshSessionLossRate()
 }

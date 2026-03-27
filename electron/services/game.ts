@@ -25,5 +25,9 @@ export class GameService {
     ipcMain.handle('games:delete', async (_, id: string) => {
       return this.db.deleteGame(id)
     })
+
+    ipcMain.handle('games:delete-many', async (_, ids: string[]) => {
+      return this.db.deleteGames(ids)
+    })
   }
 }

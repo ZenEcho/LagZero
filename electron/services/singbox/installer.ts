@@ -10,7 +10,7 @@ import { app } from 'electron'
 import pkg from '../../../package.json'
 import { JsonStore } from '../../common/store'
 import { generateId } from '../../utils/id'
-import { BIN_DIR } from './constants'
+import { getBinDir } from './constants'
 
 /**
  * 日志回调函数类型
@@ -104,12 +104,12 @@ export class SingBoxInstaller {
   }
 
   getInstallDir() {
-    return BIN_DIR
+    return getBinDir()
   }
 
   getBinaryPath() {
     const ext = process.platform === 'win32' ? '.exe' : ''
-    return path.join(BIN_DIR, `sing-box${ext}`)
+    return path.join(this.getInstallDir(), `sing-box${ext}`)
   }
 
   getPreferredVersion() {
@@ -223,7 +223,7 @@ export class SingBoxInstaller {
   }
 
   private async checkAndDownloadBinaryInternal(requestedVersion: string): Promise<string> {
-    await fs.ensureDir(BIN_DIR)
+    await fs.ensureDir(this.getInstallDir())
     const platform = process.platform
     const arch = process.arch
     const binPath = this.getBinaryPath()
@@ -240,7 +240,7 @@ export class SingBoxInstaller {
   }
 
   private async installCoreInternal(requestedVersion: string): Promise<string> {
-    await fs.ensureDir(BIN_DIR)
+    await fs.ensureDir(this.getInstallDir())
     const platform = process.platform
     const arch = process.arch
     const binPath = this.getBinaryPath()
@@ -258,6 +258,7 @@ export class SingBoxInstaller {
     requestedVersion: string
   ): Promise<string> {
     const displayVersion = requestedVersion === 'latest' ? 'latest' : requestedVersion
+    const installDir = this.getInstallDir()
     this.log(`开始准备 sing-box ${displayVersion} 安装包...`)
     this.emitStatus({
       phase: 'resolving',
@@ -283,8 +284,8 @@ export class SingBoxInstaller {
         downloadedBytes: 0
       })
 
-      archivePath = path.join(BIN_DIR, `sing-box-${version}-${generateId()}${archiveExt}`)
-      extractDir = path.join(BIN_DIR, `tmp-${generateId()}`)
+      archivePath = path.join(installDir, `sing-box-${version}-${generateId()}${archiveExt}`)
+      extractDir = path.join(installDir, `tmp-${generateId()}`)
       await fs.ensureDir(extractDir)
       await this.downloadToFile(downloadUrl, archivePath, (progress, downloadedBytes, totalBytes) => {
         this.emitStatus({
@@ -636,7 +637,7 @@ export class SingBoxInstaller {
         .map((e) => path.join(exeDir, e.name))
 
       for (const dll of dlls) {
-        const target = path.join(BIN_DIR, path.basename(dll))
+        const target = path.join(this.getInstallDir(), path.basename(dll))
         await fs.copyFile(dll, target)
       }
     }
@@ -667,9 +668,10 @@ export class SingBoxInstaller {
   }
 
   private async tryAdoptManualBinary(binPath: string): Promise<boolean> {
-    if (!await fs.pathExists(BIN_DIR)) return false
+    const installDir = this.getInstallDir()
+    if (!await fs.pathExists(installDir)) return false
     const exeName = process.platform === 'win32' ? 'sing-box.exe' : 'sing-box'
-    const manualPath = await this.findFileRecursive(BIN_DIR, exeName)
+    const manualPath = await this.findFileRecursive(installDir, exeName)
     if (!manualPath) return false
     if (path.resolve(manualPath) === path.resolve(binPath)) return true
 
@@ -683,7 +685,7 @@ export class SingBoxInstaller {
       for (const entry of entries) {
         if (!entry.isFile()) continue
         if (!entry.name.toLowerCase().endsWith('.dll')) continue
-        await fs.copyFile(path.join(manualDir, entry.name), path.join(BIN_DIR, entry.name)).catch(() => { })
+        await fs.copyFile(path.join(manualDir, entry.name), path.join(installDir, entry.name)).catch(() => { })
       }
     }
 
@@ -692,7 +694,7 @@ export class SingBoxInstaller {
   }
 
   private getInstallMetaPath() {
-    return path.join(BIN_DIR, 'sing-box-install-meta.json')
+    return path.join(this.getInstallDir(), 'sing-box-install-meta.json')
   }
 
   private async readInstallMeta(): Promise<InstallMeta | null> {

@@ -4,6 +4,8 @@ import path from 'node:path'
 import fs from 'fs-extra'
 import { spawn } from 'node:child_process'
 import pkg from '../../package.json'
+import { JsonStore } from '../common/store'
+import { configureRuntimePaths, getLaunchExecutablePath, getLegacyWindowsUserDataPaths } from '../common/runtime-paths'
 
 import { SingBoxService } from '../services/singbox'
 import { ProcessService } from '../services/process'
@@ -16,7 +18,33 @@ import { GameScannerService } from '../services/game-scanner'
 import { UpdaterService } from '../services/updater'
 import { SystemService } from '../services/system'
 import { setupLogger } from './logger'
-import { ensureAdminAtStartup, loadAppIcon, handleStartupError } from './bootstrap'
+import {
+  ensureAdminAtStartup,
+  loadAppIcon,
+  handleStartupError,
+  shouldEnsureAdminBeforeSingleInstanceCheck
+} from './bootstrap'
+import {
+  APP_DEEP_LINK_SCHEMES,
+  findAppDeepLink,
+  inspectAppDeepLink,
+  queueAppDeepLinkImport,
+  type AppDeepLinkImportPayload,
+  type AppDeepLinkParseFailureReason
+} from './deep-link'
+import {
+  buildProtocolClientGuardState,
+  DEFAULT_PROTOCOL_CLIENT_GUARD_SETTINGS,
+  ensureProtocolClient,
+  isProtocolClientGuardEnabled,
+  isProtocolClientRegistered,
+  normalizeProtocolClientGuardSettings,
+  registerProtocolClient,
+  type GuardedProtocolScheme,
+  type ProtocolClientGuardSettings,
+  type ProtocolClientGuardState,
+  type ProtocolClientRegistrationContext
+} from './protocol-client'
 import { WindowManager, VITE_DEV_SERVER_URL, MAIN_DIST, RENDERER_DIST } from './window'
 import { TrayManager } from './tray'
 
@@ -39,7 +67,8 @@ global.__dirname = __dirname
 /**
  * 应用根目录路径
  */
-process.env.APP_ROOT = path.join(__dirname, path.basename(__dirname) === 'main' ? '../..' : '..')
+const APP_ROOT = path.join(__dirname, path.basename(__dirname) === 'main' ? '../..' : '..')
+process.env.APP_ROOT = APP_ROOT
 
 /**
  * 应用程序 ID，用于 Windows 上的 AppUserModelId
@@ -52,22 +81,85 @@ if (process.platform === 'win32') {
 }
 app.setName(pkg.productName)
 
-process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
+process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(APP_ROOT, 'public') : RENDERER_DIST
 
-// 设置开发环境下的 userData 目录，避免污染生产环境数据
-if (VITE_DEV_SERVER_URL) {
-  app.setPath('userData', path.join(process.env.APP_ROOT, '.' + pkg.name + '-dev'))
+const runtimePaths = configureRuntimePaths(APP_ROOT)
+
+const launchDeepLink = findAppDeepLink(process.argv)
+const shouldPreflightAdminForDeepLink = shouldEnsureAdminBeforeSingleInstanceCheck({
+  hasDeepLink: !!launchDeepLink
+})
+
+// Deep-link secondary launches need to elevate before the single-instance check,
+// otherwise a non-elevated protocol launch can be dropped while the elevated
+// primary instance is already running.
+if (shouldPreflightAdminForDeepLink) {
+  ensureAdminAtStartup()
 }
 
 // 禁止多开，避免多个实例同时占用端口
 const hasSingleInstanceLock = app.requestSingleInstanceLock()
 if (!hasSingleInstanceLock) {
+  if (launchDeepLink) {
+    console.info('[Main] Secondary deep-link launch detected, handing off to the primary instance.')
+  }
   app.quit()
   process.exit(0)
 }
 
-// 确保以管理员权限启动
-ensureAdminAtStartup()
+// 常规启动仍沿用原有的提权时机，避免普通二开误触发额外 UAC。
+if (!shouldPreflightAdminForDeepLink) {
+  ensureAdminAtStartup()
+}
+
+/**
+ * 判断目录是否包含有效内容。
+ * 仅用于启动早期的一次性迁移判断，使用同步调用避免打乱初始化顺序。
+ */
+function hasDirectoryContentsSync(targetDir: string) {
+  try {
+    return fs.pathExistsSync(targetDir) && fs.readdirSync(targetDir).length > 0
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 将旧版 AppData\Roaming 下的数据迁移到 exe 同目录 data。
+ */
+function migrateLegacyUserDataIfNeeded() {
+  if (!runtimePaths.usesExecutableDataDir) return
+
+  const targetDir = runtimePaths.userDataPath
+  const normalizedTarget = path.resolve(targetDir)
+  if (hasDirectoryContentsSync(targetDir)) return
+
+  for (const legacyDir of getLegacyWindowsUserDataPaths()) {
+    const normalizedLegacy = path.resolve(legacyDir)
+    if (normalizedLegacy === normalizedTarget) continue
+    if (!hasDirectoryContentsSync(legacyDir)) continue
+
+    try {
+      fs.ensureDirSync(targetDir)
+      fs.copySync(legacyDir, targetDir, {
+        overwrite: false,
+        errorOnExist: false
+      })
+      console.info(`[Main] 已迁移旧用户数据目录: ${legacyDir} -> ${targetDir}`)
+    } catch (e) {
+      console.warn(`[Main] 迁移旧用户数据目录失败: ${legacyDir} -> ${targetDir}`, e)
+    }
+    return
+  }
+}
+
+migrateLegacyUserDataIfNeeded()
+
+const protocolClientSettingsStore = new JsonStore<ProtocolClientGuardSettings>({
+  name: 'protocol-client-settings',
+  cwd: runtimePaths.userDataPath,
+  defaults: DEFAULT_PROTOCOL_CLIENT_GUARD_SETTINGS
+})
 
 /**
  * 窗口管理器实例
@@ -106,6 +198,13 @@ let quittingForRestart = false
  */
 let latestTrayState: Record<string, unknown> | null = null
 let latestTrayStateVersion = 0
+const pendingDeepLinkImports: AppDeepLinkImportPayload[] = []
+let deepLinkRendererReady = false
+type DeepLinkDispatchStatus = 'dispatched' | 'renderer-not-ready' | 'window-missing' | 'send-failed'
+const GUARDED_PROTOCOL_SCHEMES: GuardedProtocolScheme[] = ['clash', 'mihomo']
+const PROTOCOL_CLIENT_GUARD_INTERVAL_MS = 15000
+let protocolClientGuardTimer: NodeJS.Timeout | null = null
+let protocolClientGuardRunning = false
 
 /**
  * 开启 Chromium 底层日志落盘
@@ -146,8 +245,256 @@ function setupCrashReporter() {
   }
 }
 
+function registerAppProtocolClient() {
+  try {
+    const context = getProtocolClientRegistrationContext()
+    for (const scheme of APP_DEEP_LINK_SCHEMES) {
+      if (isGuardedProtocolScheme(scheme) && !isGuardedProtocolSchemeEnabled(scheme)) {
+        continue
+      }
+      registerProtocolClient(app, scheme, context)
+    }
+  } catch (e) {
+    console.warn('[Main] 注册自定义协议失败:', e)
+  }
+}
+
+function getProtocolClientRegistrationContext(): ProtocolClientRegistrationContext {
+  return {
+    execPath: process.execPath,
+    argv: process.argv,
+    defaultApp: !!process.defaultApp
+  }
+}
+
+function isGuardedProtocolScheme(scheme: string): scheme is GuardedProtocolScheme {
+  return GUARDED_PROTOCOL_SCHEMES.includes(scheme as GuardedProtocolScheme)
+}
+
+function getProtocolClientGuardSettings(): ProtocolClientGuardSettings {
+  const normalized = normalizeProtocolClientGuardSettings(protocolClientSettingsStore.get())
+  const current = protocolClientSettingsStore.get()
+  if (
+    current.guardClashScheme !== normalized.guardClashScheme
+    || current.guardMihomoScheme !== normalized.guardMihomoScheme
+  ) {
+    protocolClientSettingsStore.set(normalized)
+  }
+  return normalized
+}
+
+function isGuardedProtocolSchemeEnabled(scheme: GuardedProtocolScheme): boolean {
+  return isProtocolClientGuardEnabled(getProtocolClientGuardSettings(), scheme)
+}
+
+function getEnabledGuardedProtocolSchemes(): GuardedProtocolScheme[] {
+  return GUARDED_PROTOCOL_SCHEMES.filter(isGuardedProtocolSchemeEnabled)
+}
+
+function getProtocolClientGuardState(scheme: GuardedProtocolScheme): ProtocolClientGuardState {
+  const supported = process.platform === 'win32'
+  const enabled = isGuardedProtocolSchemeEnabled(scheme)
+  const isRegisteredToApp = supported
+    ? isProtocolClientRegistered(app, scheme, getProtocolClientRegistrationContext())
+    : false
+
+  return buildProtocolClientGuardState({
+    scheme,
+    enabled,
+    supported,
+    isRegisteredToApp
+  })
+}
+
+function setGuardedProtocolSchemeEnabled(scheme: GuardedProtocolScheme, enabled: boolean): ProtocolClientGuardState {
+  const currentSettings = getProtocolClientGuardSettings()
+  const nextSettings = normalizeProtocolClientGuardSettings({
+    ...currentSettings,
+    ...(scheme === 'clash' ? { guardClashScheme: !!enabled } : {}),
+    ...(scheme === 'mihomo' ? { guardMihomoScheme: !!enabled } : {})
+  })
+  protocolClientSettingsStore.set(nextSettings)
+
+  if (!getEnabledGuardedProtocolSchemes().length) {
+    stopProtocolClientGuard()
+    return getProtocolClientGuardState(scheme)
+  }
+
+  registerAppProtocolClient()
+  ensureGuardedProtocolClients('startup')
+  startProtocolClientGuard()
+  return getProtocolClientGuardState(scheme)
+}
+
+function ensureGuardedProtocolClients(reason: 'startup' | 'activate' | 'periodic') {
+  if (process.platform !== 'win32') return
+  if (protocolClientGuardRunning) return
+
+  const schemes = getEnabledGuardedProtocolSchemes()
+  if (!schemes.length) return
+
+  protocolClientGuardRunning = true
+  try {
+    const context = getProtocolClientRegistrationContext()
+    for (const scheme of schemes) {
+      const status = ensureProtocolClient(app, scheme, context)
+      if (status === 'registered') {
+        console.info(`[Main] 已重新接管 ${scheme}:// 协议 (${reason})`)
+      } else if (status === 'failed') {
+        console.warn(`[Main] ${scheme}:// 协议检测到被占用，但重新注册失败 (${reason})`)
+      }
+    }
+  } catch (e) {
+    console.warn('[Main] 协议守护检查失败:', e)
+  } finally {
+    protocolClientGuardRunning = false
+  }
+}
+
+function startProtocolClientGuard() {
+  if (process.platform !== 'win32') return
+  if (!getEnabledGuardedProtocolSchemes().length) return
+  if (protocolClientGuardTimer) return
+
+  ensureGuardedProtocolClients('startup')
+  protocolClientGuardTimer = setInterval(() => {
+    ensureGuardedProtocolClients('periodic')
+  }, PROTOCOL_CLIENT_GUARD_INTERVAL_MS)
+  protocolClientGuardTimer.unref?.()
+}
+
+function stopProtocolClientGuard() {
+  if (!protocolClientGuardTimer) return
+  clearInterval(protocolClientGuardTimer)
+  protocolClientGuardTimer = null
+}
+
+function queueDeepLinkImport(rawUrl: string | null | undefined) {
+  const inspected = inspectAppDeepLink(String(rawUrl || '').trim())
+  if (!inspected.ok) {
+    return inspected
+  }
+
+  const pendingCountBefore = pendingDeepLinkImports.length
+  const dispatchStatus = dispatchDeepLinkImport(inspected.payload)
+  if (dispatchStatus !== 'dispatched') {
+    pendingDeepLinkImports.push(inspected.payload)
+  }
+  return {
+    ok: true as const,
+    payload: inspected.payload,
+    queueReason: dispatchStatus === 'dispatched' ? null : dispatchStatus,
+    queued: pendingDeepLinkImports.length > pendingCountBefore
+  }
+}
+
+function dispatchDeepLinkImport(payload: AppDeepLinkImportPayload): DeepLinkDispatchStatus {
+  const win = windowManager.get()
+  if (!win || win.isDestroyed()) {
+    return 'window-missing'
+  }
+  if (!deepLinkRendererReady) {
+    return 'renderer-not-ready'
+  }
+
+  try {
+    win.webContents.send('app:deep-link-import', payload)
+    return 'dispatched'
+  } catch {
+    return 'send-failed'
+  }
+}
+
+function summarizeSubscriptionUrlForLog(value: string): string {
+  const normalized = String(value || '').trim()
+  if (!normalized) return '(empty)'
+  try {
+    const url = new URL(normalized)
+    return `${url.origin}${url.pathname}`
+  } catch {
+    return normalized.slice(0, 160)
+  }
+}
+
+function summarizeDeepLinkForLog(value: string): string {
+  const normalized = String(value || '').trim()
+  if (!normalized) return '(empty)'
+  try {
+    const url = new URL(normalized)
+    const action = url.hostname.trim() || url.pathname.replace(/^\/+/, '').trim() || '(empty)'
+    const target = String(
+      url.searchParams.get('url')
+      || url.searchParams.get('subscription')
+      || url.searchParams.get('config')
+      || ''
+    ).trim()
+    const targetSummary = target ? summarizeSubscriptionUrlForLog(target) : 'missing-subscription-url'
+    return `${url.protocol}//${action} -> ${targetSummary}`
+  } catch {
+    return normalized.slice(0, 160)
+  }
+}
+
+function describeDeepLinkParseFailure(reason: AppDeepLinkParseFailureReason): string {
+  switch (reason) {
+    case 'unsupported-action':
+      return '外部导入链接动作不受支持，仅支持 import、install-config、subscribe、subscription。'
+    case 'missing-subscription-url':
+      return '外部导入链接里没有找到订阅地址参数（url / subscription / config）。'
+    case 'invalid-subscription-url':
+      return '外部导入链接里的订阅地址无效，必须是 http:// 或 https://。'
+    case 'not-app-deep-link':
+      return '这不是 LagZero 支持的外部导入协议链接。'
+    case 'invalid-url':
+    default:
+      return '外部导入链接格式无效，客户端无法解析。'
+  }
+}
+
+function reportDeepLinkImportParseFailure(rawUrl: string, reason: AppDeepLinkParseFailureReason) {
+  const summary = summarizeDeepLinkForLog(rawUrl)
+  const detail = describeDeepLinkParseFailure(reason)
+  console.warn(`[Main] 外部导入协议解析失败 (${reason}): ${detail} | ${summary}`)
+  dialog.showErrorBox(`${pkg.productName} 外部导入失败`, `${detail}\n\n${summary}`)
+}
+
+function handleIncomingDeepLink(rawUrl: string | null | undefined, options?: { showWindow?: boolean }) {
+  const normalizedRawUrl = String(rawUrl || '').trim()
+  if (!normalizedRawUrl) {
+    return false
+  }
+
+  if (normalizedRawUrl) {
+    console.info(`[Main] 收到外部导入协议: ${summarizeDeepLinkForLog(normalizedRawUrl)}`)
+  }
+
+  const queued = queueDeepLinkImport(normalizedRawUrl)
+  if (!queued.ok) {
+    reportDeepLinkImportParseFailure(queued.rawUrl, queued.reason)
+    return false
+  }
+
+  if (!queued.queued) {
+    console.info(`[Main] 外部导入已发送到渲染进程: ${summarizeDeepLinkForLog(queued.payload.rawUrl)}`)
+  } else {
+    const reasonLabel = queued.queueReason === 'window-missing'
+      ? '主窗口不存在'
+      : queued.queueReason === 'send-failed'
+        ? '发送到渲染进程失败'
+        : '渲染进程尚未声明就绪'
+    console.info(
+      `[Main] 外部导入已进入待处理队列 | 原因=${reasonLabel} | 当前排队=${pendingDeepLinkImports.length} | ${summarizeDeepLinkForLog(queued.payload.rawUrl)}`
+    )
+  }
+  if (options?.showWindow !== false) {
+    windowManager.show()
+  }
+  return true
+}
+
 configureChromiumLogging()
 setupCrashReporter()
+registerAppProtocolClient()
 
 // 初始化日志系统
 setupLogger(() => windowManager.get())
@@ -225,18 +572,15 @@ function getResetMarkerPath(): string {
 
 /**
  * 解析重置时需要清理的数据目录
- * - 当前 userData 目录 开发目录.lagzero-dev
- * - 当前 appDate 目录  C:\Users\user\AppData\Roaming\lagZero
- * - Windows Roaming(appData) 下的 LagZero 目录（开发模式也会清理）
+ * - 当前 userData 目录（Windows 打包版为 exe 同目录 data）
+ * - 旧版 Windows Roaming(appData) 下的 LagZero 目录（迁移/重置兼容）
  */
 function resolveResetTargetDirectories(): string[] {
   const appData = app.getPath('appData')
   const userData = app.getPath('userData')
   const candidates = [
     userData,
-    path.join(appData, app.getName()),
-    path.join(appData, pkg.productName || ''),
-    path.join(appData, pkg.name || '')
+    ...getLegacyWindowsUserDataPaths()
   ].filter(Boolean)
 
   const seen = new Set<string>()
@@ -311,10 +655,7 @@ async function applyPendingResetIfNeeded() {
  * @returns 可执行文件路径
  */
 function getRelaunchExecPath(): string {
-  if (process.platform === 'win32') {
-    return process.env.PORTABLE_EXECUTABLE_FILE || process.execPath
-  }
-  return process.execPath
+  return getLaunchExecutablePath()
 }
 
 /**
@@ -384,13 +725,13 @@ function initServices(win: BrowserWindow) {
   ipcMain.handle('db:import', (_, data) => dbService?.importData(data))
 
   // 注册扫描服务 IPC
-  ipcMain.handle('system:scan-local-games', async (event) => {
+  ipcMain.handle('system:scan-local-games', async (event, sources?: string[]) => {
     const startedAt = Date.now()
     let lastScanDirProgressAt = 0
     let lastScanDir = ''
     console.info('[GameScan] 收到扫描请求')
     try {
-      const result = await gameScannerService?.scanLocalGamesFromPlatforms((status, details) => {
+      const result = await gameScannerService?.scanLocalGamesFromPlatforms(sources, (status, details) => {
         if (event.sender.isDestroyed()) return
 
         if (status === 'scanning_dir') {
@@ -426,6 +767,34 @@ function initServices(win: BrowserWindow) {
   // 注册更新服务 IPC
   ipcMain.handle('app:get-version', () => app.getVersion())
   ipcMain.handle('app:check-update', () => updaterService?.checkUpdate())
+  ipcMain.handle('app:get-protocol-guard-state', (_, scheme: GuardedProtocolScheme) => {
+    if (!isGuardedProtocolScheme(scheme)) {
+      throw new Error(`unsupported protocol guard scheme: ${String(scheme)}`)
+    }
+    return getProtocolClientGuardState(scheme)
+  })
+  ipcMain.handle('app:set-protocol-guard-enabled', (_, scheme: GuardedProtocolScheme, enabled: boolean) => {
+    if (!isGuardedProtocolScheme(scheme)) {
+      throw new Error(`unsupported protocol guard scheme: ${String(scheme)}`)
+    }
+    return setGuardedProtocolSchemeEnabled(scheme, !!enabled)
+  })
+  ipcMain.handle('app:consume-pending-deep-link-imports', () => {
+    const queued = [...pendingDeepLinkImports]
+    pendingDeepLinkImports.length = 0
+    if (queued.length > 0) {
+      console.info(`[Main] 渲染进程已就绪，开始处理 ${queued.length} 条等待中的外部导入请求`)
+    }
+    return queued
+  })
+  ipcMain.on('app:deep-link-renderer-ready', () => {
+    deepLinkRendererReady = true
+    console.info('[Main] 渲染进程已声明可接收外部导入事件')
+  })
+  ipcMain.on('app:deep-link-renderer-not-ready', () => {
+    deepLinkRendererReady = false
+    console.info('[Main] 渲染进程已声明暂不可接收外部导入事件')
+  })
   ipcMain.handle('app:open-url', (_, url: string) => {
     shell.openExternal(url)
   })
@@ -552,6 +921,18 @@ function initServices(win: BrowserWindow) {
 function startApp() {
   const appIcon = loadAppIcon()
   const win = windowManager.create(appIcon)
+  deepLinkRendererReady = false
+  // Deep-link readiness is driven by explicit renderer IPC rather than generic page loading events,
+  // otherwise later resource loads can incorrectly push imports back into the pending queue.
+  win.webContents.on('did-start-loading', () => {
+    console.info('[Main] 渲染进程开始加载页面')
+  })
+  win.webContents.on('did-finish-load', () => {
+    console.info('[Main] 渲染进程 did-finish-load')
+  })
+  win.webContents.on('did-fail-load', (_event, code, description) => {
+    console.warn(`[Main] 渲染进程 did-fail-load | code=${code} | description=${description}`)
+  })
 
   // 重新创建托盘以绑定正确的窗口引用
   trayManager.destroy()
@@ -566,8 +947,16 @@ function startApp() {
 }
 
 // 第二个实例启动时，唤起并聚焦已运行实例
-app.on('second-instance', () => {
-  windowManager.show()
+app.on('second-instance', (_event, argv) => {
+  const handled = handleIncomingDeepLink(findAppDeepLink(argv), { showWindow: true })
+  if (!handled) {
+    windowManager.show()
+  }
+})
+
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  handleIncomingDeepLink(url, { showWindow: true })
 })
 
 // 监听所有窗口关闭事件
@@ -579,6 +968,7 @@ app.on('window-all-closed', () => {
 
 // 监听应用激活事件
 app.on('activate', () => {
+  ensureGuardedProtocolClients('activate')
   if (BrowserWindow.getAllWindows().length === 0) {
     startApp()
   } else {
@@ -591,7 +981,9 @@ app.whenReady()
   .then(async () => {
     await applyPendingResetIfNeeded()
     setupRendererCsp()
+    startProtocolClientGuard()
     startApp()
+    handleIncomingDeepLink(findAppDeepLink(process.argv), { showWindow: false })
   })
   .catch((error) => {
     handleStartupError(error)
@@ -616,6 +1008,7 @@ app.on('child-process-gone', (_event, details) => {
 
 // 应用退出前清理
 app.on('before-quit', (event) => {
+  stopProtocolClientGuard()
   if (quittingForRestart) {
     trayManager.destroy()
     return
@@ -636,5 +1029,3 @@ app.on('before-quit', (event) => {
       app.exit(0)
     })
 })
-
-

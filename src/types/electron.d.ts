@@ -1,4 +1,4 @@
-import type { Game, Category, NodeConfig, Platform } from './index'
+import type { Game, Category, NodeConfig, GameScanSource, Platform } from './index'
 
 export interface ElectronAPI {
   getWindowCloseAction: () => Promise<'ask' | 'minimize' | 'quit'>
@@ -46,7 +46,7 @@ export interface SingboxAPI {
 
 export interface SystemAPI {
   scanProcesses: () => Promise<string[]>
-  scanLocalGames: () => Promise<Array<{
+  scanLocalGames: (sources?: GameScanSource[]) => Promise<Array<{
     name: string
     processName: string[]
     source: Platform
@@ -96,6 +96,7 @@ export interface GamesAPI {
   getAll: () => Promise<Game[]>
   save: (game: Game) => Promise<Game[]>
   delete: (id: string) => Promise<Game[]>
+  deleteMany: (ids: string[]) => Promise<Game[]>
 }
 
 export interface CategoriesAPI {
@@ -114,6 +115,32 @@ export interface AppAPI {
     releaseDate?: string
     error?: string
   }>
+  getProtocolGuardState: (scheme: 'clash' | 'mihomo') => Promise<{
+    scheme: 'clash' | 'mihomo'
+    enabled: boolean
+    supported: boolean
+    status: 'owned' | 'external' | 'unsupported'
+    isRegisteredToApp: boolean
+    checkedAt: number
+  }>
+  setProtocolGuardEnabled: (scheme: 'clash' | 'mihomo', enabled: boolean) => Promise<{
+    scheme: 'clash' | 'mihomo'
+    enabled: boolean
+    supported: boolean
+    status: 'owned' | 'external' | 'unsupported'
+    isRegisteredToApp: boolean
+    checkedAt: number
+  }>
+  consumePendingDeepLinkImports: () => Promise<Array<{
+    action: 'import-subscription'
+    rawUrl: string
+    subscriptionUrl: string
+    name?: string
+    schedule: 'manual' | 'startup' | 'daily' | 'monthly'
+    immediate: boolean
+  }>>
+  setDeepLinkRendererReady: () => void
+  setDeepLinkRendererNotReady: () => void
   openUrl: (url: string) => Promise<void>
   openDir: (dir: string) => Promise<void>
   restart: () => Promise<boolean>

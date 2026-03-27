@@ -14,6 +14,12 @@ function isPortableRuntime(): boolean {
   return Boolean(process.env.PORTABLE_EXECUTABLE_DIR || process.env.PORTABLE_EXECUTABLE_FILE)
 }
 
+type AdminPreflightOptions = {
+  platform?: NodeJS.Platform
+  portableRuntime?: boolean
+  hasDeepLink?: boolean
+}
+
 /**
  * 格式化 PowerShell 参数字符串
  * @param input 输入字符串
@@ -83,6 +89,16 @@ export function ensureAdminAtStartup() {
   }
 
   console.warn('[Main] 无法以管理员身份重启，将继续以普通权限运行。')
+}
+
+export function shouldEnsureAdminBeforeSingleInstanceCheck(options?: AdminPreflightOptions) {
+  const platform = options?.platform ?? process.platform
+  if (platform !== 'win32') return false
+
+  const portableRuntime = options?.portableRuntime ?? isPortableRuntime()
+  if (portableRuntime) return false
+
+  return !!options?.hasDeepLink
 }
 
 export function loadAppIcon(): NativeImage | null {

@@ -3,6 +3,11 @@ import type { LogEntry } from '@/types/electron'
 export const appApi = {
   getVersion: (): Promise<string> => window.app.getVersion(),
   checkUpdate: () => window.app.checkUpdate(),
+  getProtocolGuardState: (scheme: 'clash' | 'mihomo') => window.app.getProtocolGuardState(scheme),
+  setProtocolGuardEnabled: (scheme: 'clash' | 'mihomo', enabled: boolean) => window.app.setProtocolGuardEnabled(scheme, enabled),
+  consumePendingDeepLinkImports: () => window.app.consumePendingDeepLinkImports(),
+  setDeepLinkRendererReady: () => window.app.setDeepLinkRendererReady(),
+  setDeepLinkRendererNotReady: () => window.app.setDeepLinkRendererNotReady(),
   openUrl: (url: string) => window.app.openUrl(url),
   openDir: (dir: string) => window.app.openDir(dir),
   restart: () => window.app.restart(),

@@ -49,6 +49,8 @@ export const useSettingsStore = defineStore('settings', () => {
     const theme = useLocalStorage<Theme>('settings-theme', 'auto') // 主题 默认auto
     const themeColor = useLocalStorage<ThemeColor>('settings-theme-color', 'green') // 主题色 默认green
     const windowCloseAction = useLocalStorage<WindowCloseAction>('settings-window-close-action', 'ask') // 关闭按钮行为
+    const clashProtocolGuardEnabled = useLocalStorage('settings-clash-protocol-guard-enabled', true) // clash:// 协议守护
+    const mihomoProtocolGuardEnabled = useLocalStorage('settings-mihomo-protocol-guard-enabled', true) // mihomo:// 协议守护
 
     // Network & Proxy
     const checkInterval = useLocalStorage('settings-check-interval', 3000) // 检测间隔 默认5000ms
@@ -94,6 +96,8 @@ export const useSettingsStore = defineStore('settings', () => {
         theme,
         themeColor,
         windowCloseAction,
+        clashProtocolGuardEnabled,
+        mihomoProtocolGuardEnabled,
         checkInterval,
         checkMethod,
         checkUrl,

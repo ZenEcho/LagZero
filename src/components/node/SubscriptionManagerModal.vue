@@ -26,7 +26,7 @@
               <div class="text-xs text-on-surface-muted truncate">{{ sub.url }}</div>
             </template>
             <div v-if="editingId !== sub.id" class="text-[11px] text-on-surface-muted">
-              {{ $t('nodes.subscription_last_fetch') }}: {{ formatLastFetched(sub.lastFetchedAt) }}
+              {{ formatSchedule(sub.schedule) }} · {{ $t('nodes.subscription_last_fetch') }}: {{ formatLastFetched(sub.lastFetchedAt) }}
             </div>
           </div>
           <div class="flex items-center gap-2">
@@ -84,6 +84,7 @@ const editDraft = ref<{
 })
 
 const subscriptionScheduleOptions = computed(() => [
+  { label: i18n.global.t('nodes.subscription_schedule_manual'), value: 'manual' },
   { label: i18n.global.t('nodes.subscription_schedule_startup'), value: 'startup' },
   { label: i18n.global.t('nodes.subscription_schedule_daily'), value: 'daily' },
   { label: i18n.global.t('nodes.subscription_schedule_monthly'), value: 'monthly' }
@@ -92,6 +93,20 @@ const subscriptionScheduleOptions = computed(() => [
 function formatLastFetched(ts?: number) {
   if (!ts) return i18n.global.t('nodes.subscription_never')
   return new Date(ts).toLocaleString()
+}
+
+function formatSchedule(schedule: NodeSubscriptionSchedule) {
+  switch (schedule) {
+    case 'manual':
+      return i18n.global.t('nodes.subscription_schedule_manual')
+    case 'startup':
+      return i18n.global.t('nodes.subscription_schedule_startup')
+    case 'monthly':
+      return i18n.global.t('nodes.subscription_schedule_monthly')
+    case 'daily':
+    default:
+      return i18n.global.t('nodes.subscription_schedule_daily')
+  }
 }
 
 function handleAddSubscription() {
@@ -121,6 +136,61 @@ async function refreshSubscription(id: string) {
   }
 }
 
+function setDeleteDialogPending(
+  deleteDialog: ReturnType<typeof dialog.warning>,
+  pending: boolean,
+  action: 'positive' | 'negative' | null = null
+) {
+  deleteDialog.loading = pending && action === 'positive'
+  deleteDialog.closable = !pending
+  deleteDialog.maskClosable = !pending
+  deleteDialog.closeOnEsc = !pending
+  deleteDialog.positiveButtonProps = {
+    ...(deleteDialog.positiveButtonProps || {}),
+    disabled: pending,
+    loading: pending && action === 'positive'
+  }
+  deleteDialog.negativeButtonProps = {
+    ...(deleteDialog.negativeButtonProps || {}),
+    disabled: pending,
+    loading: pending && action === 'negative'
+  }
+}
+
+async function executeSubscriptionRemoval(
+  id: string,
+  deleteNodes: boolean,
+  deleteDialog: ReturnType<typeof dialog.warning>,
+  state: { pending: boolean },
+  action: 'positive' | 'negative'
+) {
+  if (state.pending) return false
+
+  state.pending = true
+  setDeleteDialogPending(deleteDialog, true, action)
+
+  try {
+    const removed = await nodeStore.removeSubscription(id, { deleteNodes })
+    if (removed) {
+      message.success(i18n.global.t('common.deleted'))
+      deleteDialog.destroy()
+      return false
+    }
+
+    const stillExists = nodeStore.subscriptions.some((row) => row.id === id)
+    if (!stillExists) {
+      deleteDialog.destroy()
+    }
+  } catch (e) {
+    console.error('删除订阅失败:', e)
+  } finally {
+    state.pending = false
+    setDeleteDialogPending(deleteDialog, false)
+  }
+
+  return false
+}
+
 function removeSubscription(id: string) {
   const sub = nodeStore.subscriptions.find((row) => row.id === id)
   const name = String(sub?.name || '').trim()
@@ -128,18 +198,20 @@ function removeSubscription(id: string) {
     ? nodeStore.nodes.filter((node) => nodeStore.getNodeSubscriptionGroup(node) === name).length
     : 0
 
-  dialog.warning({
+  const state = { pending: false }
+  let deleteDialog: ReturnType<typeof dialog.warning> | null = null
+  deleteDialog = dialog.warning({
     title: i18n.global.t('common.delete'),
     content: i18n.global.t('nodes.subscription_delete_confirm', { name }),
     positiveText: i18n.global.t('nodes.subscription_delete_with_nodes', { count }),
     negativeText: i18n.global.t('nodes.subscription_delete_only'),
     onPositiveClick: async () => {
-      await nodeStore.removeSubscription(id, { deleteNodes: true })
-      message.success(i18n.global.t('common.deleted'))
+      if (!deleteDialog) return false
+      return executeSubscriptionRemoval(id, true, deleteDialog, state, 'positive')
     },
     onNegativeClick: async () => {
-      await nodeStore.removeSubscription(id, { deleteNodes: false })
-      message.success(i18n.global.t('common.deleted'))
+      if (!deleteDialog) return false
+      return executeSubscriptionRemoval(id, false, deleteDialog, state, 'negative')
     }
   })
 }

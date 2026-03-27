@@ -15,16 +15,32 @@ export interface NodesTable {
   server: string
   /** 服务器端口 */
   server_port: number
+  /** 服务器端口范围列表 */
+  server_ports: string | null
+  /** 端口跳跃间隔 */
+  hop_interval: string | null
   /** UUID (vmess/vless 等使用) */
   uuid: string | null
   /** 密码 (shadowsocks/trojan 等使用) */
   password: string | null
+  /** Hysteria 认证字符串 */
+  auth: string | null
   /** 加密方式 */
   method: string | null
   /** 插件名称 */
   plugin: string | null
   /** 插件参数 */
   plugin_opts: string | null
+  /** Hysteria/Hysteria2 混淆类型或密码 */
+  obfs: string | null
+  /** Hysteria2 混淆密码 */
+  obfs_password: string | null
+  /** 上行带宽限制 */
+  up_mbps: number | null
+  /** 下行带宽限制 */
+  down_mbps: number | null
+  /** 协议版本 */
+  version: number | null
   /** 传输协议网络类型 (tcp/ws/grpc 等) */
   network: string | null
   /** 安全类型 (tls/xtls 等) */
@@ -47,6 +63,22 @@ export interface NodesTable {
   packet_encoding: string | null
   /** 用户名 */
   username: string | null
+  /** TUIC 拥塞控制算法 */
+  congestion_control: string | null
+  /** TUIC UDP 中继模式 */
+  udp_relay_mode: string | null
+  /** TUIC UDP over stream */
+  udp_over_stream: number | null
+  /** TUIC 0-RTT 握手 */
+  zero_rtt_handshake: number | null
+  /** TUIC 心跳间隔 */
+  heartbeat: string | null
+  /** AnyTLS 空闲会话检查间隔 */
+  idle_session_check_interval: string | null
+  /** AnyTLS 空闲会话超时 */
+  idle_session_timeout: string | null
+  /** AnyTLS 最小空闲会话数 */
+  min_idle_session: number | null
   /** 创建时间 */
   created_at: Generated<string>
   /** 更新时间 */

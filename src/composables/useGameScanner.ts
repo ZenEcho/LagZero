@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { categoryApi, systemApi } from '@/api'
 import { useGameStore } from '@/stores/games'
 import { useCategoryStore } from '@/stores/categories'
-import type { Category, Game, LocalScanGame } from '@/types'
+import type { Category, Game, GameScanSource, LocalScanGame } from '@/types'
 
 // 将 isScanning 和 scanProgressText 提升到模块级别
 const isScanning = ref(false)
@@ -62,11 +62,18 @@ export function useGameScanner() {
    * 执行扫描任务
    * 包括：扫描本地游戏库、自动添加新游戏、扫描运行进程、匹配运行状态
    */
-  async function scanGames() {
+  async function scanGames(sources?: GameScanSource[]) {
     if (isScanning.value) {
       message.warning(t('games.scan_in_progress') || '正在扫描中，请稍后再试')
       return
     }
+
+    const normalizedSources = Array.from(new Set(
+      (Array.isArray(sources) ? sources : [])
+        .map(source => String(source || '').trim())
+        .filter(Boolean)
+    )) as GameScanSource[]
+
     isScanning.value = true
     scanProgressText.value = t('games.scanning_local') || '正在扫描本地游戏，请耐心等待...'
 
@@ -84,7 +91,9 @@ export function useGameScanner() {
 
     try {
       systemApi.onScanProgress(handleProgress)
-      const localGames = await systemApi.scanLocalGames()
+      const localGames = normalizedSources.length > 0
+        ? await systemApi.scanLocalGames(normalizedSources)
+        : await systemApi.scanLocalGames()
       const added = await autoAddGamesFromLibraryScan(localGames)
       const processes = await systemApi.scanProcesses()
       const matched = gameStore.matchRunningGames(processes)

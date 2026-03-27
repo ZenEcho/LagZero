@@ -12,7 +12,7 @@
 
 import type { Game, DnsConfigOptions, SingboxConfig, SessionNetworkTuningOptions, VlessPacketEncodingOverride } from '@/types'
 import type { NodeConfig } from '@/types'
-import { normalizeProcessNames } from '@shared/utils'
+import { normalizeNodeType, normalizeProcessNames } from '@shared/utils'
 import pkg from '../../package.json'
 import {
   DEFAULT_DNS_PRIMARY,
@@ -422,7 +422,8 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
 
 /**
  * 将通用的 NodeConfig 转换为 Sing-box 的 Outbound 结构
- * 支持 Shadowsocks, VMess, VLESS, Trojan, Socks, HTTP 等协议
+ * 支持 Shadowsocks, VMess, VLESS, Trojan, Socks, HTTP,
+ * Hysteria, Hysteria2, TUIC, AnyTLS, ShadowTLS 等协议
  * 
  * @param node 原始节点配置对象
  * @param tag Outbound 的标签，默认为 'node-out'
@@ -437,12 +438,12 @@ function convertNodeToOutbound(
   const base = {
     tag,
     server: node.server,
-    server_port: node.server_port
+    ...(buildServerEndpoint(node))
   }
   const transport = buildTransport(node)
   const tls = buildTls(node)
 
-  switch (node.type) {
+  switch (normalizeNodeType(node.type)) {
     case 'ss':
     case 'shadowsocks':
       return {
@@ -501,6 +502,67 @@ function convertNodeToOutbound(
         username: node.username || undefined,
         password: node.password || undefined,
         tls
+      }
+    case 'hysteria':
+      return {
+        ...base,
+        type: 'hysteria',
+        up_mbps: node.up_mbps,
+        down_mbps: node.down_mbps,
+        obfs: node.obfs || undefined,
+        auth_str: node.auth || undefined,
+        network: normalizeEnabledNetwork(node.network),
+        hop_interval: node.hop_interval || undefined,
+        tls: ensureRequiredTls(node, tls)
+      }
+    case 'hysteria2':
+      return {
+        ...base,
+        type: 'hysteria2',
+        up_mbps: node.up_mbps,
+        down_mbps: node.down_mbps,
+        obfs: node.obfs
+          ? {
+            type: node.obfs,
+            password: node.obfs_password || ''
+          }
+          : undefined,
+        password: node.password,
+        network: normalizeEnabledNetwork(node.network),
+        hop_interval: node.hop_interval || undefined,
+        tls: ensureRequiredTls(node, tls)
+      }
+    case 'tuic':
+      return {
+        ...base,
+        type: 'tuic',
+        uuid: node.uuid,
+        password: node.password,
+        congestion_control: node.congestion_control || undefined,
+        udp_relay_mode: node.udp_relay_mode || undefined,
+        udp_over_stream: node.udp_over_stream,
+        zero_rtt_handshake: node.zero_rtt_handshake,
+        heartbeat: node.heartbeat || undefined,
+        network: normalizeEnabledNetwork(node.network),
+        tls: ensureRequiredTls(node, tls)
+      }
+    case 'anytls':
+      return {
+        ...base,
+        type: 'anytls',
+        password: node.password,
+        idle_session_check_interval: node.idle_session_check_interval || undefined,
+        idle_session_timeout: node.idle_session_timeout || undefined,
+        min_idle_session: node.min_idle_session,
+        tls: ensureRequiredTls(node, tls)
+      }
+    case 'shadowtls':
+      return {
+        ...base,
+        type: 'shadowtls',
+        version: node.version || 3,
+        password: node.password || undefined,
+        tls: ensureRequiredTls(node, tls)
       }
     default:
       // 默认回退到 socks
@@ -568,6 +630,7 @@ function buildTls(node: NodeConfig): any {
   const tls: any = {
     enabled: true,
     server_name: resolveTlsServerName(node),
+    disable_sni: !!node.tls.disable_sni || undefined,
     insecure: !!node.tls.insecure,
     alpn: alpn.length > 0 ? alpn : undefined,
     utls: fingerprint ? {
@@ -586,6 +649,38 @@ function buildTls(node: NodeConfig): any {
   }
 
   return tls
+}
+
+function buildServerEndpoint(node: NodeConfig): Record<string, any> {
+  const type = normalizeNodeType(node.type)
+  const serverPorts = parseServerPorts(node.server_ports)
+  if ((type === 'hysteria' || type === 'hysteria2') && serverPorts.length > 0) {
+    return { server_ports: serverPorts }
+  }
+  return { server_port: node.server_port }
+}
+
+function parseServerPorts(value: string | undefined): string[] {
+  return String(value || '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean)
+}
+
+function normalizeEnabledNetwork(value: string | undefined): string | undefined {
+  const normalized = String(value || '').trim().toLowerCase()
+  if (!normalized) return undefined
+  if (normalized === 'tcp' || normalized === 'udp') return normalized
+  return undefined
+}
+
+function ensureRequiredTls(node: NodeConfig, tls: any): any {
+  return tls || {
+    enabled: true,
+    server_name: resolveTlsServerName(node),
+    disable_sni: !!node.tls?.disable_sni || undefined,
+    insecure: !!node.tls?.insecure
+  }
 }
 
 /**

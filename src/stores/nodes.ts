@@ -15,7 +15,7 @@ import {
   initLatencySessionStore
 } from '@/utils/latency-session'
 
-export type NodeSubscriptionSchedule = 'startup' | 'daily' | 'monthly'
+export type NodeSubscriptionSchedule = 'manual' | 'startup' | 'daily' | 'monthly'
 export const DEFAULT_NODE_GROUP = 'default'
 type NodeImportResultReason = 'added' | 'no-new-nodes' | 'no-valid-nodes' | 'import-failed'
 interface AddNodesResult {
@@ -56,6 +56,7 @@ export const useNodeStore = defineStore('nodes', () => {
   const legacyNodeGroups = useLocalStorage<Record<string, string>>('nodes-group-map', {})
   const subscriptions = useLocalStorage<NodeSubscription[]>('nodes-subscriptions', [])
   const startupScheduleChecked = ref(false)
+  const removingSubscriptionIds = new Set<string>()
   const latencySessionReady = initLatencySessionStore().catch((e) => {
     console.error('初始化延迟会话存储失败:', e)
   })
@@ -86,6 +87,19 @@ export const useNodeStore = defineStore('nodes', () => {
 
   // Migrate legacy values persisted by old versions.
   activeSortType.value = normalizeSortType(activeSortType.value)
+
+  function normalizeSubscriptionSchedule(schedule: unknown): NodeSubscriptionSchedule {
+    const normalized = String(schedule || '').trim()
+    switch (normalized) {
+      case 'manual':
+      case 'startup':
+      case 'daily':
+      case 'monthly':
+        return normalized as NodeSubscriptionSchedule
+      default:
+        return 'daily'
+    }
+  }
 
   function normalizeNode(node: NodeConfig): NodeConfig {
     const normalizedType = normalizeNodeType(node.type)
@@ -288,9 +302,14 @@ export const useNodeStore = defineStore('nodes', () => {
       normalizeNodeType(String(node.type || '')),
       String(node.server || '').trim().toLowerCase(),
       String(node.server_port || '').trim(),
+      String(node.server_ports || '').trim(),
       String(node.uuid || '').trim(),
       String(node.password || '').trim(),
+      String(node.auth || '').trim(),
       String(node.method || '').trim(),
+      String(node.obfs || '').trim(),
+      String(node.obfs_password || '').trim(),
+      String(node.version || '').trim(),
       String(node.username || '').trim()
     ].join('|')
   }
@@ -328,7 +347,7 @@ export const useNodeStore = defineStore('nodes', () => {
         name: String(row.name || '').trim() || 'Subscription',
         url,
         enabled: row.enabled !== false,
-        schedule: row.schedule || 'daily',
+        schedule: normalizeSubscriptionSchedule(row.schedule),
         lastFetchedAt: row.lastFetchedAt,
         lastFetchStatus: row.lastFetchStatus,
         lastFetchMessage: row.lastFetchMessage
@@ -364,35 +383,79 @@ export const useNodeStore = defineStore('nodes', () => {
       name,
       url,
       enabled: payload.enabled !== false,
-      schedule: payload.schedule || 'daily'
+      schedule: normalizeSubscriptionSchedule(payload.schedule)
     }
     subscriptions.value = [item, ...subscriptions.value]
     sanitizeSubscriptions()
     return true
   }
 
-  async function removeSubscription(id: string, options?: { deleteNodes?: boolean }) {
-    const target = subscriptions.value.find((row) => row.id === id)
-    const targetName = String(target?.name || '').trim()
+  function upsertSubscription(payload: {
+    name: string
+    url: string
+    schedule: NodeSubscriptionSchedule
+    enabled?: boolean
+  }): { ok: boolean; id?: string; created?: boolean } {
+    const name = String(payload.name || '').trim()
+    const url = String(payload.url || '').trim()
+    if (!name || !url || !isValidSubscriptionUrl(url)) return { ok: false }
 
-    if (options?.deleteNodes && targetName) {
-      const ids = nodes.value
-        .filter((node) => getNodeSubscriptionGroup(node) === targetName)
-        .map((node) => node.id)
-        .filter(Boolean) as string[]
-      if (ids.length > 0) {
-        await removeNodes(ids)
-      }
+    const existing = subscriptions.value.find((row) => String(row.url || '').trim() === url)
+    if (existing) {
+      updateSubscription(existing.id, {
+        name,
+        url,
+        enabled: payload.enabled !== false,
+        schedule: normalizeSubscriptionSchedule(payload.schedule)
+      })
+      return { ok: true, id: existing.id, created: false }
     }
 
-    subscriptions.value = subscriptions.value.filter((row) => row.id !== id)
-    if (target?.name) {
-      const name = String(target.name).trim()
-      const nextMap: Record<string, string> = {}
-      for (const [key, group] of Object.entries(nodeSubscriptionGroups.value || {})) {
-        if (group !== name) nextMap[key] = group
+    const item: NodeSubscription = {
+      id: makeSubscriptionId(),
+      name,
+      url,
+      enabled: payload.enabled !== false,
+      schedule: normalizeSubscriptionSchedule(payload.schedule)
+    }
+    subscriptions.value = [item, ...subscriptions.value]
+    sanitizeSubscriptions()
+    return { ok: true, id: item.id, created: true }
+  }
+
+  async function removeSubscription(id: string, options?: { deleteNodes?: boolean }): Promise<boolean> {
+    const normalizedId = String(id || '').trim()
+    if (!normalizedId || removingSubscriptionIds.has(normalizedId)) return false
+
+    const target = subscriptions.value.find((row) => row.id === normalizedId)
+    if (!target) return false
+
+    removingSubscriptionIds.add(normalizedId)
+    try {
+      const targetName = String(target?.name || '').trim()
+
+      if (options?.deleteNodes && targetName) {
+        const ids = nodes.value
+          .filter((node) => getNodeSubscriptionGroup(node) === targetName)
+          .map((node) => node.id)
+          .filter(Boolean) as string[]
+        if (ids.length > 0) {
+          await removeNodes(ids)
+        }
       }
-      nodeSubscriptionGroups.value = nextMap
+
+      subscriptions.value = subscriptions.value.filter((row) => row.id !== normalizedId)
+      if (target?.name) {
+        const name = String(target.name).trim()
+        const nextMap: Record<string, string> = {}
+        for (const [key, group] of Object.entries(nodeSubscriptionGroups.value || {})) {
+          if (group !== name) nextMap[key] = group
+        }
+        nodeSubscriptionGroups.value = nextMap
+      }
+      return true
+    } finally {
+      removingSubscriptionIds.delete(normalizedId)
     }
   }
 
@@ -427,6 +490,7 @@ export const useNodeStore = defineStore('nodes', () => {
   ): boolean {
     if (!sub.enabled) return false
     if (reason === 'manual') return true
+    if (sub.schedule === 'manual') return false
     if (sub.schedule === 'startup') return true
     if (!sub.lastFetchedAt) return true
     if (sub.schedule === 'daily') {
@@ -776,6 +840,7 @@ export const useNodeStore = defineStore('nodes', () => {
     setNodeGroup,
     setGroupForSelectedNodes,
     addSubscription,
+    upsertSubscription,
     removeSubscription,
     updateSubscription,
     refreshSubscription,

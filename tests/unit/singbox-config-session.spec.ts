@@ -25,8 +25,8 @@ const baseNode: any = {
   packet_encoding: 'packetaddr'
 }
 
-function buildConfig(options?: DnsConfigOptions): any {
-  return JSON.parse(generateSingboxConfig(baseGame, baseNode, options))
+function buildConfig(options?: DnsConfigOptions, nodeOverride?: Record<string, unknown>): any {
+  return JSON.parse(generateSingboxConfig(baseGame, { ...baseNode, ...nodeOverride }, options))
 }
 
 describe('generateSingboxConfig session tuning', () => {
@@ -226,5 +226,136 @@ describe('generateSingboxConfig session tuning', () => {
     expect(cfg.route.rules.some((r: any) =>
       Array.isArray(r?.process_name) && r.process_name.includes('msedge.exe') && r.outbound === 'proxy'
     )).toBe(true)
+  })
+
+  it('builds Hysteria2 outbounds with port ranges and obfs', () => {
+    const cfg = buildConfig({ mode: 'secure' }, {
+      type: 'hysteria2',
+      server: 'hy2.example.com',
+      server_port: 443,
+      server_ports: '443,8443-9443',
+      hop_interval: '30s',
+      password: 'hy2-pass',
+      obfs: 'salamander',
+      obfs_password: 'hy2-obfs',
+      up_mbps: 50,
+      down_mbps: 200,
+      network: 'udp',
+      tls: {
+        enabled: true,
+        server_name: 'edge.example.com',
+        insecure: false
+      }
+    })
+
+    const nodeOut = cfg.outbounds.find((o: any) => o.tag === 'node-out')
+    expect(nodeOut).toMatchObject({
+      type: 'hysteria2',
+      server: 'hy2.example.com',
+      server_ports: ['443', '8443-9443'],
+      hop_interval: '30s',
+      password: 'hy2-pass',
+      up_mbps: 50,
+      down_mbps: 200,
+      network: 'udp'
+    })
+    expect(nodeOut.obfs).toMatchObject({
+      type: 'salamander',
+      password: 'hy2-obfs'
+    })
+    expect(nodeOut.tls?.server_name).toBe('edge.example.com')
+  })
+
+  it('builds TUIC outbounds with transport toggles', () => {
+    const cfg = buildConfig({ mode: 'secure' }, {
+      type: 'tuic',
+      server: 'tuic.example.com',
+      server_port: 443,
+      uuid: '22222222-2222-2222-2222-222222222222',
+      password: 'tuic-pass',
+      congestion_control: 'bbr',
+      udp_relay_mode: 'native',
+      udp_over_stream: true,
+      zero_rtt_handshake: true,
+      heartbeat: '10s',
+      network: 'udp',
+      tls: {
+        enabled: true,
+        server_name: 'tuic.example.com',
+        disable_sni: true,
+        insecure: false
+      }
+    })
+
+    const nodeOut = cfg.outbounds.find((o: any) => o.tag === 'node-out')
+    expect(nodeOut).toMatchObject({
+      type: 'tuic',
+      uuid: '22222222-2222-2222-2222-222222222222',
+      password: 'tuic-pass',
+      congestion_control: 'bbr',
+      udp_relay_mode: 'native',
+      udp_over_stream: true,
+      zero_rtt_handshake: true,
+      heartbeat: '10s',
+      network: 'udp'
+    })
+    expect(nodeOut.tls?.disable_sni).toBe(true)
+  })
+
+  it('builds AnyTLS and ShadowTLS outbounds', () => {
+    const anyTlsCfg = buildConfig({ mode: 'secure' }, {
+      type: 'anytls',
+      server: 'anytls.example.com',
+      server_port: 443,
+      password: 'anytls-pass',
+      idle_session_check_interval: '15s',
+      idle_session_timeout: '30s',
+      min_idle_session: 2,
+      alpn: 'h2,http/1.1',
+      fingerprint: 'chrome',
+      tls: {
+        enabled: true,
+        server_name: 'anytls.example.com',
+        disable_sni: true,
+        insecure: false
+      }
+    })
+    const anyTlsOut = anyTlsCfg.outbounds.find((o: any) => o.tag === 'node-out')
+    expect(anyTlsOut).toMatchObject({
+      type: 'anytls',
+      password: 'anytls-pass',
+      idle_session_check_interval: '15s',
+      idle_session_timeout: '30s',
+      min_idle_session: 2
+    })
+    expect(anyTlsOut.tls).toMatchObject({
+      enabled: true,
+      server_name: 'anytls.example.com',
+      disable_sni: true,
+      alpn: ['h2', 'http/1.1']
+    })
+    expect(anyTlsOut.tls?.utls?.fingerprint).toBe('chrome')
+
+    const shadowTlsCfg = buildConfig({ mode: 'secure' }, {
+      type: 'shadowtls',
+      server: 'shadowtls.example.com',
+      server_port: 443,
+      version: 3,
+      password: 'shadow-pass',
+      fingerprint: 'firefox',
+      tls: {
+        enabled: true,
+        server_name: 'shadowtls.example.com',
+        insecure: false
+      }
+    })
+    const shadowTlsOut = shadowTlsCfg.outbounds.find((o: any) => o.tag === 'node-out')
+    expect(shadowTlsOut).toMatchObject({
+      type: 'shadowtls',
+      version: 3,
+      password: 'shadow-pass'
+    })
+    expect(shadowTlsOut.tls?.server_name).toBe('shadowtls.example.com')
+    expect(shadowTlsOut.tls?.utls?.fingerprint).toBe('firefox')
   })
 })

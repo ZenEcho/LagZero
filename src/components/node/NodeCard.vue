@@ -110,6 +110,11 @@ function getNodeIcon(type: string) {
         case 'vless': return 'i-carbon-ibm-cloud-vpc'
         case 'shadowsocks': return 'i-carbon-send-alt'
         case 'trojan': return 'i-carbon-security'
+        case 'hysteria':
+        case 'hysteria2': return 'i-carbon-flash'
+        case 'tuic': return 'i-carbon-rocket'
+        case 'anytls': return 'i-carbon-security'
+        case 'shadowtls': return 'i-carbon-security'
         default: return 'i-carbon-network-1'
     }
 }
