@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process'
 import pkg from '../../package.json'
 import { JsonStore } from '../common/store'
 import { configureRuntimePaths, getLaunchExecutablePath, getLegacyWindowsUserDataPaths } from '../common/runtime-paths'
+import { migrateLegacyUserDataDirectoriesSync } from '../common/user-data-migration'
 
 import { SingBoxService } from '../services/singbox'
 import { ProcessService } from '../services/process'
@@ -113,43 +114,30 @@ if (!shouldPreflightAdminForDeepLink) {
 }
 
 /**
- * 判断目录是否包含有效内容。
- * 仅用于启动早期的一次性迁移判断，使用同步调用避免打乱初始化顺序。
- */
-function hasDirectoryContentsSync(targetDir: string) {
-  try {
-    return fs.pathExistsSync(targetDir) && fs.readdirSync(targetDir).length > 0
-  } catch {
-    return false
-  }
-}
-
-/**
  * 将旧版 AppData\Roaming 下的数据迁移到 exe 同目录 data。
  */
 function migrateLegacyUserDataIfNeeded() {
   if (!runtimePaths.usesExecutableDataDir) return
 
-  const targetDir = runtimePaths.userDataPath
-  const normalizedTarget = path.resolve(targetDir)
-  if (hasDirectoryContentsSync(targetDir)) return
+  try {
+    const result = migrateLegacyUserDataDirectoriesSync({
+      targetDir: runtimePaths.userDataPath,
+      legacyDirs: getLegacyWindowsUserDataPaths()
+    })
 
-  for (const legacyDir of getLegacyWindowsUserDataPaths()) {
-    const normalizedLegacy = path.resolve(legacyDir)
-    if (normalizedLegacy === normalizedTarget) continue
-    if (!hasDirectoryContentsSync(legacyDir)) continue
+    if (!result.migrated) return
 
-    try {
-      fs.ensureDirSync(targetDir)
-      fs.copySync(legacyDir, targetDir, {
-        overwrite: false,
-        errorOnExist: false
-      })
-      console.info(`[Main] 已迁移旧用户数据目录: ${legacyDir} -> ${targetDir}`)
-    } catch (e) {
-      console.warn(`[Main] 迁移旧用户数据目录失败: ${legacyDir} -> ${targetDir}`, e)
-    }
-    return
+    const details = [
+      result.copiedEntries.length > 0 ? `copied=${result.copiedEntries.join(', ')}` : '',
+      result.mergedEntries.length > 0 ? `merged=${result.mergedEntries.join(', ')}` : '',
+      result.replacedEntries.length > 0 ? `replaced=${result.replacedEntries.join(', ')}` : ''
+    ].filter(Boolean).join(' | ')
+
+    console.info(
+      `[Main] 已迁移旧用户数据到 ${runtimePaths.userDataPath} | 来源=${result.sourceDirs.join(', ')}${details ? ` | ${details}` : ''}`
+    )
+  } catch (e) {
+    console.warn(`[Main] 迁移旧用户数据目录失败: ${runtimePaths.userDataPath}`, e)
   }
 }
 
