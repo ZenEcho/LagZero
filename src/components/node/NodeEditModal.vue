@@ -1,7 +1,13 @@
 <template>
   <n-modal :show="modelValue" @update:show="$emit('update:modelValue', $event)" preset="card"
     :title="isEdit ? $t('nodes.edit_node') : $t('nodes.add_node')" class="w-[640px]" :mask-closable="false">
-    <n-form label-placement="top" :model="form">
+    <div v-if="editBlockedReason"
+      class="mb-4 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
+      {{ editBlockedReason }}
+    </div>
+
+    <div :class="editBlockedReason ? 'pointer-events-none opacity-60' : ''">
+      <n-form label-placement="top" :model="form">
       <n-form-item :label="$t('nodes.tag')">
         <n-input v-model:value="form.tag" :placeholder="$t('nodes.tag_placeholder')" />
       </n-form-item>
@@ -262,12 +268,14 @@
           </div>
         </template>
       </template>
-    </n-form>
+      </n-form>
+    </div>
 
     <template #footer>
       <div class="flex justify-end gap-2">
         <n-button @click="close">{{ $t('common.cancel') }}</n-button>
-        <n-button type="primary" @click="save" :disabled="!canSave">
+        <n-button type="primary" @click="save" :disabled="!canSave || !!editBlockedReason"
+          :title="editBlockedReason || undefined">
           {{ $t('common.save') }}
         </n-button>
       </div>
@@ -280,6 +288,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
 import type { NodeConfig } from '@/types'
+import { useNodeStore } from '@/stores/nodes'
 import { normalizeNodeType } from '@shared/utils'
 
 const props = defineProps<{
@@ -294,7 +303,12 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const message = useMessage()
+const nodeStore = useNodeStore()
 const isEdit = computed(() => !!props.editingNode)
+const editBlockedReason = computed(() => {
+  if (!props.editingNode) return ''
+  return nodeStore.getNodeMutationBlockedReason(props.editingNode)
+})
 
 const typeOptions = [
   { label: 'VMess', value: 'vmess' },
@@ -635,6 +649,11 @@ function close() {
 }
 
 function save() {
+  if (editBlockedReason.value) {
+    message.warning(editBlockedReason.value)
+    return
+  }
+
   if (!canSave.value) {
     message.error(t('common.fill_required'))
     return
@@ -703,6 +722,5 @@ function save() {
   }
 
   emit('save', payload)
-  close()
 }
 </script>

@@ -36,4 +36,5 @@ export type {
   FrontendLogPayload,
   DnsConfigOptions,
   SingboxConfig,
+  SingboxClashApiOptions,
 } from '@shared/types'

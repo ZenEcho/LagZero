@@ -8,4 +8,5 @@ export const singboxApi = {
   getPreferredVersion: () => window.singbox.getPreferredVersion(),
   setPreferredVersion: (preferredVersion?: string) => window.singbox.setPreferredVersion(preferredVersion),
   getInstallInfo: () => window.singbox.getInstallInfo(),
+  getTrafficStats: () => window.singbox.getTrafficStats(),
 }

@@ -103,7 +103,7 @@ describe('generateSingboxConfig', () => {
 
     const tunInbound = config.inbounds.find((i: any) => i.tag === 'tun-in')
     expect(tunInbound).toBeDefined()
-    expect(tunInbound.inet4_address).toBeDefined()
+    expect(tunInbound.address).toEqual(['172.19.0.1/30'])
     expect(tunInbound.inet6_address).toBeUndefined()
     expect(tunInbound.endpoint_independent_nat).toBe(true)
   })

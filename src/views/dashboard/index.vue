@@ -148,142 +148,197 @@
 
          <div class="flex-1 flex overflow-hidden">
             <!-- Main Dashboard Area (Left) -->
-            <main
-               class="flex-1 overflow-y-auto custom-scrollbar p-6 lg:p-10 flex flex-col justify-evenly items-center gap-8 relative">
+            <main class="flex-1 w-full overflow-y-auto custom-scrollbar relative">
+               <div class="mx-auto flex min-h-full w-full flex-col items-center justify-center"
+                  :class="[dashboardMainClass, dashboardContentClass]">
 
-               <!-- 1. Hero Section: The Status Core -->
-               <section class="flex flex-col items-center justify-center">
+                  <!-- 1. Hero Section: The Status Core -->
+                  <section class="w-full flex flex-col items-center justify-center" :class="heroSectionClass">
 
-                  <!-- Live Stats (Level 1: Latency & Loss) -->
-                  <div v-if="isRunning" class="mb-10 w-full flex justify-center animate-scale-in">
-                     <div class="flex items-center gap-12 md:gap-20">
-                        <!-- Latency -->
-                        <div class="flex flex-col items-center">
-                           <div class="flex items-baseline justify-center gap-2 relative">
-                              <span
-                                 class="text-7xl md:text-8xl font-black tabular-nums tracking-tighter drop-shadow-sm transition-colors duration-300"
-                                 :class="getLatencyTextColor(currentLatency)">
-                                 {{ currentLatency > 0 ? currentLatency : '---' }}
-                              </span>
-                              <span
-                                 class="text-xl font-bold text-on-surface-muted uppercase tracking-widest absolute -right-10 bottom-3">ms</span>
+                     <!-- Live Stats (Level 1: Latency & Loss) -->
+                     <div v-if="isRunning" class="w-full flex justify-center animate-scale-in"
+                        :class="liveStatsWrapperClass">
+                        <div class="flex items-center" :class="liveStatsGapClass">
+                           <!-- Latency -->
+                           <div class="flex flex-col items-center">
+                              <div class="flex items-baseline justify-center gap-2 relative">
+                                 <span
+                                    class="font-black tabular-nums tracking-tighter drop-shadow-sm transition-colors duration-300"
+                                    :class="[liveMetricValueClass, getLatencyTextColor(currentLatency)]">
+                                    {{ currentLatency > 0 ? currentLatency : '---' }}
+                                 </span>
+                                 <span
+                                    class="text-xl font-bold text-on-surface-muted uppercase tracking-widest absolute -right-10 bottom-3">ms</span>
+                              </div>
+                              <span class="text-xs uppercase font-bold text-on-surface-muted tracking-widest mt-2">{{
+                                 $t('common.latency') || '实时延迟' }}</span>
                            </div>
-                           <span class="text-xs uppercase font-bold text-on-surface-muted tracking-widest mt-2">{{
-                              $t('common.latency') || '实时延迟' }}</span>
-                        </div>
 
-                        <div class="w-px h-16 md:h-20 bg-border/60"></div>
+                           <div class="w-px mx-4   h-16 md:h-20 bg-border/60"></div>
 
-                        <!-- Packet Loss -->
-                        <div class="flex flex-col items-center">
-                           <div class="flex items-baseline justify-center gap-2 relative">
-                              <span
-                                 class="text-7xl md:text-8xl font-black tabular-nums tracking-tighter drop-shadow-sm transition-colors duration-300"
-                                 :class="currentLoss > 0 ? 'text-warning' : 'text-on-surface'">
-                                 {{ currentLoss }}
-                              </span>
-                              <span class="text-xl font-bold text-on-surface-muted absolute -right-6 bottom-3">%</span>
+                           <!-- Packet Loss -->
+                           <div class="flex flex-col items-center">
+                              <div class="flex items-baseline justify-center gap-2 relative">
+                                 <span
+                                    class="font-black tabular-nums tracking-tighter drop-shadow-sm transition-colors duration-300"
+                                    :class="[liveMetricValueClass, currentLoss > 0 ? 'text-warning' : 'text-on-surface']">
+                                    {{ currentLoss }}
+                                 </span>
+                                 <span
+                                    class="text-xl font-bold text-on-surface-muted absolute -right-6 bottom-3">%</span>
+                              </div>
+                              <span class="text-xs uppercase font-bold text-on-surface-muted tracking-widest mt-2">{{
+                                 $t('games.packet_loss') }}</span>
                            </div>
-                           <span class="text-xs uppercase font-bold text-on-surface-muted tracking-widest mt-2">{{
-                              $t('games.packet_loss') }}</span>
                         </div>
                      </div>
-                  </div>
 
-                  <div class="relative z-10 flex flex-col items-center">
-                     <!-- Main Action Button -->
-                     <div class="relative group">
-                        <!-- Outer Glow Ring -->
-                        <div
-                           class="absolute inset-0 rounded-full bg-gradient-to-t from-primary/0 via-primary/30 to-primary/0 md:scale-150 animate-spin-slow opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"
-                           :class="isRunning ? 'via-error/30' : (!isCoreInstalled ? 'via-on-surface-muted/10' : 'via-primary/30')">
-                        </div>
-
-                        <!-- Pulse Effect -->
-                        <div v-if="!isRunning && isCoreInstalled"
-                           class="absolute inset-0 rounded-full bg-primary/20 animate-ping opacity-20 duration-[3s]">
-                        </div>
-
-                        <button @click="toggleAccelerator"
-                           :disabled="isActionPending || (!isRunning && !isCoreInstalled)"
-                           class="relative w-40 h-40 md:w-48 md:h-48 rounded-full flex items-center justify-center group outline-none transition-all duration-500 ease-out hover:scale-105 active:scale-95 z-10"
-                           :class="[
-                              isRunning ? 'shadow-[0_0_60px_-10px_rgba(var(--rgb-error),0.3)]' : (!isCoreInstalled ? 'shadow-[0_0_30px_-10px_rgba(0,0,0,0.1)]' : 'shadow-[0_0_60px_-10px_rgba(var(--rgb-primary),0.3)]'),
-                              (isActionPending || (!isRunning && !isCoreInstalled)) ? 'opacity-80 cursor-not-allowed pointer-events-none' : ''
-                           ]">
-
-                           <!-- Button Background -->
+                     <div class="relative z-10 flex w-full flex-col items-center">
+                        <!-- Main Action Button -->
+                        <div class="relative group">
+                           <!-- Outer Glow Ring -->
                            <div
-                              class="absolute inset-2 rounded-full border-4 backdrop-blur-md transition-all duration-500 overflow-hidden"
-                              :class="isRunning
-                                 ? 'bg-error/5 border-error/20 group-hover:bg-error/10 group-hover:border-error/40'
-                                 : (!isCoreInstalled
-                                    ? 'bg-on-surface-muted/5 border-on-surface-muted/20'
-                                    : 'bg-primary/5 border-primary/20 group-hover:bg-primary/10 group-hover:border-primary/40')">
-                              <!-- Shiny reflection -->
-                              <div
-                                 class="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent opacity-0 group-hover:opacity-30 transition-opacity duration-500">
-                              </div>
+                              class="absolute inset-0 rounded-full bg-gradient-to-t from-primary/0 via-primary/30 to-primary/0 md:scale-150 animate-spin-slow opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"
+                              :class="isRunning ? 'via-error/30' : (!isCoreInstalled ? 'via-on-surface-muted/10' : 'via-primary/30')">
                            </div>
 
-                           <!-- Icon & Label -->
-                           <div class="flex flex-col items-center gap-3 relative z-20">
-                              <div
-                                 class="text-5xl md:text-6xl transition-all duration-300 transform group-hover:scale-110"
-                                 :class="isActionPending
-                                    ? 'i-carbon-circle-dash animate-spin text-primary'
-                                    : (isRunning ? 'i-carbon-stop-filled text-error drop-shadow-[0_2px_10px_rgba(var(--rgb-error),0.4)]' : (!isCoreInstalled ? 'i-carbon-cloud-download text-on-surface-muted' : 'i-carbon-play-filled-alt text-primary drop-shadow-[0_2px_10px_rgba(var(--rgb-primary),0.4)]'))">
-                              </div>
-                              <span class=" text-xs font-black uppercase tracking-[0.25em] transition-colors"
-                                 :class="isRunning ? 'text-error' : (!isCoreInstalled ? 'text-on-surface-muted' : 'text-primary')">
-                                 {{ (!isRunning && !isCoreInstalled) ? $t('singbox_installer.preparing', '环境准备中') :
-                                    actionLabel }}
-                              </span>
+                           <!-- Pulse Effect -->
+                           <div v-if="!isRunning && isCoreInstalled"
+                              class="absolute inset-0 rounded-full bg-primary/20 animate-ping opacity-20 duration-[3s]">
                            </div>
-                        </button>
-                     </div>
 
-                     <!-- Status Description & Duration (Level 2) -->
-                     <div class="mt-8 flex flex-col items-center gap-3">
-                        <p class="text-sm font-medium max-w-xs text-center leading-relaxed transition-colors"
-                           :class="isRunning ? 'text-success' : 'text-on-surface-muted'">
-                           {{ isRunning ? $t('dashboard.active_protection') : (!isCoreInstalled ?
-                              $t('singbox_installer.preparing') : $t('dashboard.ready_to_boost')) }}
-                        </p>
+                           <button @click="toggleAccelerator"
+                              :disabled="isActionPending || (!isRunning && !isCoreInstalled)"
+                              class="relative rounded-full flex items-center justify-center group outline-none transition-all duration-500 ease-out hover:scale-105 active:scale-95 z-10"
+                              :class="[
+                                 mainActionSizeClass,
+                                 isRunning ? 'shadow-[0_0_60px_-10px_rgba(var(--rgb-error),0.3)]' : (!isCoreInstalled ? 'shadow-[0_0_30px_-10px_rgba(0,0,0,0.1)]' : 'shadow-[0_0_60px_-10px_rgba(var(--rgb-primary),0.3)]'),
+                                 (isActionPending || (!isRunning && !isCoreInstalled)) ? 'opacity-80 cursor-not-allowed pointer-events-none' : ''
+                              ]">
 
-                        <!-- Duration Badge -->
-                        <div v-if="isRunning"
-                           class="flex items-center gap-2 px-3 py-1 bg-surface-overlay/50 border border-border/50 rounded-full text-[11px] font-medium text-on-surface-muted animate-fade-in-up mt-1 shadow-sm">
-                           <div class="i-carbon-time text-sm"></div>
-                           <span>{{ $t('games.duration') }}: <span
-                                 class="font-mono font-bold text-on-surface tracking-wide ml-1">{{ durationFormatted
-                                 }}</span></span>
+                              <!-- Button Background -->
+                              <div
+                                 class="absolute inset-2 rounded-full border-4 backdrop-blur-md transition-all duration-500 overflow-hidden"
+                                 :class="isRunning
+                                    ? 'bg-error/5 border-error/20 group-hover:bg-error/10 group-hover:border-error/40'
+                                    : (!isCoreInstalled
+                                       ? 'bg-on-surface-muted/5 border-on-surface-muted/20'
+                                       : 'bg-primary/5 border-primary/20 group-hover:bg-primary/10 group-hover:border-primary/40')">
+                                 <!-- Shiny reflection -->
+                                 <div
+                                    class="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent opacity-0 group-hover:opacity-30 transition-opacity duration-500">
+                                 </div>
+                              </div>
+
+                              <!-- Icon & Label -->
+                              <div class="flex flex-col items-center gap-3 relative z-20">
+                                 <div class="transition-all duration-300 transform group-hover:scale-110" :class="[
+                                    mainActionIconSizeClass,
+                                    isActionPending
+                                       ? 'i-carbon-circle-dash animate-spin text-primary'
+                                       : (isRunning ? 'i-carbon-stop-filled text-error drop-shadow-[0_2px_10px_rgba(var(--rgb-error),0.4)]' : (!isCoreInstalled ? 'i-carbon-cloud-download text-on-surface-muted' : 'i-carbon-play-filled-alt text-primary drop-shadow-[0_2px_10px_rgba(var(--rgb-primary),0.4)]'))
+                                 ]">
+                                 </div>
+                                 <span class=" text-xs font-black uppercase tracking-[0.25em] transition-colors"
+                                    :class="isRunning ? 'text-error' : (!isCoreInstalled ? 'text-on-surface-muted' : 'text-primary')">
+                                    {{ (!isRunning && !isCoreInstalled) ? $t('singbox_installer.preparing', '环境准备中') :
+                                       actionLabel }}
+                                 </span>
+                              </div>
+                           </button>
+                        </div>
+
+                        <!-- Status Description & Duration (Level 2) -->
+                        <div class="flex w-full flex-col items-center" :class="statusStackClass">
+                           <p class="text-sm font-medium max-w-xs text-center leading-relaxed transition-colors"
+                              :class="isRunning ? 'text-success' : 'text-on-surface-muted'">
+                              {{ isRunning ? $t('dashboard.active_protection') : (!isCoreInstalled ?
+                                 $t('singbox_installer.preparing') : $t('dashboard.ready_to_boost')) }}
+                           </p>
+
+                           <!-- Duration Badge -->
+                           <div v-if="isRunning"
+                              class="flex items-center gap-2 px-3 py-1 bg-surface-overlay/50 border border-border/50 rounded-full text-[11px] font-medium text-on-surface-muted animate-fade-in-up mt-1 shadow-sm">
+                              <div class="i-carbon-time text-sm"></div>
+                              <span>{{ $t('games.duration') }}: <span
+                                    class="font-mono font-bold text-on-surface tracking-wide ml-1">{{
+                                       durationFormatted
+                                    }}</span></span>
+                           </div>
+
+                           <div v-if="isRunning" class="grid w-full items-stretch animate-fade-in-up"
+                              :class="dashboardInsightGridClass">
+                              <div
+                                 class="flex h-full flex-col justify-between rounded-3xl border border-border/50 bg-surface-panel/40 shadow-sm backdrop-blur-sm"
+                                 :class="dashboardCardPaddingClass">
+                                 <div>
+                                    <div class="text-[10px] font-black uppercase tracking-widest text-on-surface-muted">
+                                       {{ $t('dashboard.traffic_used') }}
+                                    </div>
+                                    <div class="mt-3 font-black tracking-tight text-on-surface"
+                                       :class="trafficSummaryValueClass">
+                                       {{ trafficTotalFormatted }}
+                                    </div>
+                                 </div>
+                                 <div class="mt-5 grid grid-cols-1 gap-2 text-[11px] text-on-surface-muted font-medium">
+                                    <div
+                                       class="flex items-center gap-1.5 min-w-0 rounded-xl bg-surface-overlay/35 px-3 py-2">
+                                       <div class="i-carbon-arrow-up-right text-primary/70 shrink-0"></div>
+                                       <span class="truncate">{{ $t('dashboard.traffic_upload') }} {{
+                                          trafficUploadFormatted }}</span>
+                                    </div>
+                                    <div
+                                       class="flex items-center gap-1.5 min-w-0 rounded-xl bg-surface-overlay/35 px-3 py-2">
+                                       <div class="i-carbon-arrow-down-left text-success/70 shrink-0"></div>
+                                       <span class="truncate">{{ $t('dashboard.traffic_download') }} {{
+                                          trafficDownloadFormatted }}</span>
+                                    </div>
+                                 </div>
+                              </div>
+
+                              <div
+                                 class="flex h-full flex-col rounded-3xl border border-border/50 bg-surface-panel/40 shadow-sm backdrop-blur-sm"
+                                 :class="dashboardCardPaddingClass">
+                                 <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+                                    <div class="min-w-0">
+                                       <div
+                                          class="text-[10px] font-black uppercase tracking-widest text-on-surface-muted">
+                                          {{ $t('dashboard.traffic_live_speed') }}
+                                       </div>
+                                       <div class="mt-2 font-mono font-bold text-on-surface"
+                                          :class="trafficRateValueClass">
+                                          <span class="text-success">↓</span> {{ trafficDownloadRateFormatted }}
+                                          <span class="ml-3 text-primary">↑</span> {{ trafficUploadRateFormatted }}
+                                       </div>
+                                    </div>
+                                 </div>
+                                 <div class="mt-4 flex flex-1 flex-col border-t border-border/50 pt-3">
+                                    <div class="mb-2 flex items-center justify-between gap-3">
+                                       <div
+                                          class="text-[10px] font-black uppercase tracking-widest text-on-surface-muted">
+                                          {{ $t('common.network_stability') }}
+                                       </div>
+                                    </div>
+                                    <LatencyChart :node-key="selectedNode || undefined" :compact="isCompactDashboard"
+                                       embedded />
+                                 </div>
+                              </div>
+                           </div>
                         </div>
                      </div>
-                  </div>
-               </section>
+                  </section>
 
-               <!-- 2. Secondary Info: Charts -->
-               <section v-if="isRunning"
-                  class=" w-full max-w-4xl mx-auto opacity-90 hover:opacity-100 transition-opacity">
-                  <div
-                     class="w-full h-full bg-surface-panel/40 border border-border rounded-2xl p-4 relative overflow-hidden shadow-sm backdrop-blur-sm">
-                     <div class="z-10 text-[10px] font-black uppercase text-on-surface-muted tracking-widest">
-                        {{ $t('common.network_stability') }}</div>
-                     <LatencyChart :node-key="selectedNode || undefined" />
-                  </div>
-               </section>
-
-               <!-- Expert Tip (Bottom) -->
-               <div v-if="!isRunning"
-                  class="max-w-lg w-full p-5 rounded-2xl bg-surface-panel/40 border border-border flex items-start gap-4 shadow-sm backdrop-blur-sm">
-                  <div
-                     class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-primary">
-                     <div class="i-material-symbols-lightbulb text-lg"></div>
-                  </div>
-                  <div>
-                     <h4 class="text-xs font-bold text-on-surface mb-1 ">{{ $t('dashboard.did_you_know') }}</h4>
-                     <p class="text-xs text-on-surface-muted leading-relaxed">{{ currentDashboardHint }}</p>
+                  <!-- Expert Tip (Bottom) -->
+                  <div v-if="!isRunning"
+                     class="max-w-lg w-full p-5 rounded-2xl bg-surface-panel/40 border border-border flex items-start gap-4 shadow-sm backdrop-blur-sm">
+                     <div
+                        class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-primary">
+                        <div class="i-material-symbols-lightbulb text-lg"></div>
+                     </div>
+                     <div>
+                        <h4 class="text-xs font-bold text-on-surface mb-1 ">{{ $t('dashboard.did_you_know') }}</h4>
+                        <p class="text-xs text-on-surface-muted leading-relaxed">{{ currentDashboardHint }}</p>
+                     </div>
                   </div>
                </div>
             </main>
@@ -339,7 +394,7 @@ import { useNodeStore } from '@/stores/nodes'
 import { useSettingsStore } from '@/stores/settings'
 import LatencyChart from '@/components/dashboard/LatencyChart.vue'
 import NodeSelector from '@/components/dashboard/NodeSelector.vue'
-import { useIntervalFn } from '@vueuse/core'
+import { useIntervalFn, useWindowSize } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { useMessage, NInputNumber, NSelect, NSwitch } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -379,6 +434,13 @@ const showSessionTuningPanel = ref(false)
 const highLossHintShown = ref(false)
 const applyingSessionTuning = ref(false)
 const ipcCleanupFns: Array<() => void> = []
+const trafficStatsAvailable = ref(false)
+const trafficUploadTotal = ref(0)
+const trafficDownloadTotal = ref(0)
+const trafficUploadRate = ref(0)
+const trafficDownloadRate = ref(0)
+const lastTrafficSnapshot = ref<{ uploadTotal: number, downloadTotal: number, sampledAt: number } | null>(null)
+const { width: windowWidth, height: windowHeight } = useWindowSize()
 
 const udpModeOptions = computed(() => ([
    { label: String(t('settings.udp_mode_auto')), value: 'auto' },
@@ -394,6 +456,22 @@ const vlessEncodingOptions = computed(() => ([
    { label: 'xudp', value: 'xudp' }
 ]))
 const isTunNetworkMode = computed(() => settingsStore.accelNetworkMode === 'tun')
+const isCompactDashboard = computed(() => windowHeight.value < 860 || windowWidth.value < 1320)
+const dashboardMainClass = computed(() => isCompactDashboard.value ? 'px-4 py-4 lg:px-5 lg:py-5' : 'px-6 py-6 lg:px-10 lg:py-10')
+const dashboardContentClass = computed(() => isCompactDashboard.value ? 'gap-4' : 'gap-6')
+const heroSectionClass = computed(() => isCompactDashboard.value ? 'max-w-3xl' : 'max-w-4xl')
+const liveStatsWrapperClass = computed(() => isCompactDashboard.value ? 'mb-5' : 'mb-10')
+const liveStatsGapClass = computed(() => isCompactDashboard.value ? 'gap-6 md:gap-10' : 'gap-12 md:gap-20')
+const liveMetricValueClass = computed(() => isCompactDashboard.value ? 'text-5xl md:text-6xl' : 'text-7xl md:text-8xl')
+const mainActionSizeClass = computed(() => isCompactDashboard.value ? 'w-32 h-32 md:w-36 md:h-36' : 'w-40 h-40 md:w-48 md:h-48')
+const mainActionIconSizeClass = computed(() => isCompactDashboard.value ? 'text-4xl md:text-5xl' : 'text-5xl md:text-6xl')
+const statusStackClass = computed(() => isCompactDashboard.value ? 'mt-6 gap-2.5' : 'mt-8 gap-3')
+const dashboardInsightGridClass = computed(() => isCompactDashboard.value
+   ? 'max-w-3xl gap-3 lg:grid-cols-[minmax(200px,240px)_minmax(0,1fr)]'
+   : 'max-w-4xl gap-4 lg:grid-cols-[minmax(220px,280px)_minmax(0,1fr)]')
+const dashboardCardPaddingClass = computed(() => isCompactDashboard.value ? 'px-4 py-4' : 'px-5 py-5')
+const trafficSummaryValueClass = computed(() => isCompactDashboard.value ? 'text-2xl md:text-3xl' : 'text-3xl md:text-4xl')
+const trafficRateValueClass = computed(() => isCompactDashboard.value ? 'text-[13px] md:text-sm' : 'text-sm md:text-base')
 
 function applyProfilePreset(profile: 'stable' | 'aggressive') {
    if (!isTunNetworkMode.value) return
@@ -446,6 +524,21 @@ const dashboardHints = computed(() => ([
 ]))
 const currentHintIndex = ref(0)
 const currentDashboardHint = computed(() => dashboardHints.value[currentHintIndex.value] || '')
+const trafficTotalFormatted = computed(() => trafficStatsAvailable.value
+   ? formatBytes(trafficUploadTotal.value + trafficDownloadTotal.value)
+   : '--')
+const trafficUploadFormatted = computed(() => trafficStatsAvailable.value
+   ? formatBytes(trafficUploadTotal.value)
+   : '--')
+const trafficDownloadFormatted = computed(() => trafficStatsAvailable.value
+   ? formatBytes(trafficDownloadTotal.value)
+   : '--')
+const trafficUploadRateFormatted = computed(() => trafficStatsAvailable.value
+   ? formatBytesPerSecond(trafficUploadRate.value)
+   : '--')
+const trafficDownloadRateFormatted = computed(() => trafficStatsAvailable.value
+   ? formatBytesPerSecond(trafficDownloadRate.value)
+   : '--')
 
 const durationFormatted = computed(() => {
    const s = durationSeconds.value
@@ -454,6 +547,78 @@ const durationFormatted = computed(() => {
    const sec = s % 60
    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`
 })
+
+function formatBytes(bytes: number) {
+   const normalized = Math.max(0, Number(bytes || 0))
+   if (!Number.isFinite(normalized)) return '0 B'
+   const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
+   let value = normalized
+   let unitIndex = 0
+   while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024
+      unitIndex += 1
+   }
+   const digits = unitIndex === 0 ? 0 : value >= 100 ? 0 : value >= 10 ? 1 : 2
+   return `${value.toFixed(digits)} ${units[unitIndex]}`
+}
+
+function formatBytesPerSecond(bytes: number) {
+   return `${formatBytes(bytes)}/s`
+}
+
+function resetTrafficStats() {
+   trafficStatsAvailable.value = false
+   trafficUploadTotal.value = 0
+   trafficDownloadTotal.value = 0
+   trafficUploadRate.value = 0
+   trafficDownloadRate.value = 0
+   lastTrafficSnapshot.value = null
+}
+
+async function refreshTrafficStats() {
+   if (!isRunning.value) return
+
+   try {
+      const stats = await singboxApi.getTrafficStats()
+      if (!stats?.available) {
+         if (!lastTrafficSnapshot.value) {
+            trafficStatsAvailable.value = false
+         }
+         trafficUploadRate.value = 0
+         trafficDownloadRate.value = 0
+         return
+      }
+
+      const uploadTotal = Math.max(0, Number(stats.uploadTotal || 0))
+      const downloadTotal = Math.max(0, Number(stats.downloadTotal || 0))
+      const now = Date.now()
+      const previous = lastTrafficSnapshot.value
+
+      if (!previous || uploadTotal < previous.uploadTotal || downloadTotal < previous.downloadTotal) {
+         trafficUploadRate.value = 0
+         trafficDownloadRate.value = 0
+      } else {
+         const elapsedSeconds = Math.max((now - previous.sampledAt) / 1000, 0.5)
+         trafficUploadRate.value = Math.max(0, (uploadTotal - previous.uploadTotal) / elapsedSeconds)
+         trafficDownloadRate.value = Math.max(0, (downloadTotal - previous.downloadTotal) / elapsedSeconds)
+      }
+
+      trafficUploadTotal.value = uploadTotal
+      trafficDownloadTotal.value = downloadTotal
+      trafficStatsAvailable.value = true
+      lastTrafficSnapshot.value = {
+         uploadTotal,
+         downloadTotal,
+         sampledAt: now
+      }
+   } catch {
+      if (!lastTrafficSnapshot.value) {
+         trafficStatsAvailable.value = false
+      }
+      trafficUploadRate.value = 0
+      trafficDownloadRate.value = 0
+   }
+}
 
 async function restartForNodeSwitch() {
    if (!game.value || !isRunning.value) return
@@ -609,6 +774,10 @@ const { pause: pauseDuration, resume: resumeDuration } = useIntervalFn(() => {
    refreshDuration()
 }, 1000, { immediate: false })
 
+const { pause: pauseTrafficSampling, resume: resumeTrafficSampling } = useIntervalFn(() => {
+   void refreshTrafficStats()
+}, 1000, { immediate: false })
+
 const { pause: pauseHintRotation, resume: resumeHintRotation } = useIntervalFn(() => {
    if (dashboardHints.value.length <= 1) return
    currentHintIndex.value = (currentHintIndex.value + 1) % dashboardHints.value.length
@@ -626,6 +795,7 @@ async function toggleAccelerator() {
          totalSamples.value = 0
          lostSamples.value = 0
          lastConnection.value = ''
+         resetTrafficStats()
          refreshSessionLossRate()
          refreshDuration()
       }
@@ -674,6 +844,7 @@ function onSingboxEvent(name: string, data: any) {
       gameStore.resetAllAccelerationStatus()
       startTime.value = 0
       lastConnection.value = ''
+      resetTrafficStats()
    }
 }
 
@@ -689,8 +860,10 @@ onMounted(() => {
    nodeStore.loadNodes()
    if (isRunning.value) {
       void syncSessionStateFromStore().then(() => sampleLatencyAndLoss(true))
+      void refreshTrafficStats()
       resumeSampling()
       resumeDuration()
+      resumeTrafficSampling()
    }
    try {
       const onLogDisposer = electronApi.on('singbox-log', (d: any) => onSingboxEvent('singbox-log', d))
@@ -716,26 +889,32 @@ onMounted(() => {
 onActivated(() => {
    if (isRunning.value) {
       void syncSessionStateFromStore().then(() => sampleLatencyAndLoss(true))
+      void refreshTrafficStats()
    }
 })
 
 watch(isRunning, (running) => {
    if (running) {
       highLossHintShown.value = false
+      resetTrafficStats()
       pauseHintRotation()
       void syncSessionStateFromStore().then(() => sampleLatencyAndLoss(true))
+      void refreshTrafficStats()
       resumeSampling()
       resumeDuration()
+      resumeTrafficSampling()
    } else {
       currentHintIndex.value = 0
       resumeHintRotation()
       pauseSampling()
       pauseDuration()
+      pauseTrafficSampling()
       startTime.value = 0
       durationSeconds.value = 0
       currentLatency.value = 0
       totalSamples.value = 0
       lostSamples.value = 0
+      resetTrafficStats()
       refreshSessionLossRate()
    }
 }, { immediate: true })
@@ -753,6 +932,7 @@ onUnmounted(() => {
    pauseHintRotation()
    pauseSampling()
    pauseDuration()
+   pauseTrafficSampling()
    try {
       while (ipcCleanupFns.length > 0) {
          const dispose = ipcCleanupFns.pop()

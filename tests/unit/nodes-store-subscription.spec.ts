@@ -54,6 +54,7 @@ vi.mock('@/utils/latency-session', () => ({
 }))
 
 import { useNodeStore } from '@/stores/nodes'
+import { useGameStore } from '@/stores/games'
 
 async function flushPromises() {
   await Promise.resolve()
@@ -102,5 +103,104 @@ describe('useNodeStore subscription removal', () => {
     expect(store.subscriptions).toEqual([])
     expect(store.nodes).toEqual([])
     expect(store.nodeSubscriptionGroups).toEqual({})
+  })
+
+  it('blocks deleting a node that is currently used by an accelerating game', async () => {
+    const store = useNodeStore()
+    const gameStore = useGameStore()
+    await flushPromises()
+
+    store.nodes = [{
+      id: 'node-1',
+      type: 'shadowsocks',
+      tag: 'Alpha Node',
+      server: '1.1.1.1',
+      server_port: 443
+    }]
+    gameStore.gameLibrary = [{
+      id: 'game-1',
+      name: 'Game One',
+      processName: 'game.exe',
+      category: 'action',
+      nodeId: 'node-1',
+      status: 'accelerating',
+      latency: 35
+    }]
+
+    await expect(store.removeNode('node-1')).rejects.toThrow('正在被游戏')
+
+    expect(mocks.nodeApi.delete).not.toHaveBeenCalled()
+    expect(store.nodes).toHaveLength(1)
+  })
+
+  it('blocks editing a node that is currently used by an accelerating game', async () => {
+    const store = useNodeStore()
+    const gameStore = useGameStore()
+    await flushPromises()
+
+    store.nodes = [{
+      id: 'node-1',
+      type: 'shadowsocks',
+      tag: 'Alpha Node',
+      server: '1.1.1.1',
+      server_port: 443
+    }]
+    gameStore.gameLibrary = [{
+      id: 'game-1',
+      name: 'Game One',
+      processName: 'game.exe',
+      category: 'action',
+      nodeId: 'node-1',
+      status: 'accelerating',
+      latency: 35
+    }]
+
+    await expect(store.saveNode({
+      id: 'node-1',
+      type: 'shadowsocks',
+      tag: 'Alpha Node Updated',
+      server: '1.1.1.1',
+      server_port: 443
+    })).rejects.toThrow('不可修改或删除')
+
+    expect(mocks.nodeApi.save).not.toHaveBeenCalled()
+    expect(store.nodes[0]?.tag).toBe('Alpha Node')
+  })
+
+  it('aborts batch deletion before removing any node when one selected node is accelerating', async () => {
+    const store = useNodeStore()
+    const gameStore = useGameStore()
+    await flushPromises()
+
+    store.nodes = [
+      {
+        id: 'node-1',
+        type: 'shadowsocks',
+        tag: 'Alpha Node',
+        server: '1.1.1.1',
+        server_port: 443
+      },
+      {
+        id: 'node-2',
+        type: 'trojan',
+        tag: 'Beta Node',
+        server: '2.2.2.2',
+        server_port: 8443
+      }
+    ]
+    gameStore.gameLibrary = [{
+      id: 'game-1',
+      name: 'Game One',
+      processName: 'game.exe',
+      category: 'action',
+      nodeId: 'node-2',
+      status: 'accelerating',
+      latency: 35
+    }]
+
+    await expect(store.removeNodes(['node-1', 'node-2'])).rejects.toThrow('正在被游戏')
+
+    expect(mocks.nodeApi.delete).not.toHaveBeenCalled()
+    expect(store.nodes).toHaveLength(2)
   })
 })

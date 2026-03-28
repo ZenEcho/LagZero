@@ -23,4 +23,4 @@ export type {
     FrontendLogLevel,
     FrontendLogPayload,
 } from './settings'
-export type { DnsConfigOptions, SingboxConfig } from './singbox'
+export type { DnsConfigOptions, SingboxConfig, SingboxClashApiOptions } from './singbox'

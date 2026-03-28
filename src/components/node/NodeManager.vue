@@ -13,7 +13,8 @@
         <input v-model="groupName" type="text" :placeholder="$t('nodes.tag_placeholder_short')"
           class="h-8 w-40 rounded-full border border-border bg-surface px-3 text-xs text-on-surface outline-none focus:border-primary"
           @click.stop />
-        <button @click="applyGroupToSelected"
+        <button @click="applyGroupToSelected" :title="selectedMutationBlockedReason || t('nodes.apply_tag')"
+          :class="selectedMutationBlockedReason ? 'opacity-60' : ''"
           class="flex items-center gap-2 text-primary hover:text-primary-hover transition font-medium text-sm">
           <div class="i-material-symbols-folder-copy"></div>
           <span>{{ $t('nodes.apply_tag') }}</span>
@@ -55,7 +56,8 @@
                 nodeStore.selectedNodes.length
             }) }}</span>
             <div class="h-4 w-px bg-border"></div>
-            <button @click="deleteSelectedNodes"
+            <button @click="deleteSelectedNodes" :title="selectedMutationBlockedReason || t('common.delete')"
+              :class="selectedMutationBlockedReason ? 'opacity-60' : ''"
               class="flex items-center gap-1 text-error hover:text-error-hover transition font-medium hover:bg-error/10 px-2 py-1 rounded">
               <div class="i-material-symbols-delete"></div>
               <span>{{ $t('common.delete') }}</span>
@@ -99,10 +101,16 @@
                       class="uppercase bg-surface-overlay border border-border px-1.5 py-0.5 rounded text-[10px] tracking-wider font-mono text-on-surface-variant">
                       {{ node.type }}
                     </span>
-                    <div v-if="isLocalProxyActiveNode(node)"
-                      class="text-[8px] bg-surface-overlay  px-1.5 py-0.5 rounded text-primary/80 font-bold uppercase tracking-wider">
-                      H: {{ settingsStore.localProxyPort }} <span class="opacity-30 mx-1">|</span>
-                      S: {{ settingsStore.localProxyPort + 1 }}</div>
+                    <div class="flex items-center gap-1">
+                      <div v-if="isNodeMutationBlocked(node)"
+                        class="text-[8px] bg-warning/12 border border-warning/25 px-1.5 py-0.5 rounded text-warning font-bold uppercase tracking-wider">
+                        {{ $t('nodes.locked_accelerating') }}
+                      </div>
+                      <div v-if="isLocalProxyActiveNode(node)"
+                        class="text-[8px] bg-surface-overlay  px-1.5 py-0.5 rounded text-primary/80 font-bold uppercase tracking-wider">
+                        H: {{ settingsStore.localProxyPort }} <span class="opacity-30 mx-1">|</span>
+                        S: {{ settingsStore.localProxyPort + 1 }}</div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -155,7 +163,8 @@
                       <div class="i-material-symbols-network-check text-xs"></div>
                     </template>
                   </n-button>
-                  <n-button quaternary circle size="tiny" @click.stop="editNode(node)" :title="$t('common.edit')">
+                  <n-button quaternary circle size="tiny" @click.stop="editNode(node)" :title="getNodeEditTitle(node)"
+                    :class="isNodeMutationBlocked(node) ? 'opacity-60' : ''">
                     <template #icon>
                       <div class="i-material-symbols-edit text-xs"></div>
                     </template>
@@ -165,8 +174,9 @@
                       <div class="i-material-symbols-share text-xs"></div>
                     </template>
                   </n-button>
-                  <n-button quaternary circle size="tiny" type="error" @click.stop="deleteNode(node)"
-                    :title="$t('common.delete')">
+                  <n-button quaternary circle size="tiny" :type="isNodeMutationBlocked(node) ? 'default' : 'error'"
+                    @click.stop="deleteNode(node)" :title="getNodeDeleteTitle(node)"
+                    :class="isNodeMutationBlocked(node) ? 'opacity-60' : ''">
                     <template #icon>
                       <div class="i-material-symbols-delete text-xs"></div>
                     </template>
@@ -217,6 +227,10 @@ function setSelection(node: NodeConfig, checked: boolean) {
   nodeStore.setNodeSelected(node, checked)
 }
 
+function resolveErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
 function isTestingNode(node: NodeConfig) {
   const key = node.id || node.tag
   return testingNodes.has(key)
@@ -251,11 +265,39 @@ function isLocalProxyActiveNode(node: NodeConfig) {
 }
 
 function editNode(node: NodeConfig) {
+  const blockedReason = getNodeMutationBlockedReason(node)
+  if (blockedReason) {
+    message.warning(blockedReason)
+    return
+  }
+
   editingNode.value = node
   showEditModal.value = true
 }
 
+function getNodeMutationBlockedReason(node: NodeConfig) {
+  return nodeStore.getNodeMutationBlockedReason(node)
+}
+
+function isNodeMutationBlocked(node: NodeConfig) {
+  return nodeStore.isNodeMutationBlocked(node)
+}
+
+function getNodeEditTitle(node: NodeConfig) {
+  return getNodeMutationBlockedReason(node) || t('common.edit')
+}
+
+function getNodeDeleteTitle(node: NodeConfig) {
+  return getNodeMutationBlockedReason(node) || t('common.delete')
+}
+
 async function deleteNode(node: NodeConfig) {
+  const blockedReason = getNodeMutationBlockedReason(node)
+  if (blockedReason) {
+    message.warning(blockedReason)
+    return
+  }
+
   dialog.warning({
     title: t('common.delete'),
     content: t('nodes.delete_confirm', { name: node.tag }),
@@ -265,17 +307,37 @@ async function deleteNode(node: NodeConfig) {
       type: 'error'
     },
     onPositiveClick: async () => {
-      if (node.id) {
-        await nodeStore.removeNode(node.id)
-        message.success(t('common.deleted'))
+      try {
+        if (node.id) {
+          const removed = await nodeStore.removeNode(node.id)
+          if (removed) {
+            message.success(t('common.deleted'))
+          }
+        }
+      } catch (error) {
+        message.warning(resolveErrorMessage(error, t('nodes.delete_failed')))
+        return false
       }
     }
   })
 }
 
+const selectedMutationBlockedReason = computed(() => {
+  for (const node of nodeStore.selectedNodes) {
+    const reason = getNodeMutationBlockedReason(node)
+    if (reason) return reason
+  }
+  return ''
+})
+
 async function deleteSelectedNodes() {
   const count = nodeStore.selectedNodes.length
   if (count === 0) return
+
+  if (selectedMutationBlockedReason.value) {
+    message.warning(selectedMutationBlockedReason.value)
+    return
+  }
 
   dialog.warning({
     title: t('common.delete'),
@@ -286,18 +348,36 @@ async function deleteSelectedNodes() {
       type: 'error'
     },
     onPositiveClick: async () => {
-      const ids = nodeStore.selectedNodes.map(n => n.id).filter(Boolean) as string[]
-      if (ids.length) {
-        await nodeStore.removeNodes(ids)
-        message.success(t('common.deleted'))
+      try {
+        if (selectedMutationBlockedReason.value) {
+          message.warning(selectedMutationBlockedReason.value)
+          return false
+        }
+
+        const ids = nodeStore.selectedNodes.map(n => n.id).filter(Boolean) as string[]
+        if (ids.length) {
+          await nodeStore.removeNodes(ids)
+          message.success(t('common.deleted'))
+        }
+      } catch (error) {
+        message.warning(resolveErrorMessage(error, t('nodes.delete_failed')))
+        return false
       }
     }
   })
 }
 
 function applyGroupToSelected() {
-  nodeStore.setGroupForSelectedNodes(groupName.value)
-  message.success(t('nodes.tag_applied'))
+  try {
+    if (selectedMutationBlockedReason.value) {
+      message.warning(selectedMutationBlockedReason.value)
+      return
+    }
+    nodeStore.setGroupForSelectedNodes(groupName.value)
+    message.success(t('nodes.tag_applied'))
+  } catch (error) {
+    message.warning(resolveErrorMessage(error, t('nodes.save_failed')))
+  }
 }
 
 function subscriptionLabelOf(node: NodeConfig) {
@@ -333,9 +413,13 @@ function toggleSelectAllVisible(checked: boolean) {
 }
 
 async function handleSaveNode(node: Omit<NodeConfig, 'id'> | NodeConfig) {
-  const ok = await nodeStore.saveNode(node as NodeConfig)
-  if (!ok) {
-    message.error(t('nodes.save_failed'))
+  try {
+    const ok = await nodeStore.saveNode(node as NodeConfig)
+    if (ok) {
+      showEditModal.value = false
+    }
+  } catch (error) {
+    message.warning(resolveErrorMessage(error, t('nodes.save_failed')))
   }
 }
 

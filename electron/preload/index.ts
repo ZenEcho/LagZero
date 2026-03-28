@@ -98,6 +98,8 @@ contextBridge.exposeInMainWorld('singbox', {
   setPreferredVersion: (preferredVersion?: string) => ipcRenderer.invoke('singbox-set-preferred-version', preferredVersion),
   /** 获取核心安装状态 */
   getInstallInfo: () => ipcRenderer.invoke('singbox-get-install-info'),
+  /** 获取当前流量统计 */
+  getTrafficStats: () => ipcRenderer.invoke('singbox-get-traffic-stats'),
 })
 
 // 系统底层功能

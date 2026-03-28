@@ -4,6 +4,7 @@ import { useLocalStorage } from '@vueuse/core'
 import type { Game } from '@/types'
 import type { NodeConfig } from '@/types'
 import { generateSingboxConfig } from '@/utils/singbox-config'
+import { resolveSingboxClashApiConfig } from '@/utils/singbox-clash-api'
 import { useNodeStore } from './nodes'
 import { useSettingsStore } from './settings'
 import { systemApi, singboxApi, proxyMonitorApi } from '@/api'
@@ -17,18 +18,18 @@ import {
   LOCAL_PROXY_NODE_CHECK_RETRY_DELAY_MS,
   LOCAL_PROXY_NODE_APPLY_WARMUP_MS,
   LOCAL_PROXY_NODE_CHECK_TIMEOUT_MS,
-  LOCAL_PROXY_RECHECK_INTERVAL_MS
+  LOCAL_PROXY_RECHECK_INTERVAL_MS,
+  NODE_CHECK_CACHE_TTL_SUCCESS_MS,
+  NODE_CHECK_CACHE_TTL_FAIL_MS,
 } from '@/constants'
 
-const NODE_CHECK_CACHE_TTL_SUCCESS_MS = 24 * 60 * 60 * 1000
-const NODE_CHECK_CACHE_TTL_FAIL_MS = 2 * 60 * 1000
 const NON_CACHEABLE_FAILURE_KEYWORDS = [
   'ENABLE_DEPRECATED_LEGACY_DNS_SERVERS',
   'sing-box 配置校验失败'
 ]
 
 
-function nodeLabelOf(node: NodeConfig, index?: number): string {
+function formatNodeLabel(node: NodeConfig, index?: number): string {
   const order = typeof index === 'number' ? `#${index + 1}` : ''
   const tag = String(node.tag || '').trim()
   const server = String(node.server || '').trim()
@@ -201,6 +202,9 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
     const localGame = buildLocalProxyGame()
     const primary = String(settings.dnsPrimary || '').trim()
     const secondary = String(settings.dnsSecondary || '').trim()
+    const clashApi = await resolveSingboxClashApiConfig({
+      reservedPorts: [settings.localProxyPort, settings.localProxyPort + 1]
+    })
     const config = generateSingboxConfig(localGame, node, {
       mode: 'secure',
       primary: primary.startsWith('https://') ? primary : DEFAULT_DNS_PRIMARY,
@@ -211,7 +215,8 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
       localProxy: {
         enabled: true,
         port: settings.localProxyPort
-      }
+      },
+      clashApi
     })
     await proxyMonitorApi.stop()
     await singboxApi.restart(config)
@@ -290,12 +295,12 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
       if (!settings.localProxyNodeRecursiveTest) {
         const fixed = resolveFixedNode(nodes, settings.localProxyFixedNodeIndex)
         if (!fixed) return false
-        console.info(`[LocalProxy] 固定节点模式: ${nodeLabelOf(fixed)}`)
+        console.info(`[LocalProxy] 固定节点模式: ${formatNodeLabel(fixed)}`)
         await applyNodeConfig(fixed)
         running.value = true
         activeNodeKey.value = nodeKeyOf(fixed)
         currentPort.value = settings.localProxyPort
-        setStatus(t('local_proxy.status_fixed_node', { label: nodeLabelOf(fixed) }), 'success')
+        setStatus(t('local_proxy.status_fixed_node', { label: formatNodeLabel(fixed) }), 'success')
         resetTestingProgress()
         return true
       }
@@ -309,7 +314,7 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
       if (rememberedNodesFingerprint.value === nodesFingerprint && rememberedNodeKey.value) {
         const remembered = nodes.find((n) => nodeKeyOf(n) === rememberedNodeKey.value)
         if (remembered) {
-          const rememberedLabel = nodeLabelOf(remembered)
+          const rememberedLabel = formatNodeLabel(remembered)
           testingCurrent.value = 1
           testingNodeLabel.value = rememberedLabel
           console.info(`[LocalProxy] 尝试记忆的节点 ${rememberedLabel}`)
@@ -363,7 +368,7 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
       for (let i = 0; i < nodes.length; i += 1) {
         const node = nodes[i]
         if (!node) continue
-        const label = nodeLabelOf(node, i)
+        const label = formatNodeLabel(node, i)
         if (nodeKeyOf(node) === rememberedNodeKey.value && rememberedNodesFingerprint.value === nodesFingerprint) continue
         testingCurrent.value = i + 1
         testingNodeLabel.value = label
@@ -469,7 +474,7 @@ export const useLocalProxyStore = defineStore('local-proxy', () => {
     }
 
     const active = findActiveNode(nodes)
-    const activeLabel = active ? nodeLabelOf(active) : '(unknown)'
+    const activeLabel = active ? formatNodeLabel(active) : '(unknown)'
     const check = await verifyHostsViaLocalHttpProxy(settings.localProxyPort)
     if (check.ok) {
       setStatus(t('local_proxy.status_recheck_ok', { label: activeLabel }), 'success')

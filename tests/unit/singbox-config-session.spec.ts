@@ -185,6 +185,20 @@ describe('generateSingboxConfig session tuning', () => {
     expect(bootstrapServer.strategy).toBe('ipv4_only')
   })
 
+  it('injects clash api controller config when provided', () => {
+    const cfg = buildConfig({
+      mode: 'secure',
+      clashApi: {
+        externalController: '127.0.0.1:19090',
+        secret: 'traffic-secret'
+      }
+    })
+
+    expect(cfg.experimental?.clash_api).toBeDefined()
+    expect(cfg.experimental.clash_api.external_controller).toBe('127.0.0.1:19090')
+    expect(cfg.experimental.clash_api.secret).toBe('traffic-secret')
+  })
+
   it('keeps process scope for routing ip rules parsed from comma-separated entries', () => {
     const cfg = JSON.parse(generateSingboxConfig(
       {

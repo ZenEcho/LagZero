@@ -8,6 +8,8 @@
 
 **LagZero** 是一款专为游戏体验打造的游戏加速器。基于 **Vue 3**、**TypeScript** 和 **Electron** 构建，底层集成强大的 **sing-box** 核心，旨在提供最低延迟、最稳定的网络加速方案。
 
+- **官网**: [lagzero.org](https://lagzero.org/)
+
 ---
 
 ## ✨ 核心特性
@@ -146,5 +148,6 @@ $env:npm_config_runtime='electron'; $env:npm_config_target='40.2.1'; $env:npm_co
 
 欢迎提交 Issue 或 Pull Request 来完善 LagZero！
 
+- **官网**: [lagzero.org](https://lagzero.org/)
 - **仓库**: [GitHub/ZenEcho/LagZero](https://github.com/ZenEcho/LagZero)
 - **文档**: 详见 [docs](./docs) 目录

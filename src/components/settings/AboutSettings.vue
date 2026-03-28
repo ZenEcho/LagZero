@@ -23,6 +23,18 @@
           <span class="font-mono font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-lg text-xs tracking-wider">v{{
             appVersion }}</span>
         </div>
+        <div
+          class="flex justify-between items-center p-4 hover:bg-surface-overlay/30 transition-colors cursor-pointer"
+          role="button"
+          tabindex="0"
+          @click="openWebsiteUrl"
+          @keydown.enter.prevent="openWebsiteUrl"
+          @keydown.space.prevent="openWebsiteUrl">
+          <span class="text-sm font-bold">{{ $t('settings.official_website') }}</span>
+          <span class="font-mono font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-lg text-xs tracking-wider">
+            lagzero.org
+          </span>
+        </div>
       </div>
 
       <n-button type="primary" block secondary size="large" @click="() => checkUpdate()" :loading="checkingUpdate"
@@ -40,11 +52,11 @@
           </template>
           <span class="font-bold">{{ $t('settings.releases') }}</span>
         </n-button>
-        <n-button block secondary @click="openProjectUrl" class="glass-button">
+        <n-button block secondary @click="openGithubUrl" class="glass-button">
           <template #icon>
             <div class="i-carbon-logo-github text-lg"></div>
           </template>
-          <span class="font-bold">GitHub</span>
+          <span class="font-bold">{{ $t('settings.github') }}</span>
         </n-button>
       </div>
     </div>
@@ -87,5 +99,5 @@ import { NButton } from 'naive-ui'
 import pkg from '../../../package.json'
 import { useAppUpdater } from '@/composables/useAppUpdater'
 
-const { appVersion, checkingUpdate, updateInfo, checkUpdate, openProjectUrl, openReleasesUrl } = useAppUpdater()
+const { appVersion, checkingUpdate, updateInfo, checkUpdate, openWebsiteUrl, openGithubUrl, openReleasesUrl } = useAppUpdater()
 </script>

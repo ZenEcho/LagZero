@@ -5,6 +5,10 @@ import { useI18n } from 'vue-i18n'
 import { appApi } from '@/api'
 import pkg from '../../package.json'
 
+const OFFICIAL_WEBSITE_URL = pkg.homepage || 'https://lagzero.org/'
+const PROJECT_URL = 'https://github.com/ZenEcho/LagZero'
+const RELEASES_URL = `${PROJECT_URL}/releases`
+
 export function useAppUpdater() {
   const appVersion = ref(pkg.version)
   const checkingUpdate = ref(false)
@@ -83,11 +87,15 @@ export function useAppUpdater() {
   }
 
   function openReleasesUrl() {
-    appApi.openUrl('https://github.com/ZenEcho/LagZero/releases')
+    appApi.openUrl(RELEASES_URL)
   }
 
-  function openProjectUrl() {
-    appApi.openUrl('https://github.com/ZenEcho/LagZero')
+  function openWebsiteUrl() {
+    appApi.openUrl(OFFICIAL_WEBSITE_URL)
+  }
+
+  function openGithubUrl() {
+    appApi.openUrl(PROJECT_URL)
   }
   /** 打开核心文件夹 */
   function openInstallDir() {
@@ -101,7 +109,8 @@ export function useAppUpdater() {
     getVersion,
     checkUpdate,
     openReleasesUrl,
-    openProjectUrl,
+    openWebsiteUrl,
+    openGithubUrl,
     openInstallDir
   }
 }

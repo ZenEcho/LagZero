@@ -137,9 +137,14 @@ function openAddModal() {
 }
 
 async function handleSaveNode(node: Omit<NodeConfig, 'id'> | NodeConfig) {
-  const ok = await nodeStore.saveNode(node as NodeConfig)
-  if (!ok) {
-    message.error(i18n.global.t('nodes.save_failed'))
+  try {
+    const ok = await nodeStore.saveNode(node as NodeConfig)
+    if (ok) {
+      showEditModal.value = false
+    }
+  } catch (error) {
+    const msg = error instanceof Error && error.message ? error.message : i18n.global.t('nodes.save_failed')
+    message.warning(msg)
   }
 }
 

@@ -13,6 +13,10 @@
 import type { Game, DnsConfigOptions, SingboxConfig, SessionNetworkTuningOptions, VlessPacketEncodingOverride } from '@/types'
 import type { NodeConfig } from '@/types'
 import { normalizeNodeType, normalizeProcessNames } from '@shared/utils'
+import {
+  resolveSessionTuning as resolveSessionTuningUtil,
+  normalizeMtu as normalizeMtuUtil,
+} from '@/utils/session-tuning'
 import pkg from '../../package.json'
 import {
   DEFAULT_DNS_PRIMARY,
@@ -99,6 +103,8 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
   // 本地代理配置（用于让其他设备连接）
   const localProxyNode = dnsOptions?.localProxyNode
   const localProxyStrictNode = !!dnsOptions?.localProxyStrictNode
+  const clashApiController = String(dnsOptions?.clashApi?.externalController || '').trim()
+  const clashApiSecret = String(dnsOptions?.clashApi?.secret || '').trim()
 
   // 网络微调参数解析
   const sessionTuning = resolveSessionTuning(
@@ -166,6 +172,16 @@ export function generateSingboxConfig(game: Game, node: NodeConfig, dnsOptions?:
       final: isRoutingMode
         ? (isGlobalLikeRouting && !hasRoutingProcessScope ? 'proxy' : 'direct')
         : 'direct'
+    }
+  }
+
+  if (clashApiController) {
+    config.experimental = {
+      ...config.experimental,
+      clash_api: {
+        external_controller: clashApiController,
+        secret: clashApiSecret || undefined
+      }
     }
   }
 
@@ -943,40 +959,14 @@ function isValidCidr(value: string): boolean {
  * 处理 MTU、栈类型、UDP 模式等
  */
 function resolveSessionTuning(tuning?: SessionNetworkTuningOptions): SessionNetworkTuningOptions {
-  if (!tuning?.enabled) {
-    return {
-      enabled: false,
-      profile: 'stable',
-      udpMode: 'auto',
-      tunMtu: 1280,
-      tunStack: 'system',
-      strictRoute: false,
-      vlessPacketEncodingOverride: 'off',
-      highLossHintOnly: true
-    }
-  }
-
-  const tunMtu = normalizeMtu(tuning.tunMtu)
-  return {
-    enabled: true,
-    profile: tuning.profile === 'aggressive' ? 'aggressive' : 'stable',
-    udpMode: tuning.udpMode === 'prefer_udp' || tuning.udpMode === 'prefer_tcp' ? tuning.udpMode : 'auto',
-    tunMtu,
-    tunStack: tuning.tunStack === 'mixed' ? 'mixed' : 'system',
-    strictRoute: !!tuning.strictRoute,
-    vlessPacketEncodingOverride: tuning.vlessPacketEncodingOverride === 'xudp' ? 'xudp' : 'off',
-    highLossHintOnly: tuning.highLossHintOnly !== false
-  }
+  return resolveSessionTuningUtil(tuning)
 }
 
 /**
  * 规范化 MTU 值，确保在合理范围内 (1200-1500)
  */
 function normalizeMtu(value: number): number {
-  const fallback = 1280
-  const n = Number(value)
-  if (!Number.isFinite(n)) return fallback
-  return Math.min(1500, Math.max(1200, Math.floor(n)))
+  return normalizeMtuUtil(value)
 }
 
 /**

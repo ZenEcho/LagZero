@@ -11,11 +11,11 @@
                 gameStore.gameLibrary.length }}</span>
           </h1>
           <div class="bg-surface rounded-lg p-1 flex border border-border">
-            <button @click="viewMode = 'grid'" class="p-1.5 md:p-2  rounded transition"
+            <button @click="setViewMode('grid')" class="p-1.5 md:p-2  rounded transition"
               :class="viewMode === 'grid' ? 'bg-primary text-on-primary' : 'text-on-surface-muted hover:text-on-surface'">
               <div class="i-carbon-grid text-sm md:text-base"></div>
             </button>
-            <button @click="viewMode = 'list'" class="p-1.5 md:p-2 rounded transition"
+            <button @click="setViewMode('list')" class="p-1.5 md:p-2 rounded transition"
               :class="viewMode === 'list' ? 'bg-primary text-on-primary' : 'text-on-surface-muted hover:text-on-surface'">
               <div class="i-carbon-list text-sm md:text-base"></div>
             </button>
@@ -449,7 +449,14 @@ const { width: windowWidth } = useWindowSize()
 const gameStore = useGameStore()
 const categoryStore = useCategoryStore()
 
-const viewMode = ref<'grid' | 'list'>('grid')
+type LibraryViewMode = 'grid' | 'list'
+
+function normalizeLibraryViewMode(value: unknown): LibraryViewMode {
+  return value === 'list' ? 'list' : 'grid'
+}
+
+const viewMode = useLocalStorage<LibraryViewMode | string>('games-library-view-mode', 'grid')
+viewMode.value = normalizeLibraryViewMode(viewMode.value)
 const searchQuery = ref('')
 const activeCategory = ref('all')
 const { isScanning, scanProgressText, scanGames } = useGameScanner()
@@ -544,6 +551,13 @@ const scanSourceSummary = computed(() => {
   }
   return t('games.scan_scope_selected_count', { count: activeScanSources.value.length })
 })
+
+watch(viewMode, (value) => {
+  const normalized = normalizeLibraryViewMode(value)
+  if (value !== normalized) {
+    viewMode.value = normalized
+  }
+}, { immediate: true })
 
 watch(
   () => [selectionMode.value, isScanning.value, scanSourceSummary.value].join('|'),
@@ -682,6 +696,10 @@ function normalizeScanSources(value: unknown): GameScanSource[] {
 
 function getScanSourceLabel(source: GameScanSource): string {
   return t(scanSourceLabelKeyMap[source])
+}
+
+function setViewMode(mode: LibraryViewMode) {
+  viewMode.value = normalizeLibraryViewMode(mode)
 }
 
 function toggleScanSource(source: GameScanSource) {

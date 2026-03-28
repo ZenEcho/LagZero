@@ -90,6 +90,10 @@ const subscriptionScheduleOptions = computed(() => [
   { label: i18n.global.t('nodes.subscription_schedule_monthly'), value: 'monthly' }
 ])
 
+function resolveErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
 function formatLastFetched(ts?: number) {
   if (!ts) return i18n.global.t('nodes.subscription_never')
   return new Date(ts).toLocaleString()
@@ -183,6 +187,7 @@ async function executeSubscriptionRemoval(
     }
   } catch (e) {
     console.error('删除订阅失败:', e)
+    message.warning(resolveErrorMessage(e, i18n.global.t('nodes.delete_failed')))
   } finally {
     state.pending = false
     setDeleteDialogPending(deleteDialog, false)

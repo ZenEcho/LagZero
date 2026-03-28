@@ -42,6 +42,13 @@ export interface SingboxAPI {
     preferredVersion: string
     isRunning: boolean
   }>
+  getTrafficStats: () => Promise<{
+    available: boolean
+    uploadTotal: number
+    downloadTotal: number
+    connectionCount: number
+    memory: number
+  }>
 }
 
 export interface SystemAPI {

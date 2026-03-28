@@ -8,6 +8,7 @@
   "type": "module",
   "author": "LagZero Team",
   "description": "一款专为游戏体验打造的游戏加速器",
+  "homepage": "https://lagzero.org/",
   "repository": {
     "type": "git",
     "url": "https://github.com/ZenEcho/LagZero.git"

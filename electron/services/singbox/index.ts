@@ -6,6 +6,14 @@ import { SingBoxInstaller } from './installer'
 import { SingBoxConfigManager } from './config'
 import { getSingboxEnv, stripAnsi } from './utils'
 
+type SingboxTrafficStats = {
+  available: boolean
+  uploadTotal: number
+  downloadTotal: number
+  connectionCount: number
+  memory: number
+}
+
 /**
  * Sing-box 核心服务
  * 
@@ -26,6 +34,8 @@ export class SingBoxService {
   private suppressNextStoppedStatus = false
   private processRuleUpdateQueue: Promise<void> = Promise.resolve()
   private lifecycleQueue: Promise<void> = Promise.resolve()
+  private clashApiController = ''
+  private clashApiSecret = ''
 
   private installer: SingBoxInstaller
   private configManager: SingBoxConfigManager
@@ -46,6 +56,7 @@ export class SingBoxService {
   private setupIPC() {
     ipcMain.handle('singbox-start', async (_, configContent: string) => {
       return this.enqueueLifecycle(async () => {
+        this.syncClashApiConfig(configContent)
         const configPath = path.join(app.getPath('userData'), 'config.json')
         await fs.writeFile(configPath, configContent)
         await this.start(configPath)
@@ -58,6 +69,7 @@ export class SingBoxService {
     })
     ipcMain.handle('singbox-restart', async (_, configContent: string) => {
       return this.enqueueLifecycle(async () => {
+        this.syncClashApiConfig(configContent)
         this.suppressNextStoppedStatus = true
         await this.stopAndWaitForExit(5000)
         const configPath = path.join(app.getPath('userData'), 'config.json')
@@ -92,6 +104,9 @@ export class SingBoxService {
         ...await this.installer.getInstallInfo(),
         isRunning: !!this.process
       }
+    })
+    ipcMain.handle('singbox-get-traffic-stats', async () => {
+      return this.getTrafficStats()
     })
   }
 
@@ -242,6 +257,76 @@ export class SingBoxService {
     const run = this.lifecycleQueue.then(task, task)
     this.lifecycleQueue = run.then(() => undefined, () => undefined)
     return run
+  }
+
+  private syncClashApiConfig(configContent: string) {
+    try {
+      const parsed = JSON.parse(configContent) as any
+      const clashApi = parsed?.experimental?.clash_api
+      this.clashApiController = typeof clashApi?.external_controller === 'string'
+        ? clashApi.external_controller.trim()
+        : ''
+      this.clashApiSecret = typeof clashApi?.secret === 'string'
+        ? clashApi.secret.trim()
+        : ''
+    } catch {
+      this.clashApiController = ''
+      this.clashApiSecret = ''
+    }
+  }
+
+  private async getTrafficStats(): Promise<SingboxTrafficStats> {
+    if (!this.process || !this.clashApiController) {
+      return {
+        available: false,
+        uploadTotal: 0,
+        downloadTotal: 0,
+        connectionCount: 0,
+        memory: 0
+      }
+    }
+
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 1500)
+
+    try {
+      const baseUrl = /^https?:\/\//i.test(this.clashApiController)
+        ? this.clashApiController
+        : `http://${this.clashApiController}`
+      const normalizedBaseUrl = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
+      const response = await fetch(new URL('connections', normalizedBaseUrl), {
+        headers: this.clashApiSecret
+          ? { Authorization: `Bearer ${this.clashApiSecret}` }
+          : undefined,
+        signal: controller.signal
+      })
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+
+      const payload = await response.json() as any
+      const uploadTotal = Number(payload?.uploadTotal || 0)
+      const downloadTotal = Number(payload?.downloadTotal || 0)
+      const memory = Number(payload?.memory || 0)
+
+      return {
+        available: true,
+        uploadTotal: Number.isFinite(uploadTotal) ? uploadTotal : 0,
+        downloadTotal: Number.isFinite(downloadTotal) ? downloadTotal : 0,
+        connectionCount: Array.isArray(payload?.connections) ? payload.connections.length : 0,
+        memory: Number.isFinite(memory) ? memory : 0
+      }
+    } catch {
+      return {
+        available: false,
+        uploadTotal: 0,
+        downloadTotal: 0,
+        connectionCount: 0,
+        memory: 0
+      }
+    } finally {
+      clearTimeout(timeout)
+    }
   }
 
   private log(message: string, type: 'info' | 'error' = 'info') {

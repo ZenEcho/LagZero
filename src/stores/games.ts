@@ -4,6 +4,11 @@ import { useLocalStorage } from '@vueuse/core'
 import type { Game, SessionNetworkTuningOptions, NetworkProfile } from '@/types'
 import { useNodeStore } from './nodes'
 import { generateSingboxConfig } from '@/utils/singbox-config'
+import { resolveSingboxClashApiConfig } from '@/utils/singbox-clash-api'
+import {
+  createDefaultSessionNetworkTuning,
+  createSessionNetworkTuningPreset,
+} from '@/utils/session-tuning'
 import { useSettingsStore } from './settings'
 import { useLocalProxyStore } from './local-proxy'
 import { gameApi, singboxApi, proxyMonitorApi, systemApi } from '@/api'
@@ -103,6 +108,7 @@ export const useGameStore = defineStore('games', () => {
     const settingsStore = useSettingsStore()
     const g = settingsStore.sessionNetworkTuning
     return {
+      ...createDefaultSessionNetworkTuning(),
       enabled: !!g.enabled,
       profile: g.profile === 'aggressive' ? 'aggressive' : 'stable',
       udpMode: g.udpMode,
@@ -146,27 +152,7 @@ export const useGameStore = defineStore('games', () => {
   ): void {
     const tuning = ensureGameSessionNetworkTuning(gameId)
     const isCurrentNodeVless = !!options?.isCurrentNodeVless
-    if (profile === 'aggressive') {
-      Object.assign(tuning, {
-        enabled: true,
-        profile: 'aggressive',
-        udpMode: 'prefer_udp',
-        tunMtu: 1360,
-        tunStack: 'mixed',
-        strictRoute: true,
-        vlessPacketEncodingOverride: isCurrentNodeVless ? 'xudp' : 'off'
-      })
-      return
-    }
-    Object.assign(tuning, {
-      enabled: true,
-      profile: 'stable',
-      udpMode: 'auto',
-      tunMtu: 1280,
-      tunStack: 'system',
-      strictRoute: false,
-      vlessPacketEncodingOverride: 'off'
-    })
+    Object.assign(tuning, createSessionNetworkTuningPreset(profile, isCurrentNodeVless), { enabled: true })
   }
 
   /** 获取当前加速中的游戏（可排除某个 ID）。 */
@@ -446,6 +432,13 @@ export const useGameStore = defineStore('games', () => {
         { ...getEffectiveSessionNetworkTuning(rawGame.id) },
         settingsStore.accelNetworkMode
       )
+      const clashApi = await resolveSingboxClashApiConfig({
+        reservedPorts: [
+          settingsStore.localProxyEnabled ? settingsStore.localProxyPort : 0,
+          settingsStore.localProxyEnabled ? settingsStore.localProxyPort + 1 : 0,
+          useSystemProxy ? systemProxyPortToUse : 0
+        ]
+      })
       const config = String(generateSingboxConfig(rawGame, rawNode, {
         mode: settingsStore.dnsMode,
         primary: settingsStore.dnsPrimary,
@@ -463,7 +456,8 @@ export const useGameStore = defineStore('games', () => {
         systemProxy: {
           enabled: useSystemProxy,
           port: systemProxyPortToUse
-        }
+        },
+        clashApi
       }))
       try {
         const parsed = JSON.parse(config) as any

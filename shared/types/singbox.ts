@@ -1,6 +1,11 @@
 import type { NodeConfig } from './node'
 import type { AccelNetworkMode, SessionNetworkTuningOptions } from './settings'
 
+export interface SingboxClashApiOptions {
+    externalController: string
+    secret?: string
+}
+
 /**
  * Sing-box DNS 配置选项
  */
@@ -34,6 +39,8 @@ export interface DnsConfigOptions {
         enabled: boolean
         port: number
     }
+    /** sing-box Clash API 配置（用于流量统计等只读监控） */
+    clashApi?: SingboxClashApiOptions
     /** 会话级网络调优参数 */
     sessionTuning?: SessionNetworkTuningOptions
 }
@@ -62,6 +69,10 @@ export interface SingboxConfig {
     experimental?: {
         cache_file?: {
             enabled: boolean
+        }
+        clash_api?: {
+            external_controller: string
+            secret?: string
         }
     }
 }

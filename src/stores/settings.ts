@@ -3,45 +3,12 @@ import { defineStore } from 'pinia'
 import { reactive } from 'vue'
 import { useLocalStorage } from '@vueuse/core'
 import { SYSTEM_PROXY_PORT, LOCAL_PROXY_PORT, DEFAULT_DNS_PRIMARY, DEFAULT_DNS_SECONDARY, BOOTSTRAP_DNS } from '@/constants'
-import type { CheckMethod, DnsMode, Theme, ThemeColor, SessionNetworkTuningOptions, NetworkProfile } from '@/types'
+import type { CheckMethod, DnsMode, Theme, ThemeColor, NetworkProfile, SessionNetworkTuningOptions } from '@/types'
+import {
+    createDefaultSessionNetworkTuning,
+    createSessionNetworkTuningPreset,
+} from '@/utils/session-tuning'
 export type WindowCloseAction = 'ask' | 'minimize' | 'quit'
-
-function createDefaultSessionNetworkTuning(): SessionNetworkTuningOptions {
-    return {
-        enabled: true,
-        profile: 'stable',
-        udpMode: 'auto',
-        tunMtu: 1280,
-        tunStack: 'system',
-        strictRoute: false,
-        vlessPacketEncodingOverride: 'off',
-        highLossHintOnly: true
-    }
-}
-
-function createSessionNetworkTuningPreset(
-    profile: NetworkProfile,
-    isCurrentNodeVless: boolean
-): Partial<SessionNetworkTuningOptions> {
-    if (profile === 'aggressive') {
-        return {
-            profile: 'aggressive',
-            udpMode: 'prefer_udp',
-            tunMtu: 1360,
-            tunStack: 'mixed',
-            strictRoute: true,
-            vlessPacketEncodingOverride: isCurrentNodeVless ? 'xudp' : 'off'
-        }
-    }
-    return {
-        profile: 'stable',
-        udpMode: 'auto',
-        tunMtu: 1280,
-        tunStack: 'system',
-        strictRoute: false,
-        vlessPacketEncodingOverride: 'off'
-    }
-}
 
 export const useSettingsStore = defineStore('settings', () => {
     // Appearance

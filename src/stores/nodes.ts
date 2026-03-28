@@ -7,6 +7,7 @@ import { useSettingsStore } from './settings'
 import { useGameStore } from './games'
 import { nodeApi, systemApi } from '@/api'
 import { useLocalStorage } from '@vueuse/core'
+import i18n from '@/i18n'
 import { nodeKeyOf } from '@shared/utils'
 import {
   appendLatencyRecord,
@@ -15,13 +16,22 @@ import {
   initLatencySessionStore
 } from '@/utils/latency-session'
 
+/** 订阅更新计划类型 */
 export type NodeSubscriptionSchedule = 'manual' | 'startup' | 'daily' | 'monthly'
+
+/** 默认节点分组名称 */
 export const DEFAULT_NODE_GROUP = 'default'
+
+/** 节点导入结果原因 */
 type NodeImportResultReason = 'added' | 'no-new-nodes' | 'no-valid-nodes' | 'import-failed'
+
+/** 批量导入节点的结果 */
 interface AddNodesResult {
   reason: NodeImportResultReason
   count: number
 }
+
+/** 节点排序方式 */
 export type NodeSortType =
   | 'default-asc'
   | 'default-desc'
@@ -30,39 +40,70 @@ export type NodeSortType =
   | 'alphabetical-asc'
   | 'alphabetical-desc'
 
+/** 旧版排序类型，用于迁移兼容 */
 type LegacyNodeSortType = 'default' | 'latency' | 'alphabetical'
 
+/** 订阅源配置 */
 export interface NodeSubscription {
   id: string
   name: string
   url: string
   enabled: boolean
   schedule: NodeSubscriptionSchedule
+  /** 上次拉取时间戳 */
   lastFetchedAt?: number
+  /** 上次拉取状态 */
   lastFetchStatus?: 'ok' | 'failed'
+  /** 上次拉取的附加信息/错误消息 */
   lastFetchMessage?: string
 }
 
+/**
+ * 节点仓库：
+ * - 管理节点列表的增删改查
+ * - 管理节点延迟检测与统计
+ * - 管理节点选中/分组/排序/过滤
+ * - 管理订阅源的增删改查与自动刷新
+ * - 与后端 API 同步节点数据
+ */
 export const useNodeStore = defineStore('nodes', () => {
+  /** 全部节点列表（内存态）。 */
   const nodes = ref<NodeConfig[]>([])
+  /** 每个节点的延迟/丢包统计（key 为 node.id 或 node.tag）。 */
   const nodeStats = reactive<Record<string, { latency: number; loss: number }>>({})
+  /** 当前被勾选的节点 key 列表。 */
   const selectedNodeKeys = ref<string[]>([])
+  /** 搜索关键词（持久化）。 */
   const searchQuery = useLocalStorage('nodes-search-query', '')
+  /** 当前类型过滤器（持久化）。 */
   const activeTypeFilter = useLocalStorage('nodes-filter-type', 'all')
+  /** 当前分组过滤器（持久化）。 */
   const activeGroupFilter = useLocalStorage('nodes-filter-group', 'all')
+  /** 当前排序方式（持久化）。 */
   const activeSortType = useLocalStorage<NodeSortType | LegacyNodeSortType>('nodes-sort-type', 'default-asc')
+  /** 手动设置的节点分组标签（持久化）。 */
   const nodeManualTags = useLocalStorage<Record<string, string>>('nodes-manual-tags', {})
+  /** 由订阅自动分配的节点分组（持久化）。 */
   const nodeSubscriptionGroups = useLocalStorage<Record<string, string>>('nodes-subscription-groups', {})
+  /** 旧版分组数据，仅用于迁移（持久化）。 */
   const legacyNodeGroups = useLocalStorage<Record<string, string>>('nodes-group-map', {})
+  /** 订阅源列表（持久化）。 */
   const subscriptions = useLocalStorage<NodeSubscription[]>('nodes-subscriptions', [])
+  /** 启动时的定时订阅是否已检查过。 */
   const startupScheduleChecked = ref(false)
+  /** 正在删除中的订阅 ID 集合，用于防止并发删除。 */
   const removingSubscriptionIds = new Set<string>()
+  /** 延迟会话 IndexedDB 初始化 Promise。 */
   const latencySessionReady = initLatencySessionStore().catch((e) => {
     console.error('初始化延迟会话存储失败:', e)
   })
 
   const settingsStore = useSettingsStore()
 
+  /**
+   * 将排序类型标准化为当前版本支持的枚举值。
+   * 兼容旧版持久化的简写值（如 'default'、'latency'）。
+   */
   function normalizeSortType(sortType: NodeSortType | LegacyNodeSortType | string): NodeSortType {
     switch (sortType) {
       case 'default':
@@ -85,9 +126,10 @@ export const useNodeStore = defineStore('nodes', () => {
     }
   }
 
-  // Migrate legacy values persisted by old versions.
+  // 迁移旧版持久化的排序值
   activeSortType.value = normalizeSortType(activeSortType.value)
 
+  /** 标准化订阅更新计划类型，无效值默认为 'daily'。 */
   function normalizeSubscriptionSchedule(schedule: unknown): NodeSubscriptionSchedule {
     const normalized = String(schedule || '').trim()
     switch (normalized) {
@@ -101,6 +143,7 @@ export const useNodeStore = defineStore('nodes', () => {
     }
   }
 
+  /** 标准化节点配置：统一协议类型名称。 */
   function normalizeNode(node: NodeConfig): NodeConfig {
     const normalizedType = normalizeNodeType(node.type)
     return {
@@ -109,6 +152,7 @@ export const useNodeStore = defineStore('nodes', () => {
     }
   }
 
+  /** 从检测结果中提取延迟值（兼容多种返回格式）。 */
   function resolveLatency(value: unknown, source: 'ping' | 'tcpPing'): number {
     if (typeof value === 'number') return value
     if (value && typeof value === 'object' && 'latency' in (value as Record<string, unknown>)) {
@@ -121,11 +165,13 @@ export const useNodeStore = defineStore('nodes', () => {
 
 
 
+  /** 当前被勾选的节点对象列表（派生自 selectedNodeKeys）。 */
   const selectedNodes = computed(() => {
     const keySet = new Set(selectedNodeKeys.value)
     return nodes.value.filter((node) => keySet.has(nodeKeyOf(node)))
   })
 
+  /** 所有节点中出现过的协议类型（去重、排序后）。 */
   const availableNodeTypes = computed(() => {
     const set = new Set<string>()
     for (const node of nodes.value) {
@@ -135,6 +181,7 @@ export const useNodeStore = defineStore('nodes', () => {
     return Array.from(set).sort((a, b) => a.localeCompare(b))
   })
 
+  /** 所有节点中出现过的分组名称（去重、排序后，始终包含默认分组）。 */
   const availableGroups = computed(() => {
     const set = new Set<string>()
     for (const node of nodes.value) {
@@ -147,6 +194,7 @@ export const useNodeStore = defineStore('nodes', () => {
     return Array.from(set).sort((a, b) => a.localeCompare(b))
   })
 
+  /** 经过搜索/类型/分组过滤和排序后的节点列表。 */
   const filteredNodes = computed(() => {
     const q = String(searchQuery.value || '').trim().toLowerCase()
     const typeFilter = String(activeTypeFilter.value || 'all')
@@ -203,16 +251,19 @@ export const useNodeStore = defineStore('nodes', () => {
     return sortType === 'default-desc' ? result.slice().reverse() : result
   })
 
+  /** 判断节点是否处于选中状态。 */
   function isNodeSelected(node: NodeConfig): boolean {
     const key = nodeKeyOf(node)
     return !!key && selectedNodeKeys.value.includes(key)
   }
 
+  /** 清理已失效的选中节点 key（节点被删除后调用）。 */
   function pruneSelectedNodeKeys() {
     const available = new Set(nodes.value.map(node => nodeKeyOf(node)).filter(Boolean))
     selectedNodeKeys.value = selectedNodeKeys.value.filter(key => available.has(key))
   }
 
+  /** 设置节点的选中/取消选中状态。 */
   function setNodeSelected(node: NodeConfig, selected: boolean) {
     const key = nodeKeyOf(node)
     if (!key) return
@@ -225,38 +276,50 @@ export const useNodeStore = defineStore('nodes', () => {
     selectedNodeKeys.value = selectedNodeKeys.value.filter(item => item !== key)
   }
 
+  /** 切换节点选中状态。 */
   function toggleNodeSelected(node: NodeConfig) {
     setNodeSelected(node, !isNodeSelected(node))
   }
 
+  /** 清空所有节点选中状态。 */
   function clearSelectedNodes() {
     selectedNodeKeys.value = []
   }
 
+  /** 获取节点的订阅来源分组名称。 */
   function getNodeSubscriptionGroup(node: NodeConfig): string {
     const key = nodeKeyOf(node)
     if (!key) return ''
     return String(nodeSubscriptionGroups.value[key] || '').trim()
   }
 
+  /** 获取节点的手动分组标签。 */
   function getNodeManualTag(node: NodeConfig): string {
     const key = nodeKeyOf(node)
     if (!key) return ''
     return String(nodeManualTags.value[key] || '').trim()
   }
 
+  /** 获取节点的所有分组标签（订阅分组 + 手动标签，去重）。 */
   function getNodeGroupLabels(node: NodeConfig): string[] {
     const sub = getNodeSubscriptionGroup(node)
     const tag = getNodeManualTag(node)
     return Array.from(new Set([sub, tag].filter(Boolean)))
   }
 
+  /** 获取节点的主分组名称（优先取第一个标签，无则返回默认分组）。 */
   function getNodeGroup(node: NodeConfig): string {
     const labels = getNodeGroupLabels(node)
     return labels[0] || DEFAULT_NODE_GROUP
   }
 
+  /** 设置节点的手动分组；加速中的节点禁止修改。 */
   function setNodeGroup(node: NodeConfig, group: string) {
+    const blockedReason = getNodeMutationBlockedReason(node)
+    if (blockedReason) {
+      throw new Error(blockedReason)
+    }
+
     const key = nodeKeyOf(node)
     if (!key) return
     const next = { ...nodeManualTags.value }
@@ -269,13 +332,87 @@ export const useNodeStore = defineStore('nodes', () => {
     nodeManualTags.value = next
   }
 
+  /** 批量设置已选中节点的分组。 */
   function setGroupForSelectedNodes(group: string) {
+    const blockedNode = getBlockedSelectedNode(selectedNodes.value)
+    if (blockedNode) {
+      throw new Error(getNodeMutationBlockedReason(blockedNode))
+    }
+
     const normalized = String(group || '').trim()
     for (const node of selectedNodes.value) {
       setNodeGroup(node, normalized)
     }
   }
 
+  /**
+   * 获取节点不可变更的原因。
+   * 当某游戏正在使用该节点加速时，返回提示文本；否则返回空字符串。
+   */
+  function getNodeMutationBlockedReason(node: NodeConfig): string {
+    const accelerating = useGameStore().getAcceleratingGame()
+    const acceleratingNodeId = String(accelerating?.nodeId || '').trim()
+    if (!accelerating?.id || !acceleratingNodeId) return ''
+
+    const identifiers = new Set<string>([
+      String(node.id || '').trim(),
+      String(node.tag || '').trim(),
+      String(nodeKeyOf(node) || '').trim()
+    ].filter(Boolean))
+
+    if (!identifiers.has(acceleratingNodeId)) return ''
+
+    const nodeName = String(node.tag || node.server || '').trim() || i18n.global.t('nodes.unnamed_node')
+    const gameName = String(accelerating.name || '').trim() || i18n.global.t('games.current_game')
+    return i18n.global.t('nodes.mutation_blocked_accelerating', {
+      name: nodeName,
+      game: gameName
+    })
+  }
+
+  /** 判断节点是否因加速中而被锁定、不可变更。 */
+  function isNodeMutationBlocked(node: NodeConfig): boolean {
+    return !!getNodeMutationBlockedReason(node)
+  }
+
+  /** 标准化节点 ID 列表：去空、去重、转字符串。 */
+  function normalizeNodeIds(ids: string[]): string[] {
+    return Array.from(new Set(
+      (Array.isArray(ids) ? ids : [])
+        .map((id) => String(id || '').trim())
+        .filter(Boolean)
+    ))
+  }
+
+  /** 根据 ID 查找节点。 */
+  function findNodeById(id: string): NodeConfig | undefined {
+    const normalizedId = String(id || '').trim()
+    if (!normalizedId) return undefined
+    return nodes.value.find((node) => String(node.id || '').trim() === normalizedId)
+  }
+
+  /** 在一组 ID 中找到第一个被锁定的节点；无则返回 null。 */
+  function getBlockedNodeByIds(ids: string[]): NodeConfig | null {
+    for (const id of normalizeNodeIds(ids)) {
+      const node = findNodeById(id)
+      if (node && isNodeMutationBlocked(node)) {
+        return node
+      }
+    }
+    return null
+  }
+
+  /** 在一组节点中找到第一个被锁定的节点；无则返回 null。 */
+  function getBlockedSelectedNode(targets: NodeConfig[]): NodeConfig | null {
+    for (const node of targets) {
+      if (isNodeMutationBlocked(node)) {
+        return node
+      }
+    }
+    return null
+  }
+
+  /** 清理已失效的节点分组映射（节点被删除后调用）。 */
   function pruneNodeGroups() {
     const available = new Set(nodes.value.map(node => nodeKeyOf(node)).filter(Boolean))
     const nextManual: Record<string, string> = {}
@@ -297,6 +434,10 @@ export const useNodeStore = defineStore('nodes', () => {
     nodeSubscriptionGroups.value = nextSub
   }
 
+  /**
+   * 生成节点签名字符串，用于订阅去重。
+   * 基于协议类型、服务器、端口、认证等核心字段拼接。
+   */
   function nodeSignatureOf(node: Partial<NodeConfig>): string {
     return [
       normalizeNodeType(String(node.type || '')),
@@ -314,6 +455,7 @@ export const useNodeStore = defineStore('nodes', () => {
     ].join('|')
   }
 
+  /** 根据导入内容的签名匹配已有节点，为其分配订阅分组。 */
   function applyGroupFromContent(content: string, group: string) {
     const normalizedGroup = String(group || '').trim() || DEFAULT_NODE_GROUP
     const parsed = parseBatchLinks(content).map(normalizeNode)
@@ -334,6 +476,7 @@ export const useNodeStore = defineStore('nodes', () => {
     nodeSubscriptionGroups.value = next
   }
 
+  /** 清理订阅列表：去重、标准化字段。 */
   function sanitizeSubscriptions() {
     const dedup = new Set<string>()
     const next: NodeSubscription[] = []
@@ -356,10 +499,12 @@ export const useNodeStore = defineStore('nodes', () => {
     subscriptions.value = next
   }
 
+  /** 生成唯一的订阅 ID。 */
   function makeSubscriptionId() {
     return `sub-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
   }
 
+  /** 校验订阅 URL 是否为合法的 HTTP/HTTPS 地址。 */
   function isValidSubscriptionUrl(raw: string): boolean {
     try {
       const url = new URL(raw)
@@ -369,6 +514,7 @@ export const useNodeStore = defineStore('nodes', () => {
     }
   }
 
+  /** 新增订阅源。 */
   function addSubscription(payload: {
     name: string
     url: string
@@ -390,6 +536,7 @@ export const useNodeStore = defineStore('nodes', () => {
     return true
   }
 
+  /** 新增或更新订阅源（按 URL 去重：已存在则更新，否则新建）。 */
   function upsertSubscription(payload: {
     name: string
     url: string
@@ -423,6 +570,7 @@ export const useNodeStore = defineStore('nodes', () => {
     return { ok: true, id: item.id, created: true }
   }
 
+  /** 删除订阅源；可选同时删除其关联的所有节点。 */
   async function removeSubscription(id: string, options?: { deleteNodes?: boolean }): Promise<boolean> {
     const normalizedId = String(id || '').trim()
     if (!normalizedId || removingSubscriptionIds.has(normalizedId)) return false
@@ -702,8 +850,14 @@ export const useNodeStore = defineStore('nodes', () => {
   }
 
   async function saveNode(node: NodeConfig) {
+    const normalized = normalizeNode(node)
+    const existing = normalized.id ? findNodeById(normalized.id) : undefined
+    const blockedReason = existing ? getNodeMutationBlockedReason(existing) : ''
+    if (blockedReason) {
+      throw new Error(blockedReason)
+    }
+
     try {
-      const normalized = normalizeNode(node)
       const saved = await nodeApi.save(normalized)
       nodes.value = (saved as NodeConfig[]).map(normalizeNode)
       pruneSelectedNodeKeys()
@@ -711,7 +865,7 @@ export const useNodeStore = defineStore('nodes', () => {
       return true
     } catch (e) {
       console.error('保存节点失败:', e)
-      return false
+      throw e
     }
   }
 
@@ -761,51 +915,48 @@ export const useNodeStore = defineStore('nodes', () => {
   }
 
   async function removeNode(id: string) {
-    try {
-      const removed = nodes.value.find((n) => n.id === id)
-      if (!removed) return
+    const normalizedId = String(id || '').trim()
+    if (!normalizedId) return false
 
-      await nodeApi.delete(id)
+    const removed = findNodeById(normalizedId)
+    if (!removed) return false
+
+    const blockedReason = getNodeMutationBlockedReason(removed)
+    if (blockedReason) {
+      throw new Error(blockedReason)
+    }
+
+    try {
+      await nodeApi.delete(normalizedId)
 
       // Update local state
-      nodes.value = nodes.value.filter(n => n.id !== id)
+      nodes.value = nodes.value.filter((n) => String(n.id || '').trim() !== normalizedId)
       pruneSelectedNodeKeys()
       pruneNodeGroups()
-
-      // If the accelerating game is bound to the removed node, stop acceleration immediately.
-      const removedKeys = new Set<string>([
-        String(id || '').trim(),
-        String(removed?.tag || '').trim()
-      ].filter(Boolean))
-      if (removedKeys.size === 0) return
-
-      const gameStore = useGameStore()
-      const accelerating = gameStore.getAcceleratingGame()
-      if (!accelerating?.id || !accelerating.nodeId) return
-
-      const selectedNodeId = String(accelerating.nodeId || '').trim()
-      if (!selectedNodeId || !removedKeys.has(selectedNodeId)) return
-
-      // Double check if it still exists (in case multiple nodes had same ID/tag which shouldn't happen but safe to check)
-      const stillExists = nodes.value.some((n) => n.id === selectedNodeId || n.tag === selectedNodeId)
-      if (stillExists) return
-
-      await gameStore.stopGame(accelerating.id)
+      return true
     } catch (e) {
       console.error('删除节点失败:', e)
+      throw e
     }
   }
 
   async function removeNodes(ids: string[]) {
-    if (!ids.length) return
+    const normalizedIds = normalizeNodeIds(ids)
+    if (!normalizedIds.length) return false
 
-    // Process one by one for now to ensure proper cleanup and game stopping logic
-    // In future this could be optimized to a batch API call if backend supports it
-    for (const id of ids) {
+    const blockedNode = getBlockedNodeByIds(normalizedIds)
+    if (blockedNode) {
+      throw new Error(getNodeMutationBlockedReason(blockedNode))
+    }
+
+    // Pre-validate first to avoid partially deleting a batch, then remove sequentially.
+    // In future this could be optimized to a batch API call if backend supports it.
+    for (const id of normalizedIds) {
       await removeNode(id)
     }
 
     clearSelectedNodes()
+    return true
   }
 
   async function updateNode(node: NodeConfig) {
@@ -839,6 +990,8 @@ export const useNodeStore = defineStore('nodes', () => {
     getNodeSubscriptionGroup,
     setNodeGroup,
     setGroupForSelectedNodes,
+    getNodeMutationBlockedReason,
+    isNodeMutationBlocked,
     addSubscription,
     upsertSubscription,
     removeSubscription,
