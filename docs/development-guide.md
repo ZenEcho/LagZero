@@ -21,16 +21,27 @@ LagZero 是一个面向游戏加速场景的桌面客户端，当前仓库的主
 
 ## 2. 环境准备
 
+### 更新要求（2026-04）
+
+- Windows 10 / 11 x64
+- Node.js `22.12+`，推荐 `24 LTS`
+- `pnpm 10+`
+- 当前唯一的原生生产依赖是 `better-sqlite3`
+- 如果 `better-sqlite3` 预编译包不可用，需要提前安装：
+  - Python 3
+  - Microsoft Visual Studio C++ Build Tools
+
 ### 基础要求
 
-- Node.js `18+`
-- `pnpm`
+- Node.js `22.12+`
+- `pnpm 10+`
 - Windows 下调试 TUN、系统代理、协议注册时，建议以管理员身份运行开发环境
 
 ### 安装与启动
 
 ```bash
 pnpm install
+# 确认没有残留的 LagZero / Electron 进程占用 better_sqlite3.node
 pnpm rebuild:native
 pnpm dev
 ```
@@ -51,6 +62,12 @@ pnpm rebuild:native
 pnpm rebuild:sqlite
 ```
 
+Note: this project currently has one native production dependency, `better-sqlite3`. `pnpm rebuild:sqlite` is kept as a compatibility alias and now forwards to `pnpm rebuild:native`, which force-rebuilds that module against Electron's ABI instead of the host Node.js ABI. If a matching prebuild is unavailable, install Python 3 and Microsoft Visual Studio C++ Build Tools first.
+
+排障补充：
+- 如果日志出现 `EPERM`、`operation not permitted` 或无法覆盖 `better_sqlite3.node`，通常是已有 `electron.exe` 正在占用该文件；先关闭所有 LagZero / Electron 进程后再重试
+- 如果日志提示进入 `node-gyp` / source build，再检查 Python 3 和 Microsoft Visual Studio C++ Build Tools 是否已安装
+
 ## 3. 常用命令
 
 | 命令 | 作用 | 备注 |
@@ -63,7 +80,7 @@ pnpm rebuild:sqlite
 | `pnpm dist` | 构建当前平台安装包 | 走 Electron Builder |
 | `pnpm dist:win:all` | 构建 Windows x64 / arm64 的 NSIS 与 Portable 包 | 当前正式发布最常用 |
 | `pnpm rebuild:native` | 重建 Electron 原生依赖 | 首次拉起、换 Electron 版本后必跑 |
-| `pnpm rebuild:sqlite` | 单独重建 `better-sqlite3` | 排障备用 |
+| `pnpm rebuild:sqlite` | `pnpm rebuild:native` 的兼容别名 | 强制重建 `better-sqlite3` |
 
 ## 4. 运行时路径与数据目录
 

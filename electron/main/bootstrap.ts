@@ -141,7 +141,6 @@ export function formatStartupError(error: unknown) {
       '',
       `Current runtime arch: ${process.arch}`,
       'Fix command: pnpm run rebuild:native',
-      'Fallback command: pnpm run rebuild:sqlite',
       '',
       'Details:',
       raw
@@ -154,7 +153,6 @@ export function formatStartupError(error: unknown) {
       '',
       `Current runtime: electron ${process.versions.electron}, modules ${process.versions.modules}, arch ${process.arch}`,
       'Fix command: pnpm run rebuild:native',
-      'Fallback command: pnpm run rebuild:sqlite',
       '',
       'Details:',
       raw

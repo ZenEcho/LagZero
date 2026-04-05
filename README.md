@@ -53,8 +53,12 @@
 
 ### 环境与依赖
 
-- **Node.js**: 18.x 或更高版本 (推荐使用 LTS 版本)
+- **Node.js**: 22.12+ (推荐使用 24 LTS；`@electron/rebuild` 需要此版本范围)
 - **包管理器**: [pnpm](https://pnpm.io/) (必须使用 pnpm)
+- **操作系统**: Windows 10 / 11 x64（当前开发、调试与系统能力验证以 Windows 为主）
+- **原生模块兜底工具链**: Python 3 与 Microsoft Visual Studio C++ Build Tools
+  - 用途：仅在 `better-sqlite3` 无法命中 Electron 预编译包、需要源码重建时使用
+  - 建议：首次配置 Windows 开发环境时一并安装，避免原生模块重建被阻塞
 
 ### 安装与运行流程
 
@@ -68,12 +72,16 @@ pnpm install
 
 # 3. 重新编译原生模块 (极度关键！因为依赖了 Better-SQLite3，必须要适配 Electron 的 Node ABI)
 pnpm rebuild:native
-# 备用命令：如果你在上方重构过程中卡住，可尝试专用的数据库重建脚本
-# pnpm rebuild:sqlite
+# 兼容别名：pnpm rebuild:sqlite 会强制对 better-sqlite3 执行同一套 Electron ABI 重建
 
 # 4. 启动开发模式 (包含 Vite 热更新界面与 Electron 主进程热重载)
 pnpm dev
 ```
+
+补充说明：
+- 当前生产环境里唯一的原生依赖是 `better-sqlite3`
+- 如果 `pnpm rebuild:native` 提示 `EPERM` 或 `operation not permitted`，通常是 `better_sqlite3.node` 被正在运行的 Electron 进程占用；先关闭所有 LagZero / Electron 进程后再重试
+- 如果重建日志提示需要源码编译，再补装 Python 3 与 Microsoft Visual Studio C++ Build Tools
 
 ### 源码编译与打包构建
 
@@ -132,9 +140,12 @@ mihomo://install-config?url=<encoded-subscription-url>
 
 **Windows (PowerShell):**
 
-```powershell
-$env:npm_config_runtime='electron'; $env:npm_config_target='40.2.1'; $env:npm_config_disturl='https://electronjs.org/headers'; pnpm rebuild better-sqlite3
+```bash
+pnpm rebuild:native
 ```
+
+- 如果仍然失败，先确认没有残留的 `electron.exe` 占用 `better_sqlite3.node`
+- 如果日志提示需要源码重建，再检查 Python 3 和 Microsoft Visual Studio C++ Build Tools 是否已安装
 
 ---
 
