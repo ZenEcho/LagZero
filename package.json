@@ -2,7 +2,7 @@
   "name": "lagzero",
   "productName": "LagZero",
   "private": true,
-  "version": "0.2.3",
+  "version": "0.2.4",
   "lagZeroTestSingboxVersion": "1.13.4",
   "main": "dist-electron/index.js",
   "type": "module",
