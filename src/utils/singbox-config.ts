@@ -15,7 +15,6 @@ import type { NodeConfig } from '@/types'
 import { normalizeNodeType, normalizeProcessNames } from '@shared/utils'
 import {
   resolveSessionTuning as resolveSessionTuningUtil,
-  normalizeMtu as normalizeMtuUtil,
 } from '@/utils/session-tuning'
 import pkg from '../../package.json'
 import {
@@ -960,13 +959,6 @@ function isValidCidr(value: string): boolean {
  */
 function resolveSessionTuning(tuning?: SessionNetworkTuningOptions): SessionNetworkTuningOptions {
   return resolveSessionTuningUtil(tuning)
-}
-
-/**
- * 规范化 MTU 值，确保在合理范围内 (1200-1500)
- */
-function normalizeMtu(value: number): number {
-  return normalizeMtuUtil(value)
 }
 
 /**
