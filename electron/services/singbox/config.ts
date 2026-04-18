@@ -6,6 +6,51 @@ import { LogFn } from './installer'
 import { getSingboxEnv, stripAnsi } from './utils'
 import { spawn } from 'child_process'
 
+export function syncProcessScopedRules(config: any, processNames: string[]): boolean {
+  const normalized = normalizeProcessNames(processNames)
+  if (normalized.length === 0) return false
+
+  let changed = false
+
+  const routeRules = Array.isArray(config?.route?.rules) ? config.route.rules : []
+  const processScopedRouteRules = routeRules.filter((rule: any) => Array.isArray(rule?.process_name))
+  if (processScopedRouteRules.length > 0) {
+    for (const rule of processScopedRouteRules) {
+      if (!areStringArraysEqual(rule.process_name, normalized)) {
+        rule.process_name = normalized
+        changed = true
+      }
+    }
+  } else {
+    routeRules.push({ process_name: normalized, outbound: 'proxy' })
+    if (config?.route) config.route.rules = routeRules
+    changed = true
+  }
+
+  const dnsRules = Array.isArray(config?.dns?.rules) ? config.dns.rules : []
+  const hasRemotePrimaryServer = Array.isArray(config?.dns?.servers)
+    && config.dns.servers.some((server: any) => server?.tag === 'remote-primary')
+  if (hasRemotePrimaryServer) {
+    const processScopedDnsRules = dnsRules.filter((rule: any) =>
+      Array.isArray(rule?.process_name) && rule?.server === 'remote-primary'
+    )
+    if (processScopedDnsRules.length > 0) {
+      for (const rule of processScopedDnsRules) {
+        if (!areStringArraysEqual(rule.process_name, normalized)) {
+          rule.process_name = normalized
+          changed = true
+        }
+      }
+    } else {
+      dnsRules.unshift({ process_name: normalized, server: 'remote-primary' })
+      if (config?.dns) config.dns.rules = dnsRules
+      changed = true
+    }
+  }
+
+  return changed
+}
+
 /**
  * Sing-box 配置管理器
  * 负责配置文件校验、规则更新等操作
@@ -145,9 +190,6 @@ export class SingBoxConfigManager {
     const configPath = path.join(app.getPath('userData'), 'config.json')
     if (!await fs.pathExists(configPath)) return false
 
-    const normalized = normalizeProcessNames(processNames)
-    if (normalized.length === 0) return false
-
     let configRaw = ''
     try {
       configRaw = await fs.readFile(configPath, 'utf8')
@@ -162,36 +204,7 @@ export class SingBoxConfigManager {
       return false
     }
 
-    let changed = false
-    const routeRules = Array.isArray(config?.route?.rules) ? config.route.rules : []
-    const routeRule = routeRules.find((r: any) => Array.isArray(r?.process_name) && r?.outbound === 'proxy')
-    if (routeRule) {
-      if (!areStringArraysEqual(routeRule.process_name, normalized)) {
-        routeRule.process_name = normalized
-        changed = true
-      }
-    } else {
-      routeRules.push({ process_name: normalized, outbound: 'proxy' })
-      if (config?.route) config.route.rules = routeRules
-      changed = true
-    }
-
-    const dnsRules = Array.isArray(config?.dns?.rules) ? config.dns.rules : []
-    const hasRemotePrimaryServer = Array.isArray(config?.dns?.servers)
-      && config.dns.servers.some((s: any) => s?.tag === 'remote-primary')
-    if (hasRemotePrimaryServer) {
-      const dnsRule = dnsRules.find((r: any) => Array.isArray(r?.process_name) && r?.server === 'remote-primary')
-      if (dnsRule) {
-        if (!areStringArraysEqual(dnsRule.process_name, normalized)) {
-          dnsRule.process_name = normalized
-          changed = true
-        }
-      } else {
-        dnsRules.unshift({ process_name: normalized, server: 'remote-primary' })
-        if (config?.dns) config.dns.rules = dnsRules
-        changed = true
-      }
-    }
+    const changed = syncProcessScopedRules(config, processNames)
 
     if (changed) {
       await fs.writeFile(configPath, JSON.stringify(config, null, 2))

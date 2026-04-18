@@ -49,6 +49,28 @@ type FetchUrlResult = {
   error?: string
 }
 
+function buildWinInetRefreshScript(): string {
+  return `
+try {
+  if (-not ('LagZeroWinInet' -as [type])) {
+    $refreshType = @'
+using System;
+using System.Runtime.InteropServices;
+public static class LagZeroWinInet {
+  [DllImport("wininet.dll", SetLastError = true)]
+  public static extern bool InternetSetOption(IntPtr hInternet, int dwOption, IntPtr lpBuffer, int dwBufferLength);
+}
+'@
+    Add-Type -TypeDefinition $refreshType | Out-Null
+  }
+  [LagZeroWinInet]::InternetSetOption([IntPtr]::Zero, 39, [IntPtr]::Zero, 0) | Out-Null
+  [LagZeroWinInet]::InternetSetOption([IntPtr]::Zero, 95, [IntPtr]::Zero, 0) | Out-Null
+} catch {
+  Write-Warning ('Failed to refresh WinINet proxy settings: ' + $_.Exception.Message)
+}
+`.trim()
+}
+
 /**
  * 系统服务
  * 
@@ -59,6 +81,9 @@ type FetchUrlResult = {
  * - HTTP 代理连通性测试
  */
 export class SystemService {
+  private managedSystemProxySnapshot: SystemProxySnapshot | null = null
+  private managedSystemProxyServer = ''
+
   constructor() {
     this.registerIPC()
   }
@@ -308,14 +333,14 @@ export class SystemService {
     const safeServer = `127.0.0.1:${proxyPort}`.replace(/'/g, "''")
     const psScript = [
       "$path = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings'",
-      "$old = Get-ItemProperty -Path $path",
       "Set-ItemProperty -Path $path -Name ProxyEnable -Type DWord -Value 1",
       `Set-ItemProperty -Path $path -Name ProxyServer -Type String -Value '${safeServer}'`,
       `Set-ItemProperty -Path $path -Name ProxyOverride -Type String -Value '${safeBypass}'`,
       "Set-ItemProperty -Path $path -Name AutoDetect -Type DWord -Value 0",
       "Remove-ItemProperty -Path $path -Name AutoConfigURL -ErrorAction SilentlyContinue",
+      buildWinInetRefreshScript(),
       "Write-Output 'system proxy configured'"
-    ].join('; ')
+    ].join("\n")
 
     const { code, output } = await runCommand('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psScript], 15000)
     if (code !== 0) {
@@ -325,6 +350,9 @@ export class SystemService {
         snapshot
       }
     }
+
+    this.managedSystemProxySnapshot = snapshot
+    this.managedSystemProxyServer = `127.0.0.1:${proxyPort}`
 
     return {
       ok: true,
@@ -354,10 +382,41 @@ export class SystemService {
       }
     }
 
+    this.resetManagedSystemProxyState()
     return {
       ok: true,
       message: 'System proxy cleared'
     }
+  }
+
+  async cleanupManagedSystemProxy(): Promise<SystemProxyResult> {
+    if (process.platform !== 'win32') {
+      return {
+        ok: false,
+        message: `Unsupported platform: ${process.platform}`
+      }
+    }
+
+    if (!this.managedSystemProxyServer) {
+      return {
+        ok: true,
+        message: 'No managed system proxy to restore'
+      }
+    }
+
+    const currentState = await this.readWindowsSystemProxyState()
+    const currentEnabled = Number(currentState?.ProxyEnable || 0) === 1
+    const currentServer = String(currentState?.ProxyServer || '').trim()
+
+    if (!currentEnabled || currentServer !== this.managedSystemProxyServer) {
+      this.resetManagedSystemProxyState()
+      return {
+        ok: true,
+        message: 'Managed system proxy already inactive'
+      }
+    }
+
+    return this.clearSystemProxy(this.managedSystemProxySnapshot || undefined)
   }
 
   /**
@@ -371,9 +430,11 @@ export class SystemService {
         "Set-ItemProperty -Path $path -Name ProxyEnable -Type DWord -Value 0",
         "Set-ItemProperty -Path $path -Name AutoDetect -Type DWord -Value 0",
         "Remove-ItemProperty -Path $path -Name ProxyServer -ErrorAction SilentlyContinue",
+        "Remove-ItemProperty -Path $path -Name ProxyOverride -ErrorAction SilentlyContinue",
         "Remove-ItemProperty -Path $path -Name AutoConfigURL -ErrorAction SilentlyContinue",
+        buildWinInetRefreshScript(),
         "Write-Output 'system proxy cleared'"
-      ].join('; ')
+      ].join("\n")
     }
 
     const proxyEnable = Number(snapshot?.ProxyEnable || 0)
@@ -395,8 +456,9 @@ export class SystemService {
       autoConfigUrl
         ? `Set-ItemProperty -Path $path -Name AutoConfigURL -Type String -Value '${autoConfigUrl}'`
         : "Remove-ItemProperty -Path $path -Name AutoConfigURL -ErrorAction SilentlyContinue",
+      buildWinInetRefreshScript(),
       "Write-Output 'system proxy restored'"
-    ].join('; ')
+    ].join("\n")
   }
 
   /**
@@ -426,6 +488,11 @@ $result | ConvertTo-Json -Compress
     } catch {
       throw new Error(`parse system proxy state failed: ${output}`)
     }
+  }
+
+  private resetManagedSystemProxyState() {
+    this.managedSystemProxySnapshot = null
+    this.managedSystemProxyServer = ''
   }
 
   /**

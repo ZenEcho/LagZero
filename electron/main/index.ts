@@ -910,8 +910,6 @@ function startApp() {
   const appIcon = loadAppIcon()
   const win = windowManager.create(appIcon)
   deepLinkRendererReady = false
-  // Deep-link readiness is driven by explicit renderer IPC rather than generic page loading events,
-  // otherwise later resource loads can incorrectly push imports back into the pending queue.
   win.webContents.on('did-start-loading', () => {
     console.info('[Main] 渲染进程开始加载页面')
   })
@@ -1009,7 +1007,7 @@ app.on('before-quit', (event) => {
   event.preventDefault()
 
   // 尝试清理系统代理设置
-  Promise.resolve(systemService?.clearSystemProxy())
+  Promise.resolve(systemService?.cleanupManagedSystemProxy())
     .catch((e) => {
       console.warn('[Main] 应用退出时清理系统代理失败:', e)
     })
